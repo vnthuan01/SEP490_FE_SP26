@@ -54,18 +54,18 @@ const getAiBadgeClass = (score: number) => {
   if (score >= 50) {
     return 'bg-blue-500/15 text-blue-600 border border-blue-500/30';
   }
-  return 'bg-surface-dark-highlight text-text-sub-dark border border-border-dark';
+  return 'bg-surface-dark-highlight text-muted-foreground border border-border';
 };
 
 const getAiColor = (score: number) => {
   if (score >= 85) return { text: 'text-red-500', bar: 'bg-red-500' };
   if (score >= 70) return { text: 'text-orange-500', bar: 'bg-orange-500' };
   if (score >= 50) return { text: 'text-blue-500', bar: 'bg-blue-500' };
-  return { text: 'text-text-sub-dark', bar: 'bg-text-sub-dark' };
+  return { text: 'text-muted-foreground', bar: 'bg-text-sub-dark' };
 };
 
 const processConfig: Record<ProcessStatus, { label: string; icon: string; className: string }> = {
-  submitted: { label: 'Đã gửi', icon: 'upload', className: 'text-text-sub-dark' },
+  submitted: { label: 'Đã gửi', icon: 'upload', className: 'text-muted-foreground' },
   approved: { label: 'Đã chấp thuận', icon: 'check_circle', className: 'text-blue-500' },
   in_progress: {
     label: 'Đang xử lý',
@@ -307,7 +307,7 @@ export default function CoordinatorRequestManagementPage() {
     >
       <div className="flex h-[calc(100vh-6rem)] overflow-hidden -m-4">
         {/* ================= LEFT ================= */}
-        <aside className="w-[420px] flex flex-col border-r border-surface-dark-highlight bg-card-dark overflow-hidden shrink-0">
+        <aside className="w-[420px] flex flex-col border-r border-surface-dark-highlight bg-card overflow-hidden shrink-0">
           {/* HEADER */}
           <div className="p-4 border-b border-surface-dark-highlight flex flex-col gap-4">
             <div className="flex flex-col gap-1">
@@ -318,10 +318,10 @@ export default function CoordinatorRequestManagementPage() {
             </div>
 
             {/* SEARCH */}
-            <div className="flex w-full items-center rounded-lg border border-border-dark bg-background-dark px-3 py-2">
-              <span className="material-symbols-outlined text-text-sub-dark mr-2">search</span>
+            <div className="flex w-full items-center rounded-lg border border-border bg-background-dark px-3 py-2">
+              <span className="material-symbols-outlined text-muted-foreground mr-2">search</span>
               <input
-                className="w-full bg-transparent text-text-main-dark placeholder:text-text-sub-dark outline-none text-sm"
+                className="w-full bg-transparent text-foreground placeholder:text-muted-foreground outline-none text-sm"
                 placeholder="Tìm tên, SĐT, địa chỉ..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -414,7 +414,7 @@ export default function CoordinatorRequestManagementPage() {
                   'border border-transparent bg-background-dark',
                   selectedRequest.id === r.id
                     ? 'bg-surface-dark-highlight border-primary/50 shadow-md'
-                    : 'hover:bg-surface-dark-highlight hover:border-border-dark hover:shadow-sm',
+                    : 'hover:bg-surface-dark-highlight hover:border-border hover:shadow-sm',
                 )}
               >
                 <div className="flex justify-between items-start">
@@ -423,13 +423,13 @@ export default function CoordinatorRequestManagementPage() {
                       className={cn(
                         'text-base font-bold truncate',
                         selectedRequest.id === r.id
-                          ? 'text-text-main-dark'
-                          : 'text-text-sub-dark group-hover:text-text-main-dark',
+                          ? 'text-foreground'
+                          : 'text-muted-foreground group-hover:text-foreground',
                       )}
                     >
                       {r.name}
                     </h3>
-                    <p className="text-xs text-text-sub-dark mt-0.5">{r.location}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{r.location}</p>
                   </div>
                   <span
                     className={cn(
@@ -441,10 +441,10 @@ export default function CoordinatorRequestManagementPage() {
                   </span>
                 </div>
 
-                <p className="text-sm text-text-sub-dark line-clamp-2">{r.description}</p>
+                <p className="text-sm text-muted-foreground line-clamp-2">{r.description}</p>
 
-                <div className="flex justify-between items-center mt-1 border-t border-border-dark/50 pt-2">
-                  <span className="text-xs text-text-sub-dark flex items-center gap-1">
+                <div className="flex justify-between items-center mt-1 border-t border-border/50 pt-2">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
                     <span className="material-symbols-outlined text-[14px]">schedule</span>
                     {r.time}
                   </span>
@@ -466,7 +466,7 @@ export default function CoordinatorRequestManagementPage() {
         </aside>
 
         {/* ================= RIGHT ================= */}
-        <section className="flex-1 flex flex-col h-full bg-card-dark relative overflow-y-auto custom-scrollbar">
+        <section className="flex-1 flex flex-col h-full bg-card relative overflow-y-auto custom-scrollbar">
           {selectedRequest ? (
             <>
               {/* Header */}
@@ -474,7 +474,7 @@ export default function CoordinatorRequestManagementPage() {
                 <div className="flex items-start justify-between gap-6">
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-3">
-                      <h1 className="text-3xl font-black tracking-tight text-text-main-dark">
+                      <h1 className="text-3xl font-black tracking-tight text-foreground">
                         Yêu cầu #{selectedRequest.id}
                       </h1>
                       <span
@@ -487,10 +487,10 @@ export default function CoordinatorRequestManagementPage() {
                         {statusConfig[selectedRequest.status].label}
                       </span>
                     </div>
-                    <div className="flex items-center gap-6 text-text-sub-dark text-base mt-1">
+                    <div className="flex items-center gap-6 text-muted-foreground text-base mt-1">
                       <div className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[20px]">person</span>
-                        <span className="font-semibold text-text-main-dark">
+                        <span className="font-semibold text-foreground">
                           {selectedRequest.name}
                         </span>
                       </div>
@@ -505,7 +505,7 @@ export default function CoordinatorRequestManagementPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-start gap-2 text-text-sub-dark">
+                  <div className="flex flex-col items-start gap-2 text-muted-foreground">
                     <span className="text-sm">
                       Gửi lúc: {new Date(selectedRequest.submittedAt).toLocaleString('vi-VN')}
                     </span>
@@ -520,24 +520,24 @@ export default function CoordinatorRequestManagementPage() {
                 <div className="col-span-8 space-y-8">
                   {/* Description */}
                   <div className="space-y-4">
-                    <h3 className="text-xl font-bold flex items-center gap-2 text-text-main-dark">
+                    <h3 className="text-xl font-bold flex items-center gap-2 text-foreground">
                       <span className="material-symbols-outlined text-primary">description</span>
                       Nội dung yêu cầu
                     </h3>
-                    <div className="p-6 rounded-xl bg-background-dark border border-border-dark">
-                      <p className="text-text-main-dark leading-relaxed text-base">
+                    <div className="p-6 rounded-xl bg-background-dark border border-border">
+                      <p className="text-foreground leading-relaxed text-base">
                         {selectedRequest.description}
                       </p>
 
                       <div className="mt-6">
-                        <p className="text-text-sub-dark text-sm mb-3 uppercase font-semibold tracking-wider">
+                        <p className="text-muted-foreground text-sm mb-3 uppercase font-semibold tracking-wider">
                           Cần hỗ trợ về:
                         </p>
                         <div className="flex flex-wrap gap-2">
                           {selectedRequest.supportType.map((t) => (
                             <span
                               key={t}
-                              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-dark-highlight text-text-main-dark border border-border-dark text-sm font-medium"
+                              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-dark-highlight text-foreground border border-border text-sm font-medium"
                             >
                               <span className="material-symbols-outlined text-[18px]">
                                 {supportTypeConfig[t].icon}
@@ -553,13 +553,13 @@ export default function CoordinatorRequestManagementPage() {
                   {/* Media */}
                   {selectedRequest.media && selectedRequest.media.length > 0 && (
                     <div className="space-y-4">
-                      <h3 className="text-xl font-bold flex items-center gap-2 text-text-main-dark">
+                      <h3 className="text-xl font-bold flex items-center gap-2 text-foreground">
                         <span className="material-symbols-outlined text-primary">perm_media</span>
                         Hình ảnh/Video đính kèm ({selectedRequest.media.length})
                       </h3>
 
                       {/* Main Main View */}
-                      <div className="relative w-full aspect-video bg-black/20 rounded-xl overflow-hidden border border-border-dark group">
+                      <div className="relative w-full aspect-video bg-black/20 rounded-xl overflow-hidden border border-border group">
                         {selectedRequest.media[currentMediaIndex].type === 'image' ? (
                           <div
                             className="w-full h-full bg-contain bg-center bg-no-repeat cursor-zoom-in"
@@ -692,7 +692,7 @@ export default function CoordinatorRequestManagementPage() {
                                 'relative w-20 h-14 shrink-0 rounded-lg overflow-hidden cursor-pointer border-2 transition-all',
                                 i === currentMediaIndex
                                   ? 'border-primary opacity-100 ring-2 ring-primary/20'
-                                  : 'border-transparent opacity-60 hover:opacity-100 hover:border-border-dark',
+                                  : 'border-transparent opacity-60 hover:opacity-100 hover:border-border',
                               )}
                             >
                               {m.type === 'image' ? (
@@ -718,8 +718,8 @@ export default function CoordinatorRequestManagementPage() {
                 {/* Right Column */}
                 <div className="col-span-4 space-y-6">
                   {/* Process Status */}
-                  <div className="p-5 rounded-xl bg-background-dark border border-border-dark">
-                    <h3 className="text-lg font-bold mb-4 text-text-main-dark">Tiến trình xử lý</h3>
+                  <div className="p-5 rounded-xl bg-background-dark border border-border">
+                    <h3 className="text-lg font-bold mb-4 text-foreground">Tiến trình xử lý</h3>
                     <div className="space-y-4 relative">
                       {/* Timeline line */}
                       <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-border-dark z-0"></div>
@@ -735,13 +735,13 @@ export default function CoordinatorRequestManagementPage() {
                             <div
                               className={cn(
                                 'w-6 h-6 rounded-full bg-background-dark border-2 flex items-center justify-center shrink-0',
-                                active ? 'border-primary' : 'border-border-dark',
+                                active ? 'border-primary' : 'border-border',
                               )}
                             >
                               <span
                                 className={cn(
                                   'material-symbols-outlined text-[14px]',
-                                  active ? 'text-primary' : 'text-text-sub-dark',
+                                  active ? 'text-primary' : 'text-muted-foreground',
                                 )}
                               >
                                 {cfg.icon}
@@ -751,7 +751,7 @@ export default function CoordinatorRequestManagementPage() {
                               <p
                                 className={cn(
                                   'text-sm font-bold',
-                                  active ? 'text-text-main-dark' : 'text-text-sub-dark',
+                                  active ? 'text-foreground' : 'text-muted-foreground',
                                 )}
                               >
                                 {cfg.label}
@@ -770,9 +770,9 @@ export default function CoordinatorRequestManagementPage() {
 
                   {/* AI Analysis */}
                   {typeof selectedRequest.aiScore === 'number' && (
-                    <div className="p-5 rounded-xl bg-surface-dark-highlight/30 border border-border-dark">
+                    <div className="p-5 rounded-xl bg-surface-dark-highlight/30 border border-border">
                       <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-text-sub-dark">
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
                           AI Đánh giá
                         </h3>
                         <span
@@ -793,7 +793,7 @@ export default function CoordinatorRequestManagementPage() {
                         >
                           {selectedRequest.aiScore}
                         </span>
-                        <span className="text-sm text-text-sub-dark mb-1.5">/ 100 điểm</span>
+                        <span className="text-sm text-muted-foreground mb-1.5">/ 100 điểm</span>
                       </div>
                       <div className="w-full bg-background-dark h-2 rounded-full overflow-hidden">
                         <div
@@ -804,7 +804,7 @@ export default function CoordinatorRequestManagementPage() {
                           style={{ width: `${selectedRequest.aiScore}%` }}
                         ></div>
                       </div>
-                      <p className="text-xs text-text-sub-dark mt-3 leading-relaxed">
+                      <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
                         Hệ thống đánh giá mức độ khẩn cấp dựa trên từ khóa và hình ảnh được cung
                         cấp.
                       </p>
@@ -815,8 +815,8 @@ export default function CoordinatorRequestManagementPage() {
 
               {/* Sticky Footer */}
               <div
-                className="sticky bottom-0 left-0 right-0 p-6 bg-card-dark/90
-                backdrop-blur-md border-t border-border-dark flex justify-between items-center z-20 shadow-2xl mt-auto"
+                className="sticky bottom-0 left-0 right-0 p-6 bg-card/90
+                backdrop-blur-md border-t border-border flex justify-between items-center z-20 shadow-2xl mt-auto"
               >
                 <Button variant="outline" className="gap-2">
                   <span className="material-symbols-outlined">history</span>
@@ -852,7 +852,7 @@ export default function CoordinatorRequestManagementPage() {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-text-sub-dark">
+            <div className="flex-1 flex items-center justify-center text-muted-foreground">
               Chọn một yêu cầu để xem chi tiết
             </div>
           )}

@@ -1,5 +1,5 @@
 // AuthContextType.ts
-import type { User, LoginPayload } from '@/services/authService';
+import { type User, type LoginPayload } from '@/services/authService';
 import { createContext } from 'react';
 
 export interface AuthContextType {

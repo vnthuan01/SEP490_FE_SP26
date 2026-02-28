@@ -110,7 +110,7 @@ export function AddUserModal({ open, onClose, onSubmit }: AddUserModalProps) {
                   className={`font-medium ${
                     form.active
                       ? 'text-green-600 dark:text-green-400'
-                      : 'text-text-main-dark dark:text-text-main-light'
+                      : 'text-foreground dark:text-foreground'
                   }`}
                 >
                   Kích hoạt tài khoản
@@ -124,7 +124,7 @@ export function AddUserModal({ open, onClose, onSubmit }: AddUserModalProps) {
                 )}
               </div>
 
-              <p className="text-sm text-text-sub-dark dark:text-text-sub-light">
+              <p className="text-sm text-muted-foreground dark:text-muted-foreground">
                 Cho phép người dùng đăng nhập hệ thống
               </p>
             </div>

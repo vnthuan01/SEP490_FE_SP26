@@ -17,7 +17,6 @@ export default function App() {
       {/* <ConnectionIndicator /> */}
       {/* </SignalRProvider> */}
       <ReactQueryDevtools initialIsOpen={false} />
-      <Analytics />
     </QueryClientProvider>
   );
 }

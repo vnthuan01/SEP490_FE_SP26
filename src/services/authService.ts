@@ -11,13 +11,20 @@ export interface AuthResponse<T> {
 
 // Login
 export interface LoginPayload {
-  emailOrPhone: string;
+  email: string;
+  password: string;
+}
+
+export interface PhoneLoginPayload {
+  phoneNumber: string;
   password: string;
 }
 
 export interface LoginResponseData {
+  userId: string;
   accessToken: string;
   refreshToken: string;
+  accessTokenExpires: string;
 }
 
 // Register
@@ -55,15 +62,17 @@ export interface RefreshTokenPayload {
 }
 
 export const authService = {
-  login: (data: LoginPayload) =>
-    apiClient.post<AuthResponse<LoginResponseData>>('/Auth/login', data),
+  login: (data: LoginPayload) => apiClient.post<LoginResponseData>('/Auth/login', data),
 
-  // register: (data: RegisterPayload) => apiClient.post<AuthResponse<string>>('/Auth/register', data),
+  phoneLogin: (data: PhoneLoginPayload) =>
+    apiClient.post<LoginResponseData>('/Auth/phone-login', data),
+
+  register: (data: RegisterPayload) => apiClient.post<AuthResponse<string>>('/Auth/register', data),
 
   me: () => apiClient.get<AuthResponse<User>>('/Auth/me'),
 
   refreshToken: (data: RefreshTokenPayload) =>
-    apiClient.post<AuthResponse<LoginResponseData>>('/Auth/refresh-token', data),
+    apiClient.post<LoginResponseData>('/Auth/refresh-token', data),
 
   // logout: () => apiClient.post('/Auth/logout'),
 };

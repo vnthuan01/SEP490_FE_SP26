@@ -17,7 +17,7 @@ export default function AdminDashboardPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-black text-primary">Dashboard</h1>
-            <p className="text-text-sub-dark dark:text-text-sub-light">
+            <p className="text-muted-foreground dark:text-muted-foreground">
               Quản lý, ưu tiên và hoàn thành nhiệm vụ dễ dàng.
             </p>
           </div>
@@ -101,10 +101,10 @@ export default function AdminDashboardPage() {
                     <span className="material-symbols-outlined text-lg">api</span>
                   </div>
                   <div className="flex flex-col">
-                    <p className="text-sm font-bold text-text-main-dark dark:text-text-main-light">
+                    <p className="text-sm font-bold text-foreground dark:text-foreground">
                       Cứu trợ Xã B
                     </p>
-                    <p className="text-[10px] text-text-sub-dark dark:text-text-sub-light">
+                    <p className="text-[10px] text-muted-foreground dark:text-muted-foreground">
                       Hạn: 26 Nov, 2024
                     </p>
                   </div>
@@ -114,10 +114,10 @@ export default function AdminDashboardPage() {
                     <span className="material-symbols-outlined text-lg">inventory_2</span>
                   </div>
                   <div className="flex flex-col">
-                    <p className="text-sm font-bold text-text-main-dark dark:text-text-main-light">
+                    <p className="text-sm font-bold text-foreground dark:text-foreground">
                       Điều phối Kho A
                     </p>
-                    <p className="text-[10px] text-text-sub-dark dark:text-text-sub-light">
+                    <p className="text-[10px] text-muted-foreground dark:text-muted-foreground">
                       Hạn: 28 Nov, 2024
                     </p>
                   </div>
@@ -127,10 +127,10 @@ export default function AdminDashboardPage() {
                     <span className="material-symbols-outlined text-lg">group</span>
                   </div>
                   <div className="flex flex-col">
-                    <p className="text-sm font-bold text-text-main-dark dark:text-text-main-light">
+                    <p className="text-sm font-bold text-foreground dark:text-foreground">
                       Tình nguyện viên
                     </p>
-                    <p className="text-[10px] text-text-sub-dark dark:text-text-sub-light">
+                    <p className="text-[10px] text-muted-foreground dark:text-muted-foreground">
                       Hạn: 30 Nov, 2024
                     </p>
                   </div>

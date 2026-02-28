@@ -181,7 +181,7 @@ export default function CoordinatorDataManagementPage() {
       <Tabs value={selectedTab} onValueChange={setSelectedTab} className="mb-6">
         <TabsList
           variant="line"
-          className="border-b border-slate-200 dark:border-border-dark bg-transparent p-0 h-auto mb-4"
+          className="border-b border-slate-200 dark:border-border bg-transparent p-0 h-auto mb-4"
         >
           <TabsTrigger value="goods" className="flex items-center gap-2">
             <span className="material-symbols-outlined text-[20px]">inventory_2</span>
@@ -358,17 +358,17 @@ export default function CoordinatorDataManagementPage() {
         </TabsContent>
         <TabsContent value="disaster" className="mt-0">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <Card className="bg-card-dark dark:bg-card border-border hover:border-primary/50 transition-colors group">
+            <Card className="bg-card dark:bg-card border-border hover:border-primary/50 transition-colors group">
               <CardContent className="p-6 flex flex-col gap-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-text-sub-dark dark:text-text-sub-light text-sm font-semibold uppercase tracking-wider">
+                  <p className="text-muted-foreground dark:text-muted-foreground text-sm font-semibold uppercase tracking-wider">
                     Vùng thiên tai
                   </p>
                   <div className="size-8 rounded-full bg-red-500/20 dark:bg-red-500/30 flex items-center justify-center text-red-400 group-hover:bg-red-500 group-hover:text-white transition-all">
                     <span className="material-symbols-outlined text-lg">flood</span>
                   </div>
                 </div>
-                <p className="text-text-main-dark dark:text-text-main-light text-4xl font-black">
+                <p className="text-foreground dark:text-foreground text-4xl font-black">
                   {reliefLocationsData.length}
                 </p>
                 <div className="flex items-center gap-1 text-red-500 text-sm font-medium bg-red-500/10 w-fit px-2 py-1 rounded">
@@ -379,17 +379,17 @@ export default function CoordinatorDataManagementPage() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="bg-card-dark dark:bg-card border-border hover:border-primary/50 transition-colors group">
+            <Card className="bg-card dark:bg-card border-border hover:border-primary/50 transition-colors group">
               <CardContent className="p-6 flex flex-col gap-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-text-sub-dark dark:text-text-sub-light text-sm font-semibold uppercase tracking-wider">
+                  <p className="text-muted-foreground dark:text-muted-foreground text-sm font-semibold uppercase tracking-wider">
                     Đội cứu trợ
                   </p>
                   <div className="size-8 rounded-full bg-blue-500/20 dark:bg-blue-500/30 flex items-center justify-center text-blue-400 group-hover:bg-blue-500 group-hover:text-white transition-all">
                     <span className="material-symbols-outlined text-lg">groups</span>
                   </div>
                 </div>
-                <p className="text-text-main-dark dark:text-text-main-light text-4xl font-black">
+                <p className="text-foreground dark:text-foreground text-4xl font-black">
                   {teamsData.length}
                 </p>
                 <div className="flex items-center gap-1 text-blue-500 text-sm font-medium bg-blue-500/10 w-fit px-2 py-1 rounded">
@@ -399,17 +399,17 @@ export default function CoordinatorDataManagementPage() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="bg-card-dark dark:bg-card border-border hover:border-primary/50 transition-colors group">
+            <Card className="bg-card dark:bg-card border-border hover:border-primary/50 transition-colors group">
               <CardContent className="p-6 flex flex-col gap-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-text-sub-dark dark:text-text-sub-light text-sm font-semibold uppercase tracking-wider">
+                  <p className="text-muted-foreground dark:text-muted-foreground text-sm font-semibold uppercase tracking-wider">
                     Đã tiếp cận
                   </p>
                   <div className="size-8 rounded-full bg-green-500/20 dark:bg-green-500/30 flex items-center justify-center text-green-400 group-hover:bg-green-500 group-hover:text-white transition-all">
                     <span className="material-symbols-outlined text-lg">check_circle</span>
                   </div>
                 </div>
-                <p className="text-text-main-dark dark:text-text-main-light text-4xl font-black">
+                <p className="text-foreground dark:text-foreground text-4xl font-black">
                   {teamsData.filter((t) => t.status === 'rescuing').length}
                 </p>
                 <div className="flex items-center gap-1 text-green-500 text-sm font-medium bg-green-500/10 w-fit px-2 py-1 rounded">
@@ -417,19 +417,17 @@ export default function CoordinatorDataManagementPage() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="bg-card-dark dark:bg-card border-border hover:border-primary/50 transition-colors group">
+            <Card className="bg-card dark:bg-card border-border hover:border-primary/50 transition-colors group">
               <CardContent className="p-6 flex flex-col gap-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-text-sub-dark dark:text-text-sub-light text-sm font-semibold uppercase tracking-wider">
+                  <p className="text-muted-foreground dark:text-muted-foreground text-sm font-semibold uppercase tracking-wider">
                     Thời gian TB
                   </p>
                   <div className="size-8 rounded-full bg-orange-500/20 dark:bg-orange-500/30 flex items-center justify-center text-orange-400 group-hover:bg-orange-500 group-hover:text-white transition-all">
                     <span className="material-symbols-outlined text-lg">schedule</span>
                   </div>
                 </div>
-                <p className="text-text-main-dark dark:text-text-main-light text-4xl font-black">
-                  4.5h
-                </p>
+                <p className="text-foreground dark:text-foreground text-4xl font-black">4.5h</p>
                 <div className="flex items-center gap-1 text-orange-500 text-sm font-medium bg-orange-500/10 w-fit px-2 py-1 rounded">
                   <span>Thời gian phản ứng</span>
                 </div>
@@ -437,7 +435,7 @@ export default function CoordinatorDataManagementPage() {
             </Card>
           </div>
 
-          <Card className="h-[600px] overflow-hidden border-border bg-card-dark dark:bg-card">
+          <Card className="h-[600px] overflow-hidden border-border bg-card dark:bg-card">
             <div className="w-full h-full relative">
               <ReliefMap
                 locations={reliefLocationsData}

@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import React, { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { DashboardSidebar } from './sidebar/DashboardSidebar';
 import { DashboardHeader } from './DashboardHeader';
@@ -24,6 +24,7 @@ export function DashboardLayout({ children, projects, navItems }: DashboardLayou
   const mainRef = useRef<HTMLDivElement>(null);
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [hideHeader, setHideHeader] = useState(false);
 
   const lastScrollTop = useRef(0);
@@ -62,24 +63,31 @@ export function DashboardLayout({ children, projects, navItems }: DashboardLayou
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
-      {/* Sidebar (FIXED – KHÔNG SCROLL) */}
-      <DashboardSidebar projects={projects} navItems={navItems} isCollapsed={isSidebarCollapsed} />
+      {/* Sidebar */}
+      <DashboardSidebar
+        projects={projects}
+        navItems={navItems}
+        isCollapsed={isSidebarCollapsed}
+        isMobileOpen={isMobileSidebarOpen}
+        onMobileClose={() => setIsMobileSidebarOpen(false)}
+      />
 
       {/* Main Area */}
-      <div className="flex flex-1 flex-col relative">
+      <div className="flex flex-1 flex-col relative min-w-0">
         {/* Header (FIXED) */}
         <div
           className={`
-            fixed top-0 right-0 z-50
+            fixed top-0 right-0 z-30
             transition-transform duration-300 ease-out
             ${hideHeader ? '-translate-y-full' : 'translate-y-0'}
-            ${isSidebarCollapsed ? 'left-16' : 'left-64'}
+            left-0 lg:${isSidebarCollapsed ? 'left-16' : 'left-64'}
           `}
           style={{ height: HEADER_HEIGHT }}
         >
           <DashboardHeader
             isSidebarCollapsed={isSidebarCollapsed}
             onSidebarToggle={() => setIsSidebarCollapsed((v) => !v)}
+            onMenuClick={() => setIsMobileSidebarOpen((v) => !v)}
           />
         </div>
 
@@ -108,16 +116,18 @@ export function DashboardLayout({ children, projects, navItems }: DashboardLayou
                       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                       .join(' ');
                     return (
-                      <BreadcrumbItem key={url}>
+                      <React.Fragment key={url}>
                         <BreadcrumbSeparator />
-                        {isLast ? (
-                          <BreadcrumbPage>{label}</BreadcrumbPage>
-                        ) : (
-                          <BreadcrumbLink asChild>
+                        <BreadcrumbItem>
+                          {isLast ? (
                             <BreadcrumbPage>{label}</BreadcrumbPage>
-                          </BreadcrumbLink>
-                        )}
-                      </BreadcrumbItem>
+                          ) : (
+                            <BreadcrumbLink asChild>
+                              <Link to={url}>{label}</Link>
+                            </BreadcrumbLink>
+                          )}
+                        </BreadcrumbItem>
+                      </React.Fragment>
                     );
                   })}
                 </BreadcrumbList>

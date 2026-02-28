@@ -1,4 +1,4 @@
-// import { UserRole } from '@/enums/UserRole';
+import { UserRole } from '@/enums/UserRole';
 import LoginPage from '@/pages/auth/LoginPage';
 import DataManagementPage from '@/pages/admin/DataManagementPage';
 import AdminDashboardPage from '@/pages/admin/DashboardPage';
@@ -26,19 +26,19 @@ export const routes: AppRoute[] = [
   {
     path: '/portal/admin/dashboard',
     element: <AdminDashboardPage />,
-    // roles: [UserRole.Admin],
+    roles: [UserRole.Admin],
     isProtected: false,
   },
   {
     path: '/portal/admin/data-management',
     element: <DataManagementPage />,
-    // roles: [UserRole.Admin],
+    roles: [UserRole.Admin],
     isProtected: false,
   },
   {
     path: '/portal/admin/users',
     element: <AdminUserManagementPage />,
-    // roles: [UserRole.Admin],
+    roles: [UserRole.Admin],
     isProtected: false,
   },
 
@@ -46,50 +46,50 @@ export const routes: AppRoute[] = [
   {
     path: '/portal/coordinator/dashboard',
     element: <CoordinatorDashboardPage />,
-    // roles: [UserRole.Coordinator],
+    roles: [UserRole.Coordinator],
     isProtected: false,
   },
 
   {
     path: '/portal/coordinator/maps',
     element: <CoordinatorMapsPage />,
-    // roles: [UserRole.Coordinator],
+    roles: [UserRole.Coordinator],
     isProtected: false,
   },
   {
     path: '/portal/coordinator/teams',
     element: <CoordinatorTeamsPage />,
-    // roles: [UserRole.Coordinator],
+    roles: [UserRole.Coordinator],
     isProtected: false,
   },
   {
     path: '/portal/coordinator/inventory',
     element: <CoordinatorInventoryPage />,
-    // roles: [UserRole.Coordinator],
+    roles: [UserRole.Coordinator],
     isProtected: false,
   },
   {
     path: '/portal/coordinator/requests',
     element: <CoordinatorRequestManagementPage />,
-    // roles: [UserRole.Coordinator],
+    roles: [UserRole.Coordinator],
     isProtected: false,
   },
   {
     path: '/portal/coordinator/volunteer-requests',
     element: <CoordinatorVolunteerRequestPage />,
-    // roles: [UserRole.Coordinator],
+    roles: [UserRole.Coordinator],
     isProtected: false,
   },
   {
     path: '/portal/coordinator/data-management',
     element: <CoordinatorDataManagementPage />,
-    // roles: [UserRole.Coordinator],
+    roles: [UserRole.Coordinator],
     isProtected: false,
   },
   {
     path: '/portal/coordinator/volunteer-allocation',
     element: <CoordinatorVolunteerAllocationPage />,
-    // roles: [UserRole.Coordinator],
+    roles: [UserRole.Coordinator],
     isProtected: false,
   },
 ];

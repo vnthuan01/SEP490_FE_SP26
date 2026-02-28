@@ -1,95 +1,98 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AxiosResponse } from 'axios';
 import { authService } from '@/services/authService';
 import type {
   LoginPayload,
-  // RegisterPayload,
+  PhoneLoginPayload,
+  RegisterPayload,
   User,
   AuthResponse,
   LoginResponseData,
 } from '@/services/authService';
 import { getAuthToken, setAuthToken, clearAuthToken, setRefreshToken } from '@/lib/cookies';
+import { decodeJwt } from '@/lib/jwt';
 
 export function useAuth() {
   const queryClient = useQueryClient();
   const token = getAuthToken();
 
-  // Fetch profile nếu có token
-  const {
-    data: profile,
-    isLoading,
-    isFetching,
-  } = useQuery<User>({
-    queryKey: ['users', 'profile'],
-    queryFn: async () => {
-      const res: AxiosResponse<AuthResponse<User>> = await authService.me();
-      return res.data.data;
-    },
-    enabled: !!token,
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-  });
+  // Parse user profile directly from token instead of calling /api/Auth/me
+  const isAuthLoading = false; // Never loading profile anymore
+  let profile: User | null = null;
 
-  // FIX: Logic isAuthLoading đơn giản hơn
-  // Nếu có token và đang fetch profile → đang loading
-  const isAuthLoading = !!token && (isLoading || isFetching);
+  if (token) {
+    const decoded = decodeJwt(token);
+    if (decoded) {
+      profile = {
+        id: decoded.sub,
+        email: decoded.email,
+        fullName: decoded['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name'],
+        role: decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] as any,
+      } as User;
+    }
+  }
 
   // Login
-  const loginMutation = useMutation<
-    AxiosResponse<AuthResponse<LoginResponseData>>,
-    unknown,
-    LoginPayload
-  >({
+  const loginMutation = useMutation<AxiosResponse<LoginResponseData>, unknown, LoginPayload>({
     mutationFn: (data: LoginPayload) => authService.login(data),
-    onSuccess: async (res: AxiosResponse<AuthResponse<LoginResponseData>>) => {
-      const { accessToken, refreshToken } = res.data.data;
-
+    onSuccess: (res: AxiosResponse<LoginResponseData>) => {
+      const { accessToken, refreshToken } = res.data;
       if (accessToken) {
         setAuthToken(accessToken);
         if (refreshToken) {
           setRefreshToken(refreshToken);
         }
+      }
+    },
+  });
 
-        // Fetch user profile và set vào cache
-        await queryClient.fetchQuery<User>({
-          queryKey: ['users', 'profile'],
-          queryFn: async () => {
-            const profileRes: AxiosResponse<AuthResponse<User>> = await authService.me();
-            return profileRes.data.data;
-          },
-        });
+  // Phone Login
+  const phoneLoginMutation = useMutation<
+    AxiosResponse<LoginResponseData>,
+    unknown,
+    PhoneLoginPayload
+  >({
+    mutationFn: (data: PhoneLoginPayload) => authService.phoneLogin(data),
+    onSuccess: (res: AxiosResponse<LoginResponseData>) => {
+      const { accessToken, refreshToken } = res.data;
+      if (accessToken) {
+        setAuthToken(accessToken);
+        if (refreshToken) {
+          setRefreshToken(refreshToken);
+        }
       }
     },
   });
 
   // Register
-  // const registerMutation = useMutation<
-  //   AxiosResponse<AuthResponse<string>>,
-  //   unknown,
-  //   RegisterPayload
-  // >({
-  //   mutationFn: (data: RegisterPayload) => authService.register(data),
-  // });
+  const registerMutation = useMutation<
+    AxiosResponse<AuthResponse<string>>,
+    unknown,
+    RegisterPayload
+  >({
+    mutationFn: (data: RegisterPayload) => authService.register(data),
+  });
 
   // Logout
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // await authService.logout();
       clearAuthToken();
-      queryClient.removeQueries({ queryKey: ['users', 'profile'] });
+      // Optional: clear any queries if needed
+      queryClient.clear();
     },
   });
 
   return {
-    user: profile || null,
+    user: profile,
     role: profile?.role || null,
     isAuthenticated: !!profile,
     isLoading: isAuthLoading,
     login: loginMutation.mutateAsync,
-    // register: registerMutation.mutateAsync,
+    phoneLogin: phoneLoginMutation.mutateAsync,
+    register: registerMutation.mutateAsync,
     logout: logoutMutation.mutateAsync,
     loginStatus: loginMutation.status,
-    // registerStatus: registerMutation.status,
+    phoneLoginStatus: phoneLoginMutation.status,
+    registerStatus: registerMutation.status,
   };
 }

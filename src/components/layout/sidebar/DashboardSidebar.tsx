@@ -18,12 +18,16 @@ interface DashboardSidebarProps {
   projects?: ProjectItem[];
   navItems?: NavItem[];
   isCollapsed?: boolean;
+  isMobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 export function DashboardSidebar({
   projects,
   navItems,
   isCollapsed = false,
+  isMobileOpen = false,
+  onMobileClose,
 }: DashboardSidebarProps) {
   const location = useLocation();
   const { user } = useAuth();
@@ -33,7 +37,6 @@ export function DashboardSidebar({
   // Default projects for Admin
   const defaultProjects: ProjectItem[] = projects || [
     { label: 'Tổng quan', path: '/portal/admin/data-management', icon: 'dashboard' },
-    // { label: 'Kho vật tư', path: '/portal/admin/inventory', icon: 'inventory_2' },
     { label: 'Người dùng', path: '/portal/admin/users', icon: 'group' },
   ];
 
@@ -42,25 +45,30 @@ export function DashboardSidebar({
     { label: 'Thống Kê', path: '/portal/admin/dashboard', icon: 'description' },
   ];
 
-  return (
-    <aside
-      className={`hidden lg:flex flex-col border-r border-border bg-background flex-shrink-0 h-screen transition-all duration-300 ${
-        isCollapsed ? 'w-16' : 'w-64'
-      }`}
-    >
+  const sidebarContent = (
+    <>
       {/* Logo & Brand */}
       <div
         className={`flex items-center border-b border-border transition-all duration-300 ${
           isCollapsed ? 'justify-center px-2 py-4' : 'gap-3 px-6 py-5'
         }`}
       >
-        <div className="size-8 flex items-center justify-center rounded-full bg-primary/10 text-primary flex-shrink-0">
+        <div className="size-6 flex items-center justify-center rounded-full bg-primary/10 text-primary flex-shrink-0">
           <span className="material-symbols-outlined text-2xl">health_and_safety</span>
         </div>
         {!isCollapsed && (
           <h2 className="text-foreground text-lg font-bold leading-tight tracking-tight whitespace-nowrap">
             Cứu Trợ VN
           </h2>
+        )}
+        {/* Mobile close button */}
+        {isMobileOpen && onMobileClose && (
+          <button
+            onClick={onMobileClose}
+            className="ml-auto lg:hidden p-1 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <span className="material-symbols-outlined">close</span>
+          </button>
         )}
       </div>
 
@@ -83,6 +91,7 @@ export function DashboardSidebar({
                   <Link
                     key={project.path}
                     to={project.path}
+                    onClick={onMobileClose}
                     className={`flex items-center rounded-lg transition-colors ${
                       isCollapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
                     } ${
@@ -132,6 +141,7 @@ export function DashboardSidebar({
                   <Link
                     key={item.path}
                     to={item.path}
+                    onClick={onMobileClose}
                     className={`flex items-center rounded-lg transition-colors ${
                       isCollapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
                     } ${
@@ -229,6 +239,34 @@ export function DashboardSidebar({
           )}
         </TooltipProvider>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop Sidebar */}
+      <aside
+        className={`hidden lg:flex flex-col border-r border-border bg-background flex-shrink-0 h-screen transition-all duration-300 ${
+          isCollapsed ? 'w-16' : 'w-64'
+        }`}
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile Sidebar Overlay */}
+      {isMobileOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+            onClick={onMobileClose}
+          />
+          {/* Sidebar drawer */}
+          <aside className="fixed inset-y-0 left-0 z-50 flex flex-col w-64 bg-background border-r border-border lg:hidden animate-in slide-in-from-left duration-300">
+            {sidebarContent}
+          </aside>
+        </>
+      )}
+    </>
   );
 }

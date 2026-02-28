@@ -85,7 +85,7 @@ export default function AdminUserManagementPage() {
           <h1 className="text-3xl md:text-4xl font-black leading-tight tracking-tight text-primary ">
             Quản lý người dùng & phân quyền
           </h1>
-          <p className="text-text-sub-dark dark:text-text-sub-light text-base font-normal max-w-2xl">
+          <p className="text-muted-foreground dark:text-muted-foreground text-base font-normal max-w-2xl">
             Trung tâm quản lý người dùng, cấu hình vai trò, phân quyền truy cập và theo dõi nhật ký
             hoạt động của toàn hệ thống cứu trợ.
           </p>
@@ -112,15 +112,15 @@ export default function AdminUserManagementPage() {
         <Card className="bg-surface-dark dark:bg-surface-light border-border">
           <CardContent className="p-5 flex flex-col gap-1">
             <div className="flex items-center justify-between">
-              <p className="text-text-sub-dark dark:text-text-sub-light text-sm font-medium uppercase tracking-wider">
+              <p className="text-muted-foreground dark:text-muted-foreground text-sm font-medium uppercase tracking-wider">
                 Tổng người dùng
               </p>
-              <span className="material-symbols-outlined text-text-sub-dark dark:text-text-sub-light">
+              <span className="material-symbols-outlined text-muted-foreground dark:text-muted-foreground">
                 groups
               </span>
             </div>
             <div className="flex items-end gap-3 mt-2">
-              <p className="text-text-main-dark dark:text-text-main-light text-3xl font-bold leading-none">
+              <p className="text-foreground dark:text-foreground text-3xl font-bold leading-none">
                 1,240
               </p>
               <div className="flex items-center text-green-500 text-sm font-medium bg-green-500/10 px-1.5 py-0.5 rounded">
@@ -134,15 +134,15 @@ export default function AdminUserManagementPage() {
         <Card className="bg-surface-dark dark:bg-surface-light border-border">
           <CardContent className="p-5 flex flex-col gap-1">
             <div className="flex items-center justify-between">
-              <p className="text-text-sub-dark dark:text-text-sub-light text-sm font-medium uppercase tracking-wider">
+              <p className="text-muted-foreground dark:text-muted-foreground text-sm font-medium uppercase tracking-wider">
                 Tình nguyện viên Active
               </p>
-              <span className="material-symbols-outlined text-text-sub-dark dark:text-text-sub-light">
+              <span className="material-symbols-outlined text-muted-foreground dark:text-muted-foreground">
                 volunteer_activism
               </span>
             </div>
             <div className="flex items-end gap-3 mt-2">
-              <p className="text-text-main-dark dark:text-text-main-light text-3xl font-bold leading-none">
+              <p className="text-foreground dark:text-foreground text-3xl font-bold leading-none">
                 850
               </p>
               <div className="flex items-center text-green-500 text-sm font-medium bg-green-500/10 px-1.5 py-0.5 rounded">
@@ -156,18 +156,18 @@ export default function AdminUserManagementPage() {
         <Card className="bg-surface-dark dark:bg-surface-light border-border">
           <CardContent className="p-5 flex flex-col gap-1">
             <div className="flex items-center justify-between">
-              <p className="text-text-sub-dark dark:text-text-sub-light text-sm font-medium uppercase tracking-wider">
+              <p className="text-muted-foreground dark:text-muted-foreground text-sm font-medium uppercase tracking-wider">
                 Admin đang online
               </p>
-              <span className="material-symbols-outlined text-text-sub-dark dark:text-text-sub-light">
+              <span className="material-symbols-outlined text-muted-foreground dark:text-muted-foreground">
                 admin_panel_settings
               </span>
             </div>
             <div className="flex items-end gap-3 mt-2">
-              <p className="text-text-main-dark dark:text-text-main-light text-3xl font-bold leading-none">
+              <p className="text-foreground dark:text-foreground text-3xl font-bold leading-none">
                 12
               </p>
-              <span className="text-text-sub-dark dark:text-text-sub-light text-sm font-medium">
+              <span className="text-muted-foreground dark:text-muted-foreground text-sm font-medium">
                 Hiện tại
               </span>
             </div>
@@ -203,7 +203,7 @@ export default function AdminUserManagementPage() {
 
           <div className="flex flex-col sm:flex-row items-center justify-between p-4 gap-4 border-b border-border bg-sub-surface-dark/50 dark:bg-sub-surface-light/50">
             <div className="relative w-full sm:w-96">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-text-sub-dark dark:text-text-sub-light">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-muted-foreground dark:text-muted-foreground">
                 search
               </span>
               <Input className="pl-10 w-full" placeholder="Tìm kiếm theo tên, email, SĐT..." />
@@ -245,20 +245,20 @@ export default function AdminUserManagementPage() {
                   {mockUsers.map((user) => (
                     <TableRow
                       key={user.id}
-                      className="group hover:bg-card-dark/50 dark:hover:bg-card/50 transition-colors"
+                      className="group hover:bg-card/50 dark:hover:bg-card/50 transition-colors"
                     >
                       <TableCell>
                         <Checkbox />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <div className="size-10 rounded-full bg-card-dark dark:bg-card border border-border flex items-center justify-center">
-                            <span className="text-text-main-dark dark:text-text-main-light font-bold text-sm">
+                          <div className="size-10 rounded-full bg-card dark:bg-card border border-border flex items-center justify-center">
+                            <span className="text-foreground dark:text-foreground font-bold text-sm">
                               {user.fullName?.charAt(0)}
                             </span>
                           </div>
                           <div>
-                            <p className="font-bold text-text-main-dark dark:text-text-main-light text-sm">
+                            <p className="font-bold text-foreground dark:text-foreground text-sm">
                               {user.fullName}
                             </p>
                             <p className="text-xs text-text-muted-dark dark:text-text-muted-light">
@@ -283,7 +283,7 @@ export default function AdminUserManagementPage() {
                                   : 'bg-text-sub-dark dark:bg-text-sub-light'
                             }`}
                           ></div>
-                          <span className="text-text-main-dark dark:text-text-main-light text-sm">
+                          <span className="text-foreground dark:text-foreground text-sm">
                             {user.status === 'active'
                               ? 'Hoạt động'
                               : user.status === 'pending'
@@ -294,7 +294,7 @@ export default function AdminUserManagementPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
-                          <span className="text-text-main-dark dark:text-text-main-light text-sm">
+                          <span className="text-foreground dark:text-foreground text-sm">
                             {user.lastActivity}
                           </span>
                           <span className="text-xs text-text-muted-dark dark:text-text-muted-light">
@@ -306,7 +306,7 @@ export default function AdminUserManagementPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="text-text-sub-dark dark:text-text-sub-light hover:text-text-main-dark dark:hover:text-text-main-light"
+                          className="text-muted-foreground dark:text-muted-foreground hover:text-foreground dark:hover:text-foreground"
                         >
                           <span className="material-symbols-outlined">more_vert</span>
                         </Button>
@@ -318,12 +318,12 @@ export default function AdminUserManagementPage() {
             </div>
           </TabsContent>
           <TabsContent value="permissions">
-            <div className="p-6 text-center text-text-sub-dark dark:text-text-sub-light">
+            <div className="p-6 text-center text-muted-foreground dark:text-muted-foreground">
               Ma trận phân quyền - Coming soon
             </div>
           </TabsContent>
           <TabsContent value="logs">
-            <div className="p-6 text-center text-text-sub-dark dark:text-text-sub-light">
+            <div className="p-6 text-center text-muted-foreground dark:text-muted-foreground">
               Nhật ký hệ thống - Coming soon
             </div>
           </TabsContent>

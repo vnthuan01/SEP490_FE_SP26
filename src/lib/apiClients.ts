@@ -2,7 +2,7 @@ import axios, { type AxiosRequestHeaders, type InternalAxiosRequestConfig } from
 import Cookies from 'js-cookie';
 import { getAuthToken, setAuthToken } from './cookies';
 
-const BASE_URL = import.meta.env.VITE_BASE_API_URI || 'http://localhost:8080/api';
+const BASE_URL = import.meta.env.VITE_BASE_API_URI;
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,
@@ -43,7 +43,11 @@ apiClient.interceptors.response.use(
   (res) => res,
   async (error) => {
     const originalRequest = error.config;
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Bỏ qua interceptor nếu là request login hoặc refresh token để tránh loop
+    const isAuthRequest =
+      originalRequest.url?.includes('/login') || originalRequest.url?.includes('/refresh-token');
+
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthRequest) {
       if (isRefreshing) {
         // Nếu đang refresh, queue lại request
         return new Promise((resolve, reject) => {

@@ -62,11 +62,11 @@ export function DonationChart({ className }: DonationChartProps) {
     >
       <CardHeader className="flex flex-col sm:flex-row items-center justify-between pb-4 border-b border-border/50">
         <div className="flex flex-col gap-1">
-          <CardTitle className="text-text-main-dark dark:text-text-main-light text-lg font-bold flex items-center gap-2">
+          <CardTitle className="text-foreground dark:text-foreground text-lg font-bold flex items-center gap-2">
             <span className="material-symbols-outlined text-green-500">show_chart</span>
             Xu hướng ủng hộ
           </CardTitle>
-          <p className="text-sm text-text-sub-dark dark:text-text-sub-light">
+          <p className="text-sm text-muted-foreground dark:text-muted-foreground">
             Thống kê dòng tiền tài trợ theo thời gian
           </p>
         </div>
@@ -79,7 +79,7 @@ export function DonationChart({ className }: DonationChartProps) {
                 'px-3 py-1.5 rounded-md text-xs font-bold transition-all capitalize',
                 timeRange === range
                   ? 'bg-primary text-white shadow-sm'
-                  : 'text-text-sub-dark dark:text-text-sub-light hover:text-text-main-dark dark:hover:text-text-main-light hover:bg-white/5',
+                  : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground dark:hover:text-foreground hover:bg-white/5',
               )}
             >
               {range === 'day'

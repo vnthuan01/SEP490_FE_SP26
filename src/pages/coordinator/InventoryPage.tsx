@@ -177,7 +177,7 @@ export default function CoordinatorInventoryPage() {
       <div className="flex justify-between mb-6">
         <div>
           <h1 className="text-4xl text-primary font-black">Quản lý Kho Vật tư</h1>
-          <p className="text-text-sub-dark dark:text-text-sub-light">
+          <p className="text-muted-foreground dark:text-muted-foreground">
             Theo dõi tồn kho & điều phối cứu trợ
           </p>
         </div>
@@ -243,7 +243,7 @@ export default function CoordinatorInventoryPage() {
           return (
             <Card
               key={item.id}
-              className={`group flex flex-col bg-card-dark border-border-dark transition ${status.hover}`}
+              className={`group flex flex-col bg-card border-border transition ${status.hover}`}
             >
               <CardContent className="p-5 flex flex-col flex-1">
                 {/* HEADER */}
@@ -254,7 +254,7 @@ export default function CoordinatorInventoryPage() {
                     </div>
                     <div>
                       <h3 className="font-bold text-lg group-hover:text-primary">{item.name}</h3>
-                      <p className="text-sm text-text-sub-dark">{item.category}</p>
+                      <p className="text-sm text-muted-foreground">{item.category}</p>
                     </div>
                   </div>
 
@@ -269,7 +269,7 @@ export default function CoordinatorInventoryPage() {
                 <div className="flex-1 mb-5">
                   <div className="flex justify-between mb-2">
                     <span className="text-3xl font-black">{item.current}</span>
-                    <span className="text-sm text-text-sub-dark">
+                    <span className="text-sm text-muted-foreground">
                       / {item.capacity} {item.unit}
                     </span>
                   </div>
@@ -281,7 +281,7 @@ export default function CoordinatorInventoryPage() {
                     />
                   </div>
 
-                  <p className="mt-2 text-xs text-text-sub-dark">{percent}% sức chứa</p>
+                  <p className="mt-2 text-xs text-muted-foreground">{percent}% sức chứa</p>
                 </div>
 
                 {/* ACTION */}

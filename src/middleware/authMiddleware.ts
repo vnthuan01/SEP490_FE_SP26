@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { authService, type User } from '@/services/authService';
+import { getAuthToken } from '@/lib/cookies';
+import { getUserRoleFromToken, decodeJwt } from '@/lib/jwt';
+import { type User } from '@/services/authService';
 import type { UserRoleType } from '@/enums/UserRole';
 
 export type AuthInfo = {
@@ -9,19 +10,12 @@ export type AuthInfo = {
 };
 
 /**
- * Hook checkAuth: luôn đồng bộ với server qua react-query
+ * Hook checkAuth: Lấy auth từ token trực tiếp không cần call API
  */
 export function useCheckAuth(): AuthInfo {
-  const { data: user, isLoading } = useQuery({
-    queryKey: ['users', 'profile'],
-    queryFn: async () => {
-      const res = await authService.me();
-      return res.data.data;
-    },
-    retry: false, // không retry nếu chưa login
-  });
+  const token = getAuthToken();
 
-  if (isLoading) {
+  if (!token) {
     return {
       isAuthenticated: false,
       role: null,
@@ -29,17 +23,21 @@ export function useCheckAuth(): AuthInfo {
     };
   }
 
-  if (user) {
-    return {
-      isAuthenticated: true,
-      role: user.role,
-      user,
-    };
-  }
+  const role = getUserRoleFromToken(token) as UserRoleType | null;
+  const decoded = decodeJwt(token);
+
+  const user: User | null = decoded
+    ? {
+        id: decoded.sub,
+        email: decoded.email,
+        fullName: decoded['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name'],
+        role: role as any,
+      }
+    : null;
 
   return {
-    isAuthenticated: false,
-    role: null,
-    user: null,
+    isAuthenticated: !!user,
+    role,
+    user,
   };
 }

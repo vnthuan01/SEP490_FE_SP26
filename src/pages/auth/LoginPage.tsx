@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 
 import { useAuth } from '@/hooks/useAuth';
 import { UserRole } from '@/enums/UserRole';
-import { authService } from '@/services/authService';
+import { getUserRoleFromToken } from '@/lib/jwt';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,20 +19,20 @@ import {
 } from '@/components/ui/form';
 
 type LoginFormValues = {
-  emailOrPhone: string;
+  email: string;
   password: string;
 };
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, phoneLogin } = useAuth();
 
   const [showPassword, setShowPassword] = useState(false);
   const [rootError, setRootError] = useState('');
 
   const form = useForm<LoginFormValues>({
     defaultValues: {
-      emailOrPhone: '',
+      email: '',
       password: '',
     },
   });
@@ -41,19 +41,30 @@ function LoginPage() {
     setRootError('');
 
     try {
-      await login(values);
+      let res;
+      const isPhoneNumber = /^\d+$/.test(values.email);
+      if (isPhoneNumber) {
+        res = await phoneLogin({ phoneNumber: values.email, password: values.password });
+      } else {
+        res = await login(values);
+      }
 
-      const profile = await authService.me();
-      const user = profile.data.data;
+      const role = getUserRoleFromToken(res?.data?.accessToken || '');
 
       navigate(
-        user.role === UserRole.Admin ? '/portal/admin/dashboard' : '/portal/coordinator/dashboard',
+        role === UserRole.Admin ? '/portal/admin/dashboard' : '/portal/coordinator/dashboard',
         { replace: true },
       );
     } catch (err: any) {
-      if (err?.response?.status === 401) {
+      if (err?.response?.statusCode === 401) {
+        console.log(err);
         setRootError('Tên đăng nhập hoặc mật khẩu không đúng');
+      }
+      if (err?.response?.statusCode === 400) {
+        setRootError('Tài khoản đã bị khóa');
       } else {
+        console.log(err);
+
         setRootError('Đăng nhập thất bại. Vui lòng thử lại');
       }
     }
@@ -71,7 +82,7 @@ function LoginPage() {
             VN Relief
             <span className="hidden sm:inline font-normal text-muted-foreground">
               {' '}
-              | Hệ thống Cứu trợ & Điều phối
+              | Hệ thống Điều phối Cứu trợ & Cứu hộ
             </span>
           </h1>
         </div>
@@ -117,13 +128,13 @@ function LoginPage() {
               {/* Email / Phone */}
               <FormField
                 control={form.control}
-                name="emailOrPhone"
-                rules={{ required: 'Vui lòng nhập tên đăng nhập hoặc email' }}
+                name="email"
+                rules={{ required: 'Vui lòng nhập số điện thoại hoặc email' }}
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Tên đăng nhập / Email</FormLabel>
+                    <FormLabel>Số điện thoại / Email</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="Nhập tên đăng nhập hoặc email" />
+                      <Input {...field} placeholder="Nhập số điện thoại hoặc email" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
