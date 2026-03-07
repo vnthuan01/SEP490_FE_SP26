@@ -1,6 +1,16 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { LogOut, Settings, User } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface NavItem {
   label: string;
@@ -30,7 +40,8 @@ export function DashboardSidebar({
   onMobileClose,
 }: DashboardSidebarProps) {
   const location = useLocation();
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -179,40 +190,13 @@ export function DashboardSidebar({
       <div
         className={`border-t border-border transition-all duration-300 ${isCollapsed ? 'p-2' : 'p-4'}`}
       >
-        <TooltipProvider delayDuration={300}>
-          {isCollapsed ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center justify-center p-2 rounded-lg hover:bg-muted cursor-pointer transition-colors">
-                  <div
-                    className={`bg-center bg-no-repeat bg-cover rounded-full size-9 border border-border flex-shrink-0 ${
-                      user?.avatarUrl ? '' : 'bg-primary text-primary-foreground'
-                    }`}
-                    style={{
-                      backgroundImage: user?.avatarUrl ? `url("${user.avatarUrl}")` : 'none',
-                    }}
-                  >
-                    {!user?.avatarUrl && (
-                      <div className="w-full h-full flex items-center justify-center font-bold">
-                        {user?.fullName?.charAt(0) || 'A'}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="ml-2">
-                <div className="flex flex-col">
-                  <span className="text-sm font-bold text-foreground">
-                    {user?.fullName || 'Admin User'}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {user?.email || 'admin@cuutrovn.org'}
-                  </span>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer transition-colors">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <div
+              className={`flex items-center rounded-lg hover:bg-muted cursor-pointer transition-colors ${
+                isCollapsed ? 'justify-center p-2' : 'gap-3 p-2'
+              }`}
+            >
               <div
                 className={`bg-center bg-no-repeat bg-cover rounded-full size-9 border border-border flex-shrink-0 ${
                   user?.avatarUrl ? '' : 'bg-primary text-primary-foreground'
@@ -227,17 +211,53 @@ export function DashboardSidebar({
                   </div>
                 )}
               </div>
-              <div className="flex flex-col overflow-hidden min-w-0">
-                <span className="text-sm font-bold text-foreground truncate">
-                  {user?.fullName || 'Admin User'}
-                </span>
-                <span className="text-xs text-muted-foreground truncate">
-                  {user?.email || 'admin@cuutrovn.org'}
-                </span>
-              </div>
+              {!isCollapsed && (
+                <div className="flex flex-col overflow-hidden min-w-0">
+                  <span className="text-sm font-bold text-foreground truncate">
+                    {user?.fullName || 'Admin User'}
+                  </span>
+                  <span className="text-xs text-muted-foreground truncate">
+                    {user?.email || 'admin@cuutrovn.org'}
+                  </span>
+                </div>
+              )}
             </div>
-          )}
-        </TooltipProvider>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side={isCollapsed ? 'right' : 'top'} align="start" className="w-56">
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-semibold leading-none text-popover-foreground">
+                  {user?.fullName || 'Admin User'}
+                </p>
+                <p className="text-xs leading-none text-muted-foreground">
+                  {user?.email || 'admin@cuutrovn.org'}
+                </p>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem onClick={() => navigate('/portal/profile')}>
+                <User className="mr-2 size-4" />
+                Hồ sơ cá nhân
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate('/portal/settings')}>
+                <Settings className="mr-2 size-4" />
+                Cài đặt
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={async () => {
+                await logout();
+                navigate('/login', { replace: true });
+              }}
+            >
+              <LogOut className="mr-2 size-4" />
+              Đăng xuất
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </>
   );

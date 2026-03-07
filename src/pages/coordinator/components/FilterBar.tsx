@@ -46,7 +46,7 @@ export function FilterBar({
   stats,
 }: FilterBarProps) {
   return (
-    <div className="border-b space-y-3 ">
+    <div className={`border-b space-y-3 ${isFullscreen ? 'p-2' : ''}`}>
       <div className="flex items-center justify-between">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold text-primary leading-tight">

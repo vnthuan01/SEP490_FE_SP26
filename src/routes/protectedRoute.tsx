@@ -10,7 +10,6 @@ type RoleBasedRouteProps = {
 
 export default function RoleBasedRoute({ element, roles = [] }: RoleBasedRouteProps) {
   const { user, isAuthenticated, isLoading } = useContext(AuthContext);
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -19,11 +18,22 @@ export default function RoleBasedRoute({ element, roles = [] }: RoleBasedRoutePr
     );
   }
 
+  // Not authenticated → redirect to login (only for routes that require roles)
   if (!isAuthenticated || !user) {
-    return <Navigate to="/login" replace />;
+    if (roles.length > 0) {
+      return <Navigate to="/login" replace />;
+    }
+    // No roles required (public route like /login) → render as-is
+    return element;
   }
 
-  if (roles.length > 0 && !roles.includes(user.role)) {
+  // Authenticated but route has no roles (e.g. /login, /) → redirect to home
+  if (roles.length === 0) {
+    return <Navigate to={getHomeByRole(user.role)} replace />;
+  }
+
+  // Authenticated but wrong role → redirect to their home
+  if (!roles.includes(user.role)) {
     return <Navigate to={getHomeByRole(user.role)} replace />;
   }
 

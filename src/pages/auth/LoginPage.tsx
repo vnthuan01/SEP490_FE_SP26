@@ -4,8 +4,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 
 import { useAuth } from '@/hooks/useAuth';
-import { UserRole } from '@/enums/UserRole';
 import { getUserRoleFromToken } from '@/lib/jwt';
+import { roleRoutes } from '@/constants/roleRoutes';
+import type { UserRoleType } from '@/enums/UserRole';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,10 +52,12 @@ function LoginPage() {
 
       const role = getUserRoleFromToken(res?.data?.accessToken || '');
 
-      navigate(
-        role === UserRole.Admin ? '/portal/admin/dashboard' : '/portal/coordinator/dashboard',
-        { replace: true },
-      );
+      if (!role) {
+        navigate('/login', { replace: true });
+        return;
+      }
+
+      navigate(roleRoutes[role as UserRoleType], { replace: true });
     } catch (err: any) {
       if (err?.response?.statusCode === 401) {
         console.log(err);
@@ -201,11 +204,11 @@ function LoginPage() {
             className="
             h-1.5
             bg-gradient-to-r
-            from-blue-600 from-0%
-            via-primary via-15%
-            to-blue-400 to-100%
+            from-red-600 from-0%
+            via-red-600 via-15%
+            to-primary to-100%
             bg-[length:200%_200%]
-            animate-[gradientShift_5s_ease-in-out_infinite]
+            animate-[gradientShift_3s_ease-in-out_infinite]
           "
           />
         </div>

@@ -11,6 +11,7 @@ import type {
 } from '@/services/authService';
 import { getAuthToken, setAuthToken, clearAuthToken, setRefreshToken } from '@/lib/cookies';
 import { decodeJwt } from '@/lib/jwt';
+import type { UserRoleType } from '@/enums/UserRole';
 
 export function useAuth() {
   const queryClient = useQueryClient();
@@ -27,7 +28,9 @@ export function useAuth() {
         id: decoded.sub,
         email: decoded.email,
         fullName: decoded['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name'],
-        role: decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] as any,
+        role: decoded[
+          'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'
+        ] as UserRoleType,
       } as User;
     }
   }
