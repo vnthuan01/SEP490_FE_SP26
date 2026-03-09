@@ -36,6 +36,11 @@ export interface RegisterPayload {
   confirmPassword: string;
 }
 
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+}
+
 // User Profile
 export interface User {
   id?: string;
@@ -70,6 +75,8 @@ export const authService = {
   register: (data: RegisterPayload) => apiClient.post<AuthResponse<string>>('/Auth/register', data),
 
   me: () => apiClient.get<AuthResponse<User>>('/Auth/me'),
+  changePassword: (data: ChangePasswordPayload) =>
+    apiClient.post<AuthResponse<string>>('/Auth/change-password', data),
 
   refreshToken: (data: RefreshTokenPayload) =>
     apiClient.post<LoginResponseData>('/Auth/refresh-token', data),

@@ -10,10 +10,12 @@ import CoordinatorMapsPage from '@/pages/coordinator/TeamAllocationPage';
 import CoordinatorTeamsPage from '@/pages/coordinator/TeamManagement';
 import CoordinatorInventoryPage from '@/pages/coordinator/InventoryPage';
 import CoordinatorVolunteerAllocationPage from '@/pages/coordinator/VolunteerAllocationPage';
+import CoordinatorDataManagementPage from '@/pages/coordinator/DataManagementPage';
+import ProfilePage from '@/pages/user/profile';
+import SettingsPage from '@/pages/user/settings';
 import type { AppRoute } from '@/types/routes';
 import RoleBasedRoute from './protectedRoute';
 import { Navigate } from 'react-router-dom';
-import CoordinatorDataManagementPage from '@/pages/coordinator/DataManagementPage';
 
 export const routes: AppRoute[] = [
   //Authentication
@@ -91,5 +93,19 @@ export const routes: AppRoute[] = [
     element: <CoordinatorVolunteerAllocationPage />,
     roles: [UserRole.Coordinator],
     isProtected: true,
+  },
+
+  // Shared portal routes (all authenticated roles)
+  {
+    path: '/portal/profile',
+    element: <ProfilePage />,
+    roles: [UserRole.Admin, UserRole.Coordinator, UserRole.Manager],
+    isProtected: false,
+  },
+  {
+    path: '/portal/settings',
+    element: <SettingsPage />,
+    roles: [UserRole.Admin, UserRole.Coordinator, UserRole.Manager],
+    isProtected: false,
   },
 ];

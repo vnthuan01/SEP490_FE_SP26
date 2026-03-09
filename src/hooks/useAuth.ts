@@ -8,6 +8,7 @@ import type {
   User,
   AuthResponse,
   LoginResponseData,
+  ChangePasswordPayload,
 } from '@/services/authService';
 import { getAuthToken, setAuthToken, clearAuthToken, setRefreshToken } from '@/lib/cookies';
 import { decodeJwt } from '@/lib/jwt';
@@ -76,6 +77,13 @@ export function useAuth() {
     mutationFn: (data: RegisterPayload) => authService.register(data),
   });
 
+  const changePasswordMutation = useMutation<
+    AxiosResponse<AuthResponse<string>>,
+    unknown,
+    ChangePasswordPayload
+  >({
+    mutationFn: (data: ChangePasswordPayload) => authService.changePassword(data),
+  });
   // Logout
   const logoutMutation = useMutation({
     mutationFn: async () => {
@@ -97,5 +105,7 @@ export function useAuth() {
     loginStatus: loginMutation.status,
     phoneLoginStatus: phoneLoginMutation.status,
     registerStatus: registerMutation.status,
+    changePassword: changePasswordMutation.mutateAsync,
+    changePasswordStatus: changePasswordMutation.status,
   };
 }
