@@ -11,7 +11,6 @@ import CoordinatorTeamsPage from '@/pages/coordinator/TeamManagement';
 import CoordinatorInventoryPage from '@/pages/coordinator/InventoryPage';
 import CoordinatorVolunteerAllocationPage from '@/pages/coordinator/VolunteerAllocationPage';
 import CoordinatorDataManagementPage from '@/pages/coordinator/DataManagementPage';
-import ProfilePage from '@/pages/user/profile';
 import SettingsPage from '@/pages/user/settings';
 import type { AppRoute } from '@/types/routes';
 import RoleBasedRoute from './protectedRoute';
@@ -96,12 +95,6 @@ export const routes: AppRoute[] = [
   },
 
   // Shared portal routes (all authenticated roles)
-  {
-    path: '/portal/profile',
-    element: <ProfilePage />,
-    roles: [UserRole.Admin, UserRole.Coordinator, UserRole.Manager],
-    isProtected: false,
-  },
   {
     path: '/portal/settings',
     element: <SettingsPage />,

@@ -6,79 +6,19 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { ChangePasswordDialog } from '@/pages/user/components/ChangePasswordDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
-
-import { roleLabelMap } from '@/constants/roleLabel';
-import type { UserRoleType } from '@/enums/UserRole';
+// import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
-
-interface SettingsItemProps {
-  icon: string;
-  iconColor?: string;
-  title: string;
-  description: string;
-  onClick: () => void;
-  badge?: string;
-  destructive?: boolean;
-}
-
-function SettingsItem({
-  icon,
-  iconColor = 'text-primary',
-  title,
-  description,
-  onClick,
-  badge,
-  destructive = false,
-}: SettingsItemProps) {
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-4 p-4 rounded-xl text-left transition-colors hover:bg-muted/60 group ${
-        destructive ? 'hover:bg-destructive/5' : ''
-      }`}
-    >
-      <div
-        className={`flex items-center justify-center size-11 rounded-xl flex-shrink-0 ${
-          destructive ? 'bg-destructive/10 text-destructive' : 'bg-primary/10'
-        }`}
-      >
-        <span className={`material-symbols-outlined text-xl ${destructive ? '' : iconColor}`}>
-          {icon}
-        </span>
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p
-            className={`text-sm font-semibold ${
-              destructive ? 'text-destructive' : 'text-foreground'
-            }`}
-          >
-            {title}
-          </p>
-
-          {badge && (
-            <Badge variant="secondary" className="text-xs">
-              {badge}
-            </Badge>
-          )}
-        </div>
-
-        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-      </div>
-
-      <span
-        className={`material-symbols-outlined text-lg transition-transform group-hover:translate-x-0.5 ${
-          destructive ? 'text-destructive/50' : 'text-muted-foreground'
-        }`}
-      >
-        chevron_right
-      </span>
-    </button>
-  );
-}
 
 export default function SettingsPage() {
   const navigate = useNavigate();
@@ -95,104 +35,451 @@ export default function SettingsPage() {
     }
   };
 
+  const initials = user?.fullName?.charAt(0)?.toUpperCase() || 'U';
+
   return (
     <DashboardLayout>
-      <div className="flex flex-col gap-6">
-        {/* Header giống dashboard */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col gap-6 max-w-[1200px] mx-auto w-full">
+        {/* Header - Optional Context */}
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-black text-primary">Cài đặt</h1>
-            <p className="text-muted-foreground">Quản lý tài khoản và tùy chỉnh hệ thống</p>
+            <p className="text-muted-foreground text-sm mt-1">
+              Quản lý chi tiết tài khoản và hệ thống của bạn
+            </p>
           </div>
-
-          <Button
-            size="lg"
-            variant="outline"
-            className="rounded-full font-bold border-2"
-            onClick={() => navigate('/portal/profile')}
-          >
-            <span className="material-symbols-outlined">person</span>
-            Hồ sơ
-          </Button>
         </div>
 
-        {/* Grid layout giống dashboard */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* User preview */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Thông tin tài khoản</CardTitle>
-            </CardHeader>
-
-            <CardContent>
-              <div className="flex items-center gap-4">
-                <div
-                  className={`size-14 rounded-2xl border border-border flex items-center justify-center text-xl font-bold ${
-                    user?.avatarUrl ? '' : 'bg-primary text-primary-foreground'
-                  }`}
-                  style={{
-                    backgroundImage: user?.avatarUrl ? `url("${user.avatarUrl}")` : 'none',
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                  }}
-                >
-                  {!user?.avatarUrl && (user?.fullName?.charAt(0)?.toUpperCase() || 'U')}
+        {/* Two-column layout matching the design */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+          {/* LEFT COLUMN */}
+          <div className="flex flex-col gap-6">
+            {/* Profile Settings */}
+            <Card className="border-border shadow-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-bold text-foreground">Cài đặt Hồ sơ</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Avatar Section */}
+                <div className="flex flex-col items-center gap-3">
+                  <div className="relative size-28 rounded-full border-2 border-dashed border-border flex items-center justify-center bg-muted/30">
+                    {user?.avatarUrl ? (
+                      <img
+                        src={user.avatarUrl}
+                        alt="Avatar"
+                        className="size-full rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="size-full rounded-full bg-primary/10 flex items-center justify-center text-3xl font-bold text-primary">
+                        {initials}
+                      </div>
+                    )}
+                    {/* Decorative star icon from design */}
+                    <div className="absolute top-0 right-0 bg-primary/10 text-primary rounded-full size-7 flex items-center justify-center shadow-sm border border-background">
+                      <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
+                    </div>
+                  </div>
+                  <button className="text-sm font-semibold text-primary hover:underline">
+                    Tải ảnh lên
+                  </button>
                 </div>
 
-                <div className="flex flex-col min-w-0">
-                  <p className="text-sm font-bold truncate">{user?.fullName || 'Chưa cập nhật'}</p>
-
-                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-
-                  <Badge variant="secondary" className="mt-1 w-fit">
-                    {roleLabelMap[user?.role as UserRoleType] || user?.role || 'Người dùng'}
-                  </Badge>
+                {/* Form Fields */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+                      Họ
+                    </Label>
+                    <Input defaultValue={user?.fullName?.split(' ')[0] || ''} className="h-10" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+                      Tên
+                    </Label>
+                    <Input
+                      defaultValue={user?.fullName?.split(' ').slice(1).join(' ') || ''}
+                      className="h-10"
+                    />
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
 
-          {/* Account settings */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Cài đặt tài khoản</CardTitle>
-            </CardHeader>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+                      Danh xưng
+                    </Label>
+                    <Input placeholder="Anh / Chị / Ông / Bà" className="h-10" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+                      Chức danh
+                    </Label>
+                    <Input placeholder="Ví dụ: PGS. TS" className="h-10" />
+                  </div>
+                </div>
 
-            <CardContent className="p-2">
-              <SettingsItem
-                icon="person"
-                title="Hồ sơ cá nhân"
-                description="Xem và chỉnh sửa thông tin cá nhân"
-                onClick={() => navigate('/portal/profile')}
-              />
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Vai trò
+                  </Label>
+                  <Select defaultValue={user?.role || 'user'}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Chọn vai trò" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Quản trị viên (Admin)</SelectItem>
+                      <SelectItem value="coordinator">Người điều phối (Coordinator)</SelectItem>
+                      <SelectItem value="manager">Quản lý (Manager)</SelectItem>
+                      <SelectItem value="user">Người dùng (User)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <SettingsItem
-                icon="lock"
-                title="Đổi mật khẩu"
-                description="Cập nhật mật khẩu đăng nhập"
-                onClick={() => setIsChangePasswordOpen(true)}
-              />
-            </CardContent>
-          </Card>
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Số điện thoại
+                  </Label>
+                  <div className="flex items-center gap-3">
+                    <Input defaultValue={user?.phoneNumber || ''} className="h-10 flex-1" />
+                    <div className="flex items-center gap-1 text-sm text-green-600 font-medium shrink-0">
+                      <span className="material-symbols-outlined text-base">check</span>
+                      Đã xác minh
+                    </div>
+                  </div>
+                </div>
 
-          {/* Danger zone */}
-          <Card className="lg:col-span-3 border-destructive/20">
-            <CardHeader>
-              <CardTitle className="text-destructive">Vùng nguy hiểm</CardTitle>
-            </CardHeader>
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+                    Email
+                  </Label>
+                  <div className="flex items-center gap-3">
+                    <Input
+                      defaultValue={user?.email || ''}
+                      disabled
+                      className="h-10 flex-1 bg-muted/50"
+                    />
+                    <Button variant="outline" className="h-10 gap-2 shrink-0 border-dashed">
+                      <span className="material-symbols-outlined text-sm">mail</span>
+                      Đổi Email
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-            <Separator />
+            {/* Account & Security */}
+            <Card className="border-border shadow-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-bold text-foreground">
+                  Tài khoản & Bảo mật
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Mật khẩu</Label>
+                  <Button
+                    variant="outline"
+                    className="h-9 gap-2"
+                    onClick={() => setIsChangePasswordOpen(true)}
+                  >
+                    <span className="material-symbols-outlined text-sm">key</span>
+                    Đổi mật khẩu
+                  </Button>
+                </div>
 
-            <CardContent className="p-2">
-              <SettingsItem
-                icon="logout"
-                title="Đăng xuất"
-                description="Đăng xuất khỏi tài khoản hiện tại"
-                onClick={handleLogout}
-                destructive
-              />
-            </CardContent>
-          </Card>
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Quản lý thiết bị đăng nhập:</Label>
+                  <button className="text-sm font-medium text-primary hover:underline">
+                    Xem phiên kết nối (Thiết bị đang chạy)
+                  </button>
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium flex gap-1 items-center">
+                      Xác thực hai yếu tố (2FA)
+                      <span className="material-symbols-outlined text-[14px] text-muted-foreground">
+                        info
+                      </span>
+                    </Label>
+                    <p className="text-xs text-muted-foreground italic">
+                      Bảo mật bổ sung qua OTP / Email
+                    </p>
+                  </div>
+                  <Switch />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium flex gap-1 items-center">
+                      Cảnh báo đăng nhập
+                      <span className="material-symbols-outlined text-[14px] text-muted-foreground">
+                        info
+                      </span>
+                    </Label>
+                    <p className="text-xs text-muted-foreground italic">
+                      Thông báo đăng nhập ở thiết bị mới
+                    </p>
+                  </div>
+                  <Switch defaultChecked />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between pt-1">
+                  <div className="flex w-full items-center justify-between">
+                    <Label className="text-sm font-bold text-destructive">Đăng xuất hệ thống</Label>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleLogout}
+                      className="h-8 rounded-full px-4 gap-2"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">logout</span>
+                      Đăng xuất
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Bottom Actions - Specific to Design */}
+            <Card className="border-border shadow-sm bg-muted/20">
+              <CardContent className="p-4 flex sm:flex-row flex-col items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-bold text-foreground">Xác nhận áp dụng cài đặt mới</p>
+                  <p className="text-xs text-muted-foreground">
+                    Vui lòng kiểm tra lại thông tin trước khi Lưu
+                  </p>
+                </div>
+                <div className="flex gap-3 shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
+                  <Button variant="outline" className="h-10 flex-1 sm:flex-none">
+                    Hủy
+                  </Button>
+                  <Button className="h-10 bg-primary flex-1 sm:flex-none">Lưu thay đổi</Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* RIGHT COLUMN */}
+          <div className="flex flex-col gap-6">
+            {/* Notification Settings */}
+            <Card className="border-border shadow-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-bold text-foreground">
+                  Cài đặt Thông báo
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium flex items-center gap-1">
+                      Kênh thông báo
+                      <span className="material-symbols-outlined text-[14px] text-muted-foreground">
+                        info
+                      </span>
+                    </Label>
+                    <p className="text-xs text-muted-foreground italic">Email & SMS</p>
+                  </div>
+                  <Switch defaultChecked />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Lịch trình</Label>
+                  <Switch />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Tư vấn / Thảo luận</Label>
+                  <Switch />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Kết quả / Cập nhật trạng thái</Label>
+                  <Switch defaultChecked />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium flex items-center gap-1">
+                      Cảnh báo đăng nhập
+                      <span className="material-symbols-outlined text-[14px] text-muted-foreground">
+                        info
+                      </span>
+                    </Label>
+                    <p className="text-xs text-muted-foreground italic">
+                      Nhận cảnh báo đăng nhập lạ
+                    </p>
+                  </div>
+                  <Switch defaultChecked />
+                </div>
+
+                <Separator />
+
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm font-medium flex items-center gap-1">
+                        Không làm phiền
+                        <span className="material-symbols-outlined text-[14px] text-muted-foreground">
+                          info
+                        </span>
+                      </Label>
+                      <p className="text-xs text-muted-foreground italic">
+                        Tắt thông báo trong khung giờ nhất định
+                      </p>
+                    </div>
+                    <Switch defaultChecked />
+                  </div>
+
+                  <div className="flex items-center gap-4 bg-muted/30 p-3 rounded-xl border border-border">
+                    <Label className="text-xs text-muted-foreground whitespace-nowrap">Từ:</Label>
+                    <Input type="time" defaultValue="22:00" className="h-9 bg-background w-full" />
+                    <Label className="text-xs text-muted-foreground whitespace-nowrap">Đến:</Label>
+                    <Input type="time" defaultValue="07:00" className="h-9 bg-background w-full" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Data & Privacy */}
+            <Card className="border-border shadow-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-bold text-foreground">
+                  Dữ liệu & Quyền riêng tư
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm font-medium flex items-center gap-1">
+                        Quyền truy cập dữ liệu hệ thống
+                        <span className="material-symbols-outlined text-[14px] text-muted-foreground">
+                          info
+                        </span>
+                      </Label>
+                      <p className="text-xs text-muted-foreground italic">
+                        Phân quyền xem dữ liệu cho các thành viên
+                      </p>
+                    </div>
+                    <span className="material-symbols-outlined text-muted-foreground cursor-pointer shrink-0 ml-4">
+                      expand_less
+                    </span>
+                  </div>
+
+                  {/* Member List */}
+                  <div className="space-y-3 pt-1">
+                    {[
+                      { name: 'Zaza Gonzales', role: 'Phụ tá' },
+                      { name: 'Grace White', role: 'Điều dưỡng' },
+                      { name: 'Freddy Ulric', role: 'Thành viên' },
+                    ].map((member, i) => (
+                      <div key={i} className="flex items-center justify-between p-1">
+                        <div>
+                          <p className="text-sm font-semibold">{member.name}</p>
+                          <p className="text-xs text-muted-foreground italic mt-0.5">
+                            {member.role}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Select defaultValue={i === 0 ? 'full' : 'view'}>
+                            <SelectTrigger className="w-[125px] h-8 text-xs bg-muted/20">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="full">Toàn quyền</SelectItem>
+                              <SelectItem value="view">Chỉ xem</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Button variant="outline" size="icon" className="size-8 shrink-0">
+                            <span className="material-symbols-outlined text-[16px]">
+                              more_horiz
+                            </span>
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2 border-dashed bg-muted/10 h-10 hover:bg-muted/30"
+                  >
+                    <span className="material-symbols-outlined text-sm">person_add</span>
+                    Thêm thành viên
+                  </Button>
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium flex items-center gap-1">
+                      Nhật ký hoạt động
+                      <span className="material-symbols-outlined text-[14px] text-muted-foreground">
+                        info
+                      </span>
+                    </Label>
+                    <p className="text-xs text-muted-foreground italic">
+                      Theo dõi lịch sử truy cập và xuất dữ liệu
+                    </p>
+                  </div>
+                  <Switch defaultChecked />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium flex items-center gap-1">
+                      Định dạng báo cáo
+                      <span className="material-symbols-outlined text-[14px] text-muted-foreground">
+                        info
+                      </span>
+                    </Label>
+                    <p className="text-xs text-muted-foreground italic">
+                      Định dạng tệp khi tải xuống
+                    </p>
+                  </div>
+                  <Select defaultValue="pdf">
+                    <SelectTrigger className="w-24 h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pdf">PDF</SelectItem>
+                      <SelectItem value="csv">CSV</SelectItem>
+                      <SelectItem value="xlsx">Excel</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between pt-1">
+                  <Label className="text-sm font-bold">Chính sách & Điều khoản</Label>
+                  <button className="text-sm font-medium text-primary hover:underline">
+                    Xem tài liệu pháp lý
+                  </button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 
