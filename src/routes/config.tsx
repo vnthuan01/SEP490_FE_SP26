@@ -99,6 +99,6 @@ export const routes: AppRoute[] = [
     path: '/portal/settings',
     element: <SettingsPage />,
     roles: [UserRole.Admin, UserRole.Coordinator, UserRole.Manager],
-    isProtected: false,
+    isProtected: true,
   },
 ];
