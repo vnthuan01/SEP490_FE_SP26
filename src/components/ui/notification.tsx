@@ -8,9 +8,9 @@ interface Props {
 }
 
 const TYPE_COLOR: Record<RequestType, string> = {
-  CUU_TRO: 'text-red-600',
-  LUONG_THUC: 'text-green-600',
-  KHAC: 'text-blue-600',
+  CUU_TRO: 'text-red-500',
+  LUONG_THUC: 'text-emerald-500',
+  KHAC: 'text-primary',
 };
 
 const TYPE_LABEL: Record<RequestType, string> = {
@@ -21,19 +21,23 @@ const TYPE_LABEL: Record<RequestType, string> = {
 
 const Notification: React.FC<Props> = ({ data, onClickItem, onMarkAllRead }) => {
   return (
-    <div className="w-[420px] rounded-xl border bg-white shadow-lg">
+    <div className="w-[420px] rounded-xl border bg-background shadow-xl">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b">
-        <h3 className="font-semibold text-lg">Notification</h3>
-        <button onClick={onMarkAllRead} className="text-sm text-gray-500 hover:text-gray-800">
-          Mark all as read
+        <h3 className="font-semibold text-lg text-foreground">Thông báo</h3>
+
+        <button
+          onClick={onMarkAllRead}
+          className="text-sm text-muted-foreground hover:text-primary transition"
+        >
+          Đánh dấu đã đọc
         </button>
       </div>
 
       {/* List */}
       <div className="divide-y max-h-[520px] overflow-y-auto">
         {data.length === 0 && (
-          <p className="p-4 text-sm text-gray-400 text-center">Không có thông báo</p>
+          <p className="p-6 text-sm text-muted-foreground text-center">Không có thông báo</p>
         )}
 
         {data.map((item) => (
@@ -55,30 +59,34 @@ const NotificationItem: React.FC<ItemProps> = ({ item, onClick }) => {
   return (
     <div
       onClick={() => onClick?.(item)}
-      className="flex gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50"
+      className={`
+        flex gap-3 px-4 py-3 cursor-pointer transition
+        hover:bg-muted/40
+        ${item.unread ? 'bg-muted/30' : ''}
+      `}
     >
       {/* Unread dot */}
-      {item.unread && <span className="mt-2 w-2 h-2 rounded-full bg-purple-500" />}
+      {item.unread && <span className="mt-2 w-2 h-2 rounded-full bg-primary shrink-0" />}
 
       {/* Avatar */}
       <img
         src={item.requesterAvatar || '/avatars/default.png'}
-        className="w-9 h-9 rounded-full object-cover"
+        className="w-9 h-9 rounded-full object-cover border"
         alt={item.requesterName}
       />
 
       {/* Content */}
       <div className="flex-1 text-sm">
-        <p className="text-gray-800">
+        <p className="text-foreground">
           <strong>{item.requesterName}</strong>{' '}
           <span className={TYPE_COLOR[item.requestType]}>
             gửi yêu cầu {TYPE_LABEL[item.requestType]}
           </span>
         </p>
 
-        <p className="text-gray-600 mt-0.5 line-clamp-2">{item.description}</p>
+        <p className="text-muted-foreground mt-0.5 line-clamp-2">{item.description}</p>
 
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           {item.location} · {item.createdAt}
         </p>
 
@@ -93,6 +101,7 @@ const NotificationItem: React.FC<ItemProps> = ({ item, onClick }) => {
     </div>
   );
 };
+
 interface EvidenceProps {
   evidence: Evidence;
 }
@@ -100,7 +109,7 @@ interface EvidenceProps {
 const EvidencePreview: React.FC<EvidenceProps> = ({ evidence }) => {
   if (evidence.type === 'VIDEO') {
     return (
-      <div className="relative w-16 h-16 rounded-md overflow-hidden border">
+      <div className="relative w-16 h-16 rounded-md overflow-hidden border bg-muted">
         <img src={evidence.thumbnail} alt="video evidence" className="w-full h-full object-cover" />
         <span className="absolute inset-0 flex items-center justify-center text-white text-xl">
           ▶
