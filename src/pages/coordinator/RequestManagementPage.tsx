@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -260,6 +260,13 @@ export default function CoordinatorRequestManagementPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const scrollRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [selectedRequest.id]);
 
   const filteredRequests = useMemo(() => {
     let res = mockRequests;
@@ -466,7 +473,10 @@ export default function CoordinatorRequestManagementPage() {
         </aside>
 
         {/* ================= RIGHT ================= */}
-        <section className="flex-1 flex flex-col h-full bg-card relative overflow-y-auto custom-scrollbar">
+        <section
+          ref={scrollRef}
+          className="flex-1 flex flex-col h-full bg-card relative overflow-y-auto custom-scrollbar"
+        >
           {selectedRequest ? (
             <>
               {/* Header */}

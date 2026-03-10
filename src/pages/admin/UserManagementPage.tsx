@@ -13,7 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { UserRole } from '@/enums/UserRole';
+import { UserRole, type UserRoleType } from '@/enums/UserRole';
 import { roleVariantMap } from '@/constants/roleVariant';
 import { roleLabelMap } from '@/constants/roleLabel';
 import type { User } from '@/services/authService';
@@ -268,8 +268,8 @@ export default function AdminUserManagementPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge size="xs" variant={roleVariantMap[user.role]}>
-                          {roleLabelMap[user.role]}
+                        <Badge size="xs" variant={roleVariantMap[user.role as UserRoleType]}>
+                          {roleLabelMap[user.role as UserRoleType]}
                         </Badge>
                       </TableCell>
                       <TableCell>

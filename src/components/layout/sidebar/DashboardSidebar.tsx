@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LogOut, Settings, User } from 'lucide-react';
+import { LogOut, Settings } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -236,10 +236,6 @@ export function DashboardSidebar({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem onClick={() => navigate('/portal/profile')}>
-                <User className="mr-2 size-4" />
-                Hồ sơ cá nhân
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate('/portal/settings')}>
                 <Settings className="mr-2 size-4" />
                 Cài đặt

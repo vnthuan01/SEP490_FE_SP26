@@ -1,5 +1,5 @@
 // ... keep imports
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { volunteerRequestsData } from './components/mockData';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,13 @@ export default function CoordinatorVolunteerRequestPage() {
   const [filter, setFilter] = useState<'all' | 'health' | 'rescue' | 'transport'>('all');
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const scrollRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [selectedId]);
 
   const selectedRequest = useMemo(
     () => volunteerRequestsData.find((r) => r.id === selectedId) || volunteerRequestsData[0],
@@ -199,7 +206,10 @@ export default function CoordinatorVolunteerRequestPage() {
         </aside>
 
         {/* RIGHT CONTENT: DETAIL VIEW */}
-        <section className="flex-1 flex flex-col h-full bg-card relative overflow-y-auto custom-scrollbar">
+        <section
+          ref={scrollRef}
+          className="flex-1 flex flex-col h-full bg-card relative overflow-y-auto custom-scrollbar"
+        >
           {selectedRequest ? (
             <>
               {/* Header */}
