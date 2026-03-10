@@ -1,0 +1,231 @@
+.loader-page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+  z-index: 9999;
+}
+
+.loader-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+/* icon wrapper */
+
+.icon-wrapper {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* bubble circle thật */
+
+.bubble {
+  position: absolute;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: var(--primary);
+  opacity: 0.15;
+  transform: scale(0.3);
+  pointer-events: none;
+}
+
+/* bubble animation */
+
+.icon-wrapper.transition .bubble {
+  animation: bubbleFill 0.6s ease;
+}
+
+@keyframes bubbleFill {
+  0% {
+    transform: scale(0.3);
+    opacity: 0.2;
+  }
+
+  50% {
+    transform: scale(1.2);
+    opacity: 0.3;
+  }
+
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* icon */
+
+.loader-icon {
+  width: 56px;
+  height: 56px;
+  color: var(--primary);
+  stroke-width: 1.8;
+}
+
+/* icon disappear */
+
+.icon-wrapper.transition .loader-icon {
+  animation: iconOut 0.35s ease forwards;
+}
+
+@keyframes iconOut {
+  to {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+}
+
+/* icon appear */
+
+.fade .loader-icon {
+  animation: iconIn 0.45s ease;
+}
+
+@keyframes iconIn {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* animations */
+
+.pulse {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+.helicopter {
+  animation: fly 1.2s ease-in-out infinite;
+}
+
+@keyframes fly {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.medical {
+  animation: blink 1.2s infinite;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.rain {
+  animation: rainMove 1s infinite;
+}
+
+@keyframes rainMove {
+  0% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(4px);
+  }
+
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.landslide {
+  animation: shake 1.4s infinite;
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+
+  25% {
+    transform: rotate(1.5deg);
+  }
+
+  75% {
+    transform: rotate(-1.5deg);
+  }
+}
+
+/* text */
+
+.loading-text {
+  font-size: 15px;
+  color: var(--muted-foreground);
+}
+
+.dots::after {
+  content: '';
+  animation: dots 1.5s steps(3, end) infinite;
+}
+
+@keyframes dots {
+  0%,
+  20% {
+    content: '.';
+  }
+
+  40% {
+    content: '..';
+  }
+
+  60% {
+    content: '...';
+  }
+
+  80%,
+  100% {
+    content: '';
+  }
+}
+
+.loader-ring {
+  position: absolute;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+
+  background: conic-gradient(transparent 0deg, var(--primary) 90deg, transparent 180deg);
+
+  mask: radial-gradient(circle, transparent 60%, black 61%);
+  animation: spin 1.2s linear infinite;
+}

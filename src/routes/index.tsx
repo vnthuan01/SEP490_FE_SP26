@@ -3,7 +3,8 @@ import { routes } from './config';
 import NotFoundPage from '@/pages/notfound/NotFoundPage';
 import RoleBasedRoute from './protectedRoute';
 import { AuthProvider } from '@/components/provider/auth/AuthContext';
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import LoadingEffect from '@/components/layout/loading/LoadingEffect';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -46,11 +47,64 @@ function TitleUpdater() {
   return null;
 }
 
+function NavigationLoader({ minDuration = 600 }: { minDuration?: number }) {
+  const { pathname } = useLocation();
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [isFadingOut, setIsFadingOut] = useState(false);
+
+  const isFirstRender = useRef(true);
+  const visitedPaths = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      visitedPaths.current.add(pathname);
+      return;
+    }
+
+    if (visitedPaths.current.has(pathname)) return;
+
+    visitedPaths.current.add(pathname);
+
+    const start = Date.now();
+
+    const startTimer = setTimeout(() => {
+      setIsLoading(true);
+      setIsFadingOut(false);
+
+      const elapsed = Date.now() - start;
+
+      const remaining = Math.max(minDuration - elapsed, 0);
+
+      setTimeout(() => {
+        setIsFadingOut(true);
+
+        setTimeout(() => {
+          setIsLoading(false);
+          setIsFadingOut(false);
+        }, 300);
+      }, remaining);
+    }, 0);
+
+    return () => clearTimeout(startTimer);
+  }, [pathname, minDuration]);
+
+  if (!isLoading) return null;
+
+  return (
+    <div className={isFadingOut ? 'loader-fade-out' : ''}>
+      <LoadingEffect timeout={500} />
+    </div>
+  );
+}
+
 export default function AppRoutes() {
   return (
     <BrowserRouter>
       <ScrollToTop />
       <TitleUpdater />
+      <NavigationLoader minDuration={2000} />
       <AuthProvider>
         <Routes>
           {routes.map((r, idx) =>
