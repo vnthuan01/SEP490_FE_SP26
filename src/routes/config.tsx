@@ -28,19 +28,19 @@ export const routes: AppRoute[] = [
     path: '/portal/admin/dashboard',
     element: <AdminDashboardPage />,
     roles: [UserRole.Admin],
-    isProtected: false,
+    isProtected: true,
   },
   {
     path: '/portal/admin/data-management',
     element: <DataManagementPage />,
     roles: [UserRole.Admin],
-    isProtected: false,
+    isProtected: true,
   },
   {
     path: '/portal/admin/users',
     element: <AdminUserManagementPage />,
     roles: [UserRole.Admin],
-    isProtected: false,
+    isProtected: true,
   },
 
   //Coordinator routes

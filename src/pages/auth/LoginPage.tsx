@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 
-import { useAuth } from '@/hooks/useAuth';
+import { useAuthContext } from '@/components/provider/auth/AuthProvider';
 import { getUserRoleFromToken } from '@/lib/jwt';
 import { roleRoutes } from '@/constants/roleRoutes';
 import type { UserRoleType } from '@/enums/UserRole';
@@ -26,7 +26,7 @@ type LoginFormValues = {
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { login, phoneLogin } = useAuth();
+  const { login, phoneLogin } = useAuthContext();
 
   const [showPassword, setShowPassword] = useState(false);
   const [rootError, setRootError] = useState('');
@@ -52,23 +52,27 @@ function LoginPage() {
 
       const role = getUserRoleFromToken(res?.data?.accessToken || '');
 
-      if (!role) {
-        navigate('/login', { replace: true });
+      if (
+        !role ||
+        !roleRoutes[role as UserRoleType] ||
+        roleRoutes[role as UserRoleType] === '/login'
+      ) {
+        setRootError('Tài khoản của bạn không có quyền truy cập hệ thống.');
         return;
       }
 
       navigate(roleRoutes[role as UserRoleType], { replace: true });
     } catch (err: any) {
-      if (err?.response?.statusCode === 401) {
-        console.log(err);
-        setRootError('Tên đăng nhập hoặc mật khẩu không đúng');
-      }
-      if (err?.response?.statusCode === 400) {
-        setRootError('Tài khoản đã bị khóa');
+      const status = err?.response?.status;
+      const code = err?.response?.data?.code;
+
+      if (status === 401 || code === 'AUTH_INVALID_CREDENTIALS') {
+        setRootError('Sai tên đăng nhập hoặc mật khẩu. Vui lòng thử lại sau.');
+      } else if (status === 400) {
+        setRootError('Tài khoản đã bị khóa.');
       } else {
         console.log(err);
-
-        setRootError('Đăng nhập thất bại. Vui lòng thử lại');
+        setRootError('Đăng nhập thất bại. Vui lòng thử lại.');
       }
     }
   };

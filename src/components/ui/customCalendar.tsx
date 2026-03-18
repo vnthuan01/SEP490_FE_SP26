@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { DayPicker } from 'react-day-picker';
+import { cn } from '@/lib/utils';
 
 export default function CustomCalendar({
   disabledDays,
@@ -33,7 +34,7 @@ export default function CustomCalendar({
 
   return (
     <div className="w-full max-w-[290px]">
-      <div className="border rounded-md p-3 shadow-sm w-full bg-background">
+      <div className="border border-border rounded-md p-3 shadow-sm w-full bg-popover text-popover-foreground">
         {/* --- Header Custom --- */}
         <div className="flex items-center justify-between mb-2">
           <Button
@@ -48,7 +49,7 @@ export default function CustomCalendar({
 
           <div className="flex items-center gap-2">
             <select
-              className="border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+              className="border border-input bg-transparent rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
               value={month.getMonth()}
               onChange={(e) => setMonth(new Date(month.getFullYear(), Number(e.target.value)))}
             >
@@ -60,7 +61,7 @@ export default function CustomCalendar({
             </select>
 
             <select
-              className="border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+              className="border border-input bg-transparent rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
               value={month.getFullYear()}
               onChange={(e) => setMonth(new Date(Number(e.target.value), month.getMonth()))}
             >
@@ -94,12 +95,28 @@ export default function CustomCalendar({
             disabled={disabledDays}
             showOutsideDays
             classNames={{
-              months: 'flex flex-col w-full',
+              months: 'relative flex w-full',
               month: 'w-full',
               nav: 'hidden',
-              table: 'w-full text-center border-collapse',
-              head_row: 'text-xs text-muted-foreground',
-              cell: 'p-0 text-sm w-[36px] h-[36px]',
+              table: 'w-full border-collapse space-y-1',
+              head_row: 'flex mb-1',
+              weekday: 'w-9 font-medium text-[0.8rem] text-muted-foreground/80 ',
+              row: 'flex w-full mt-2',
+              cell: 'h-9 w-9 text-center text-sm p-0 m-0',
+              day: 'group size-9 px-0 py-px text-sm m-0',
+              day_button: cn(
+                'cursor-pointer relative flex size-9 items-center justify-center whitespace-nowrap rounded-md p-0 text-foreground transition-200',
+                'hover:not-in-data-selected:bg-accent hover:not-in-data-selected:text-foreground',
+                'group-data-selected:bg-primary group-data-selected:text-primary-foreground',
+                'group-data-disabled:pointer-events-none group-data-disabled:text-foreground/30 group-data-disabled:line-through',
+                'group-data-outside:text-foreground/30',
+                'outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+              ),
+              today:
+                '*:after:pointer-events-none *:after:absolute *:after:bottom-1 *:after:start-1/2 *:after:z-10 *:after:size-[3px] *:after:-translate-x-1/2 rtl:*:after:translate-x-1/2 *:after:rounded-full *:after:bg-primary [&[data-selected]:not(.range-middle)>*]:after:bg-background *:after:transition-colors',
+              outside:
+                'text-muted-foreground data-selected:bg-accent/50 data-selected:text-muted-foreground',
+              hidden: 'invisible',
             }}
           />
         </div>
