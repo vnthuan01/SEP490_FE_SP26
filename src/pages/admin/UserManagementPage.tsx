@@ -1,6 +1,6 @@
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -13,68 +13,27 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { UserRole, type UserRoleType } from '@/enums/UserRole';
+import { type UserRoleType } from '@/enums/UserRole';
 import { roleVariantMap } from '@/constants/roleVariant';
 import { roleLabelMap } from '@/constants/roleLabel';
-import type { User } from '@/services/authService';
 import { useState } from 'react';
 import { AddUserModal } from './components/AddUserModal';
-
-export const mockUsers: User[] = [
-  {
-    id: '1',
-    fullName: 'Nguyễn Văn A',
-    email: 'nguyenvana@relief.vn',
-    role: UserRole.Admin,
-    status: 'active',
-    lastActivity: 'Vừa xong',
-    location: 'IP: 192.168.1.1',
-  },
-  {
-    id: '2',
-    fullName: 'Trần Thị B',
-    email: 'tranthib@gmail.com',
-    role: UserRole.Coordinator,
-    status: 'active',
-    lastActivity: '25 phút trước',
-    location: 'Hà Nội',
-  },
-  {
-    id: '3',
-    fullName: 'Lê Văn C',
-    email: 'levanc@edu.vn',
-    role: UserRole.Volunteer,
-    status: 'offline',
-    lastActivity: '2 ngày trước',
-    location: 'Đà Nẵng',
-  },
-  {
-    id: '4',
-    fullName: 'Phạm Tùng',
-    email: 'tungpham@gmail.com',
-    role: UserRole.Volunteer,
-    status: 'pending',
-    lastActivity: 'Chưa đăng nhập',
-    location: '-',
-  },
-  {
-    id: '5',
-    fullName: 'Hoàng My',
-    email: 'myhoang@relief.vn',
-    role: UserRole.Coordinator,
-    status: 'active',
-    lastActivity: '1 giờ trước',
-    location: 'Quảng Bình',
-  },
-];
+import { useAllUsers } from '@/hooks/useUsers';
+import { StatsCard } from '@/pages/admin/components/StatsCard';
 
 export default function AdminUserManagementPage() {
   const [openAddUser, setOpenAddUser] = useState(false);
+  const [pageIndex, setPageIndex] = useState(1);
+  const pageSize = 10;
+
+  const { users, pagination, isLoading, refetch } = useAllUsers({
+    pageIndex,
+    pageSize,
+  });
 
   const handleCreateUser = async () => {
-    // await createUser(data);
     console.log('Đã tạo user thành công');
-    // TODO: refetch user list / toast success
+    refetch();
   };
 
   return (
@@ -109,70 +68,24 @@ export default function AdminUserManagementPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card className="bg-surface-dark dark:bg-surface-light border-border">
-          <CardContent className="p-5 flex flex-col gap-1">
-            <div className="flex items-center justify-between">
-              <p className="text-muted-foreground dark:text-muted-foreground text-sm font-medium uppercase tracking-wider">
-                Tổng người dùng
-              </p>
-              <span className="material-symbols-outlined text-muted-foreground dark:text-muted-foreground">
-                groups
-              </span>
-            </div>
-            <div className="flex items-end gap-3 mt-2">
-              <p className="text-foreground dark:text-foreground text-3xl font-bold leading-none">
-                1,240
-              </p>
-              <div className="flex items-center text-green-500 text-sm font-medium bg-green-500/10 px-1.5 py-0.5 rounded">
-                <span className="material-symbols-outlined text-sm mr-0.5">trending_up</span>
-                <span>5%</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-surface-dark dark:bg-surface-light border-border">
-          <CardContent className="p-5 flex flex-col gap-1">
-            <div className="flex items-center justify-between">
-              <p className="text-muted-foreground dark:text-muted-foreground text-sm font-medium uppercase tracking-wider">
-                Tình nguyện viên Active
-              </p>
-              <span className="material-symbols-outlined text-muted-foreground dark:text-muted-foreground">
-                volunteer_activism
-              </span>
-            </div>
-            <div className="flex items-end gap-3 mt-2">
-              <p className="text-foreground dark:text-foreground text-3xl font-bold leading-none">
-                850
-              </p>
-              <div className="flex items-center text-green-500 text-sm font-medium bg-green-500/10 px-1.5 py-0.5 rounded">
-                <span className="material-symbols-outlined text-sm mr-0.5">trending_up</span>
-                <span>12%</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-surface-dark dark:bg-surface-light border-border">
-          <CardContent className="p-5 flex flex-col gap-1">
-            <div className="flex items-center justify-between">
-              <p className="text-muted-foreground dark:text-muted-foreground text-sm font-medium uppercase tracking-wider">
-                Admin đang online
-              </p>
-              <span className="material-symbols-outlined text-muted-foreground dark:text-muted-foreground">
-                admin_panel_settings
-              </span>
-            </div>
-            <div className="flex items-end gap-3 mt-2">
-              <p className="text-foreground dark:text-foreground text-3xl font-bold leading-none">
-                12
-              </p>
-              <span className="text-muted-foreground dark:text-muted-foreground text-sm font-medium">
-                Hiện tại
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+        <StatsCard
+          title="Tổng người dùng"
+          value={String(pagination?.totalCount ?? '—')}
+          icon="groups"
+          variant="success"
+        />
+        <StatsCard
+          title="Trang hiện tại"
+          value={`${pagination?.currentPage ?? '—'} / ${pagination?.totalPages ?? '—'}`}
+          icon="pages"
+          variant="info"
+        />
+        <StatsCard
+          title="Hiển thị"
+          value={`${users.length} người dùng`}
+          icon="visibility"
+          variant="warning"
+        />
       </div>
 
       {/* Users Table */}
@@ -228,94 +141,156 @@ export default function AdminUserManagementPage() {
 
           <TabsContent value="users" className="m-0">
             <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">
-                      <Checkbox />
-                    </TableHead>
-                    <TableHead>Người dùng</TableHead>
-                    <TableHead>Vai trò</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                    <TableHead>Hoạt động cuối</TableHead>
-                    <TableHead className="text-right">Thao tác</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {mockUsers.map((user) => (
-                    <TableRow
-                      key={user.id}
-                      className="group hover:bg-card/50 dark:hover:bg-card/50 transition-colors"
-                    >
-                      <TableCell>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <div className="flex flex-col items-center gap-3">
+                    <span className="material-symbols-outlined text-4xl text-primary animate-spin">
+                      progress_activity
+                    </span>
+                    <p className="text-muted-foreground text-sm">
+                      Đang tải danh sách người dùng...
+                    </p>
+                  </div>
+                </div>
+              ) : users.length === 0 ? (
+                <div className="flex items-center justify-center py-16">
+                  <div className="flex flex-col items-center gap-3">
+                    <span className="material-symbols-outlined text-4xl text-muted-foreground">
+                      person_off
+                    </span>
+                    <p className="text-muted-foreground text-sm">Không có người dùng nào</p>
+                  </div>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">
                         <Checkbox />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="size-10 rounded-full bg-card dark:bg-card border border-border flex items-center justify-center">
-                            <span className="text-foreground dark:text-foreground font-bold text-sm">
-                              {user.fullName?.charAt(0)}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="font-bold text-foreground dark:text-foreground text-sm">
-                              {user.fullName}
-                            </p>
-                            <p className="text-xs text-text-muted-dark dark:text-text-muted-light">
-                              {user.email}
-                            </p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge size="xs" variant={roleVariantMap[user.role as UserRoleType]}>
-                          {roleLabelMap[user.role as UserRoleType]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`size-2 rounded-full ${
-                              user.status === 'active'
-                                ? 'bg-green-500 animate-pulse'
-                                : user.status === 'pending'
-                                  ? 'bg-orange-400'
-                                  : 'bg-text-sub-dark dark:bg-text-sub-light'
-                            }`}
-                          ></div>
-                          <span className="text-foreground dark:text-foreground text-sm">
-                            {user.status === 'active'
-                              ? 'Hoạt động'
-                              : user.status === 'pending'
-                                ? 'Chờ duyệt'
-                                : 'Offline'}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="text-foreground dark:text-foreground text-sm">
-                            {user.lastActivity}
-                          </span>
-                          <span className="text-xs text-text-muted-dark dark:text-text-muted-light">
-                            {user.location}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-muted-foreground dark:text-muted-foreground hover:text-foreground dark:hover:text-foreground"
-                        >
-                          <span className="material-symbols-outlined">more_vert</span>
-                        </Button>
-                      </TableCell>
+                      </TableHead>
+                      <TableHead>Người dùng</TableHead>
+                      <TableHead>Vai trò</TableHead>
+                      <TableHead>Số điện thoại</TableHead>
+                      <TableHead>Giới tính</TableHead>
+                      <TableHead className="text-right">Thao tác</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {users.map((user) => (
+                      <TableRow
+                        key={user.id}
+                        className="group hover:bg-card/50 dark:hover:bg-card/50 transition-colors"
+                      >
+                        <TableCell>
+                          <Checkbox />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="size-10 rounded-full bg-card dark:bg-card border border-border flex items-center justify-center overflow-hidden">
+                              {user.pictureUrl ? (
+                                <img
+                                  src={user.pictureUrl}
+                                  alt={user.displayName || ''}
+                                  className="size-full object-cover"
+                                />
+                              ) : (
+                                <span className="text-foreground dark:text-foreground font-bold text-sm">
+                                  {user.displayName?.charAt(0) || user.email?.charAt(0) || '?'}
+                                </span>
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-bold text-foreground dark:text-foreground text-sm">
+                                {user.displayName || '—'}
+                              </p>
+                              <p className="text-xs text-text-muted-dark dark:text-text-muted-light">
+                                {user.email}
+                              </p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {user.roles.map((role) => {
+                              const variant = roleVariantMap[role as UserRoleType];
+                              const label = roleLabelMap[role as UserRoleType];
+                              return (
+                                <Badge key={role} size="xs" variant={variant || 'default'}>
+                                  {label || role}
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-foreground dark:text-foreground text-sm">
+                            {user.phoneNumber || '—'}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-foreground dark:text-foreground text-sm">
+                            {user.gender === 'Male' ? 'Nam' : user.gender === 'Female' ? 'Nữ' : '—'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-muted-foreground dark:text-muted-foreground hover:text-foreground dark:hover:text-foreground"
+                          >
+                            <span className="material-symbols-outlined">more_vert</span>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </div>
+
+            {/* Pagination Controls */}
+            {pagination && pagination.totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+                <p className="text-sm text-muted-foreground">
+                  Trang {pagination.currentPage} / {pagination.totalPages} — Tổng{' '}
+                  {pagination.totalCount} người dùng
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!pagination.hasPrevious}
+                    onClick={() => setPageIndex((prev) => Math.max(1, prev - 1))}
+                    className="gap-1"
+                  >
+                    <span className="material-symbols-outlined text-sm">chevron_left</span>
+                    Trước
+                  </Button>
+                  {/* Page number buttons */}
+                  {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((page) => (
+                    <Button
+                      key={page}
+                      variant={page === pagination.currentPage ? 'primary' : 'outline'}
+                      size="sm"
+                      onClick={() => setPageIndex(page)}
+                      className="min-w-[36px]"
+                    >
+                      {page}
+                    </Button>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!pagination.hasNext}
+                    onClick={() => setPageIndex((prev) => prev + 1)}
+                    className="gap-1"
+                  >
+                    Sau
+                    <span className="material-symbols-outlined text-sm">chevron_right</span>
+                  </Button>
+                </div>
+              </div>
+            )}
           </TabsContent>
           <TabsContent value="permissions">
             <div className="p-6 text-center text-muted-foreground dark:text-muted-foreground">
