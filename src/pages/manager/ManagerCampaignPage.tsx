@@ -113,6 +113,8 @@ export default function ManagerCampaignPage() {
   });
   const { mutateAsync: createStation } = useCreateProvincialStation();
 
+  // Helper: API may return `stationId` or `id`
+  const getStationId = (s: any): string => s.stationId ?? s.id ?? '';
   const stations = stationsData?.items || [];
 
   const form = useForm<CreateCampaignFormValues>({
@@ -155,14 +157,12 @@ export default function ManagerCampaignPage() {
   const handleCreateStation = async (data: CreateStationFormData) => {
     try {
       const newStation = await createStation(data);
-      // Wait for the stations list to refresh before selecting the new station
-      await queryClient.invalidateQueries({ queryKey: RELIEF_STATION_KEYS.all });
-      const newId = newStation?.data?.id;
+      // Wait for the stations list to actually refetch before selecting the new station
+      await queryClient.refetchQueries({ queryKey: RELIEF_STATION_KEYS.all });
+      // API may return `stationId` or `id`
+      const newId = newStation?.data?.stationId ?? newStation?.data?.id;
       if (newId) {
-        // Use setTimeout to ensure React has re-rendered with new data
-        setTimeout(() => {
-          form.setValue('reliefStationId', newId);
-        }, 100);
+        form.setValue('reliefStationId', newId);
       }
       setOpenAddStationModal(false);
     } catch (error) {
@@ -565,20 +565,36 @@ export default function ManagerCampaignPage() {
                         </Button>
                       </div>
                     ) : (
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Chọn trạm cứu trợ" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {stations.map((s) => (
-                            <SelectItem key={s.id} value={s.id}>
-                              {s.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Chọn trạm cứu trợ" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {stations.map((s) => {
+                                const sid = getStationId(s);
+                                return (
+                                  <SelectItem key={sid} value={sid}>
+                                    {s.name}
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          title="Tạo trạm cứu trợ mới"
+                          onClick={() => setOpenAddStationModal(true)}
+                        >
+                          <span className="material-symbols-outlined text-sm">add</span>
+                        </Button>
+                      </div>
                     )}
                     <FormMessage />
                   </FormItem>

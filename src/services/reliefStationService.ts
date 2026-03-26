@@ -2,6 +2,7 @@ import { apiClient } from '@/lib/apiClients';
 
 export interface ReliefStation {
   id: string;
+  stationId?: string; // API may return stationId instead of id
   locationId: string;
   name: string;
   address: string;
