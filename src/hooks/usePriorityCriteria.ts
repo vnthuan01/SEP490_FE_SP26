@@ -3,19 +3,22 @@ import {
   priorityCriteriaService,
   type CreatePriorityCriteriaPayload,
   type UpdatePriorityCriteriaPayload,
+  type SearchPriorityCriteriaParams,
 } from '@/services/priorityCriteriaService';
 import { toast } from 'sonner';
 
 export const PRIORITY_CRITERIA_KEYS = {
   all: ['priority-criteria'] as const,
+  list: (params?: SearchPriorityCriteriaParams) =>
+    [...PRIORITY_CRITERIA_KEYS.all, 'list', params] as const,
   detail: (id: string) => [...PRIORITY_CRITERIA_KEYS.all, 'detail', id] as const,
 };
 
-export const usePriorityCriteriaList = () => {
+export const usePriorityCriteriaList = (params?: SearchPriorityCriteriaParams) => {
   return useQuery({
-    queryKey: PRIORITY_CRITERIA_KEYS.all,
+    queryKey: PRIORITY_CRITERIA_KEYS.list(params),
     queryFn: async () => {
-      const response = await priorityCriteriaService.getAll();
+      const response = await priorityCriteriaService.getAll(params);
       return response.data;
     },
   });

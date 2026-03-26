@@ -27,8 +27,25 @@ export interface UpdatePriorityCriteriaPayload {
   status: string;
 }
 
+export interface SearchPriorityCriteriaParams {
+  search?: string;
+  pageIndex?: number;
+  pageSize?: number;
+}
+
+export interface PriorityCriteriaPaginatedResponse {
+  currentPage: number;
+  totalPages: number;
+  pageSize: number;
+  totalCount: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+  items: PriorityCriteria[];
+}
+
 export const priorityCriteriaService = {
-  getAll: () => apiClient.get<PriorityCriteria[]>('/priority-criteria'),
+  getAll: (params?: SearchPriorityCriteriaParams) =>
+    apiClient.get<PriorityCriteriaPaginatedResponse>('/priority-criteria', { params }),
 
   getById: (id: string) => apiClient.get<PriorityCriteria>(`/priority-criteria/${id}`),
 

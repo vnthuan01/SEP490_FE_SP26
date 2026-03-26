@@ -1,0 +1,188 @@
+import { useForm } from 'react-hook-form';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+
+export interface CreateStationFormData {
+  name: string;
+  address: string;
+  contactNumber: string;
+  locationId: string;
+  latitude: number;
+  longitude: number;
+}
+
+interface AddStationModalProps {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (data: CreateStationFormData) => void;
+}
+
+export function AddStationModal({ open, onClose, onSubmit }: AddStationModalProps) {
+  const form = useForm<CreateStationFormData>({
+    defaultValues: {
+      name: '',
+      address: '',
+      contactNumber: '',
+      locationId: '3fa85f64-5717-4562-b3fc-2c963f66afa6', // default mock ID for now
+      latitude: 0,
+      longitude: 0,
+    },
+  });
+
+  const handleSubmitForm = (data: CreateStationFormData) => {
+    onSubmit({
+      ...data,
+      latitude: Number(data.latitude),
+      longitude: Number(data.longitude),
+    });
+    form.reset();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(val) => !val && onClose()}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Thêm trạm cứu trợ mới</DialogTitle>
+          <DialogDescription>
+            Điền thông tin chi tiết để tạo một trạm mới trong khu vực quản lý.
+          </DialogDescription>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form
+            id="add-station-form"
+            onSubmit={form.handleSubmit(handleSubmitForm)}
+            className="space-y-4"
+          >
+            <FormField
+              control={form.control}
+              name="name"
+              rules={{ required: 'Vui lòng nhập tên trạm' }}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Tên trạm <span className="text-destructive">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input placeholder="Vd: Trạm cứu trợ trung tâm..." {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="address"
+              rules={{ required: 'Vui lòng nhập địa chỉ' }}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Địa chỉ <span className="text-destructive">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input placeholder="Vd: 123 Đường Nam Kỳ Khởi Nghĩa..." {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="contactNumber"
+              rules={{ required: 'Vui lòng nhập số điện thoại' }}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Số điện thoại liên hệ <span className="text-destructive">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input placeholder="Vd: 0912345678" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="latitude"
+                rules={{ required: true, min: -90, max: 90 }}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Vĩ độ</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.000001" placeholder="Vd: 10.762622" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="longitude"
+                rules={{ required: true, min: -180, max: 180 }}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Kinh độ</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.000001"
+                        placeholder="Vd: 106.660172"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="locationId"
+              rules={{ required: 'Vui lòng chọn Tỉnh/Thành' }}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>ID Tỉnh/Thành (Tạm thời)</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </form>
+        </Form>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Hủy
+          </Button>
+          <Button type="submit" form="add-station-form">
+            Tạo trạm
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

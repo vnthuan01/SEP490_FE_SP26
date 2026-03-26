@@ -19,6 +19,7 @@ export const RELIEF_STATION_KEYS = {
   all: ['relief-stations'] as const,
   provincial: (params: SearchProvincialStationParams) =>
     [...RELIEF_STATION_KEYS.all, 'provincial', params] as const,
+  myStation: () => [...RELIEF_STATION_KEYS.all, 'my-station'] as const,
 };
 
 export const useProvincialStations = (params: SearchProvincialStationParams) => {
@@ -26,6 +27,16 @@ export const useProvincialStations = (params: SearchProvincialStationParams) => 
     queryKey: RELIEF_STATION_KEYS.provincial(params),
     queryFn: async () => {
       const response = await reliefStationService.getProvincialStations(params);
+      return response.data;
+    },
+  });
+};
+
+export const useMyStation = () => {
+  return useQuery({
+    queryKey: RELIEF_STATION_KEYS.myStation(),
+    queryFn: async () => {
+      const response = await reliefStationService.getMyStation();
       return response.data;
     },
   });

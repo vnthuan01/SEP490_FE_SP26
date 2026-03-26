@@ -33,6 +33,7 @@ export interface SearchProvincialStationParams {
   search?: string;
   pageIndex?: number;
   pageSize?: number;
+  level?: number;
 }
 
 export interface AssignModeratorPayload {
@@ -97,6 +98,8 @@ export const reliefStationService = {
 
   activateProvincialStation: (stationId: string) =>
     apiClient.put(`/relief-stations/provincial/${stationId}/activate`),
+
+  getMyStation: () => apiClient.get<ReliefStation>('/relief-stations/my-station'),
 
   // Station endpoints
   assignModerator: (stationId: string, data: AssignModeratorPayload) =>

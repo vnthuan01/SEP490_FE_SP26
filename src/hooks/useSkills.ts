@@ -1,24 +1,29 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { skillsService } from '@/services/skillsService';
-import type { CreateSkillPayload, UpdateSkillPayload } from '@/services/skillsService';
+import type {
+  CreateSkillPayload,
+  UpdateSkillPayload,
+  SearchSkillParams,
+} from '@/services/skillsService';
 
 export const SKILL_QUERY_KEYS = {
   all: ['skills'] as const,
-  detail: (id: string) => ['skills', id] as const,
+  list: (params?: SearchSkillParams) => [...SKILL_QUERY_KEYS.all, 'list', params] as const,
+  detail: (id: string) => [...SKILL_QUERY_KEYS.all, 'detail', id] as const,
 };
 
-export function useSkills(id?: string) {
+export function useSkills(id?: string, params?: SearchSkillParams) {
   const queryClient = useQueryClient();
 
   const {
-    data: skills,
+    data: skillsData,
     isLoading: isLoadingSkills,
     isError: isErrorSkills,
     refetch: refetchSkills,
   } = useQuery({
-    queryKey: SKILL_QUERY_KEYS.all,
+    queryKey: SKILL_QUERY_KEYS.list(params),
     queryFn: async () => {
-      const response = await skillsService.getAll();
+      const response = await skillsService.getAll(params);
       return response.data;
     },
   });
@@ -63,7 +68,17 @@ export function useSkills(id?: string) {
 
   return {
     // List Methods
-    skills: skills || [],
+    skills: skillsData?.items || [],
+    skillsPagination: skillsData
+      ? {
+          currentPage: skillsData.currentPage,
+          totalPages: skillsData.totalPages,
+          pageSize: skillsData.pageSize,
+          totalCount: skillsData.totalCount,
+          hasPrevious: skillsData.hasPrevious,
+          hasNext: skillsData.hasNext,
+        }
+      : null,
     isLoadingSkills,
     isErrorSkills,
     refetchSkills,
