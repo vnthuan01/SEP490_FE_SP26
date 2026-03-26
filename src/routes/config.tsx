@@ -17,6 +17,7 @@ import SettingsPage from '@/pages/user/settings';
 import ManagerStationPage from '@/pages/manager/ManagerStationPage';
 import ManagerVehicleManagementPage from '@/pages/manager/ManagerVehicleManagementPage';
 import ManagerInventoryCoordinationPage from '@/pages/manager/ManagerInventoryCoordinationPage';
+import ManagerCampaignPage from '@/pages/manager/ManagerCampaignPage';
 
 import type { AppRoute } from '@/types/routes';
 import RoleBasedRoute from './protectedRoute';
@@ -116,6 +117,12 @@ export const routes: AppRoute[] = [
   {
     path: '/portal/manager/inventory',
     element: <ManagerInventoryCoordinationPage />,
+    roles: [UserRole.Manager],
+    isProtected: true,
+  },
+  {
+    path: '/portal/manager/campaigns',
+    element: <ManagerCampaignPage />,
     roles: [UserRole.Manager],
     isProtected: true,
   },

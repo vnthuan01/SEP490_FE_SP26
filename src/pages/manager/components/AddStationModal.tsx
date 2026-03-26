@@ -17,6 +17,14 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useProvinces } from '@/hooks/useLocations';
 
 export interface CreateStationFormData {
   name: string;
@@ -34,12 +42,14 @@ interface AddStationModalProps {
 }
 
 export function AddStationModal({ open, onClose, onSubmit }: AddStationModalProps) {
+  const { data: provinces, isLoading: isLoadingProvinces } = useProvinces();
+
   const form = useForm<CreateStationFormData>({
     defaultValues: {
       name: '',
       address: '',
       contactNumber: '',
-      locationId: '3fa85f64-5717-4562-b3fc-2c963f66afa6', // default mock ID for now
+      locationId: '',
       latitude: 0,
       longitude: 0,
     },
@@ -56,7 +66,7 @@ export function AddStationModal({ open, onClose, onSubmit }: AddStationModalProp
 
   return (
     <Dialog open={open} onOpenChange={(val) => !val && onClose()}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Thêm trạm cứu trợ mới</DialogTitle>
           <DialogDescription>
@@ -82,6 +92,40 @@ export function AddStationModal({ open, onClose, onSubmit }: AddStationModalProp
                   <FormControl>
                     <Input placeholder="Vd: Trạm cứu trợ trung tâm..." {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="locationId"
+              rules={{ required: 'Vui lòng chọn Tỉnh/Thành phố' }}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Tỉnh/Thành phố <span className="text-destructive">*</span>
+                  </FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled={isLoadingProvinces}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={isLoadingProvinces ? 'Đang tải...' : 'Chọn Tỉnh/Thành phố'}
+                        />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {provinces?.map((province) => (
+                        <SelectItem key={province.id} value={province.id}>
+                          {province.fullName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
@@ -156,21 +200,6 @@ export function AddStationModal({ open, onClose, onSubmit }: AddStationModalProp
                 )}
               />
             </div>
-
-            <FormField
-              control={form.control}
-              name="locationId"
-              rules={{ required: 'Vui lòng chọn Tỉnh/Thành' }}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>ID Tỉnh/Thành (Tạm thời)</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
           </form>
         </Form>
 

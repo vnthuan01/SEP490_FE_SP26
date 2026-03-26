@@ -5,6 +5,11 @@ import { apiClient } from '@/lib/apiClients';
 export interface Inventory {
   inventoryId: string;
   reliefStationId: string;
+  reliefStationName: string;
+  levelName: string;
+  statusName: string;
+  totalStockSlots: number;
+  criticalCount: number;
   level: number;
   status: number;
 }
