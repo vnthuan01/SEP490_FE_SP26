@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import {
   Dialog,
@@ -38,10 +39,17 @@ export interface CreateStationFormData {
 interface AddStationModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: CreateStationFormData) => void;
+   
+  onSubmit: (formData: CreateStationFormData) => void;
+  defaultLocationId?: string;
 }
 
-export function AddStationModal({ open, onClose, onSubmit }: AddStationModalProps) {
+export function AddStationModal({
+  open,
+  onClose,
+  onSubmit,
+  defaultLocationId,
+}: AddStationModalProps) {
   const { data: provinces, isLoading: isLoadingProvinces } = useProvinces();
 
   const form = useForm<CreateStationFormData>({
@@ -49,17 +57,23 @@ export function AddStationModal({ open, onClose, onSubmit }: AddStationModalProp
       name: '',
       address: '',
       contactNumber: '',
-      locationId: '',
+      locationId: defaultLocationId || '',
       latitude: 0,
       longitude: 0,
     },
   });
 
-  const handleSubmitForm = (data: CreateStationFormData) => {
+  useEffect(() => {
+    if (open && defaultLocationId) {
+      form.setValue('locationId', defaultLocationId);
+    }
+  }, [open, defaultLocationId, form]);
+
+  const handleSubmitForm = (formData: CreateStationFormData) => {
     onSubmit({
-      ...data,
-      latitude: Number(data.latitude),
-      longitude: Number(data.longitude),
+      ...formData,
+      latitude: Number(formData.latitude),
+      longitude: Number(formData.longitude),
     });
     form.reset();
   };

@@ -62,6 +62,9 @@ export default function ManagerStationPage() {
   const stations = stationsResponse?.items || [];
   const pagination = stationsResponse;
 
+  // Helper: API may return `stationId` or `id`
+  const getStationId = (s: any): string => s.stationId ?? s.id ?? '';
+
   return (
     <DashboardLayout
       projects={[
@@ -145,83 +148,85 @@ export default function ManagerStationPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {stations.map((station) => (
-                      <TableRow
-                        key={station.id}
-                        className="group hover:bg-card/50 transition-colors"
-                      >
-                        <TableCell>
-                          <p className="font-bold text-foreground text-sm">{station.name}</p>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            ID: {station.id.slice(0, 8)}...
-                          </p>
-                        </TableCell>
-                        <TableCell>
-                          <span
-                            className="text-foreground text-sm max-w-[200px] truncate inline-block"
-                            title={station.address}
-                          >
-                            {station.address}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-foreground text-sm">{station.contactNumber}</span>
-                        </TableCell>
-                        <TableCell>
-                          {station.status === 0 ? (
-                            <Badge variant="success" size="sm" className="gap-1">
-                              <span className="material-symbols-outlined text-xs">
-                                check_circle
-                              </span>
-                              Hoạt động
-                            </Badge>
-                          ) : (
-                            <Badge variant="destructive" size="sm" className="gap-1">
-                              <span className="material-symbols-outlined text-xs">block</span>
-                              Vô hiệu hóa
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <span className="material-symbols-outlined">more_vert</span>
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem className="gap-2">
-                                <span className="material-symbols-outlined text-lg">edit</span>
-                                Chỉnh sửa
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="gap-2 text-primary">
-                                <span className="material-symbols-outlined text-lg">group_add</span>
-                                Gán quản lý / đội
-                              </DropdownMenuItem>
-                              {station.status === 0 ? (
-                                <DropdownMenuItem
-                                  className="gap-2 text-destructive"
-                                  onClick={() => handleDisable(station.id)}
-                                >
-                                  <span className="material-symbols-outlined text-lg">block</span>
-                                  Vô hiệu hóa trạm
+                    {stations.map((station) => {
+                      const sid = getStationId(station);
+                      return (
+                        <TableRow key={sid} className="group hover:bg-card/50 transition-colors">
+                          <TableCell>
+                            <p className="font-bold text-foreground text-sm">{station.name}</p>
+                            <p className="text-xs text-muted-foreground font-mono">
+                              ID: {sid ? sid.slice(0, 8) + '...' : '—'}
+                            </p>
+                          </TableCell>
+                          <TableCell>
+                            <span
+                              className="text-foreground text-sm max-w-[200px] truncate inline-block"
+                              title={station.address}
+                            >
+                              {station.address}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-foreground text-sm">{station.contactNumber}</span>
+                          </TableCell>
+                          <TableCell>
+                            {station.status === 0 ? (
+                              <Badge variant="success" size="sm" className="gap-1">
+                                <span className="material-symbols-outlined text-xs">
+                                  check_circle
+                                </span>
+                                Hoạt động
+                              </Badge>
+                            ) : (
+                              <Badge variant="destructive" size="sm" className="gap-1">
+                                <span className="material-symbols-outlined text-xs">block</span>
+                                Vô hiệu hóa
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <span className="material-symbols-outlined">more_vert</span>
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem className="gap-2">
+                                  <span className="material-symbols-outlined text-lg">edit</span>
+                                  Chỉnh sửa
                                 </DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuItem
-                                  className="gap-2 text-success"
-                                  onClick={() => handleActivate(station.id)}
-                                >
+                                <DropdownMenuItem className="gap-2 text-primary">
                                   <span className="material-symbols-outlined text-lg">
-                                    check_circle
+                                    group_add
                                   </span>
-                                  Kích hoạt trạm
+                                  Gán quản lý / đội
                                 </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                                {station.status === 0 ? (
+                                  <DropdownMenuItem
+                                    className="gap-2 text-destructive"
+                                    onClick={() => handleDisable(sid)}
+                                  >
+                                    <span className="material-symbols-outlined text-lg">block</span>
+                                    Vô hiệu hóa trạm
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem
+                                    className="gap-2 text-success"
+                                    onClick={() => handleActivate(sid)}
+                                  >
+                                    <span className="material-symbols-outlined text-lg">
+                                      check_circle
+                                    </span>
+                                    Kích hoạt trạm
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}

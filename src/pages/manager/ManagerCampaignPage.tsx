@@ -43,9 +43,15 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useForm } from 'react-hook-form';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCampaigns, useCreateCampaign, useUpdateCampaignStatus } from '@/hooks/useCampaigns';
 import { useProvinces } from '@/hooks/useLocations';
-import { useProvincialStations } from '@/hooks/useReliefStations';
+import {
+  useProvincialStations,
+  useCreateProvincialStation,
+  RELIEF_STATION_KEYS,
+} from '@/hooks/useReliefStations';
+import { AddStationModal, type CreateStationFormData } from './components/AddStationModal';
 import type { CreateCampaignPayload } from '@/services/campaignService';
 import { toast } from 'sonner';
 
@@ -88,6 +94,8 @@ export default function ManagerCampaignPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<number | undefined>(undefined);
   const [openCreateModal, setOpenCreateModal] = useState(false);
+  const [openAddStationModal, setOpenAddStationModal] = useState(false);
+  const queryClient = useQueryClient();
 
   const { campaigns, pagination, isLoading } = useCampaigns({
     pageIndex,
@@ -100,7 +108,11 @@ export default function ManagerCampaignPage() {
   const { mutateAsync: updateStatus } = useUpdateCampaignStatus();
 
   const { data: provinces } = useProvinces();
-  const { data: stationsData } = useProvincialStations({ pageSize: 100 });
+  const { data: stationsData, isLoading: isLoadingStations } = useProvincialStations({
+    pageSize: 100,
+  });
+  const { mutateAsync: createStation } = useCreateProvincialStation();
+
   const stations = stationsData?.items || [];
 
   const form = useForm<CreateCampaignFormValues>({
@@ -137,6 +149,24 @@ export default function ManagerCampaignPage() {
       form.reset();
     } catch {
       // error is handled by the hook
+    }
+  };
+
+  const handleCreateStation = async (data: CreateStationFormData) => {
+    try {
+      const newStation = await createStation(data);
+      // Wait for the stations list to refresh before selecting the new station
+      await queryClient.invalidateQueries({ queryKey: RELIEF_STATION_KEYS.all });
+      const newId = newStation?.data?.id;
+      if (newId) {
+        // Use setTimeout to ensure React has re-rendered with new data
+        setTimeout(() => {
+          form.setValue('reliefStationId', newId);
+        }, 100);
+      }
+      setOpenAddStationModal(false);
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -510,24 +540,46 @@ export default function ManagerCampaignPage() {
                 name="reliefStationId"
                 rules={{ required: 'Vui lòng chọn Trạm cứu trợ' }}
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="flex flex-col">
                     <FormLabel>
                       Trạm cứu trợ phụ trách <span className="text-destructive">*</span>
                     </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn trạm cứu trợ" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {stations.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {isLoadingStations ? (
+                      <div className="h-10 border rounded px-3 py-2 text-sm text-muted-foreground bg-muted/50">
+                        Đang tải danh sách trạm...
+                      </div>
+                    ) : stations.length === 0 ? (
+                      <div className="flex flex-col gap-2">
+                        <div className="h-10 border rounded px-3 py-2 text-sm text-muted-foreground bg-muted/50">
+                          Chưa có trạm cứu trợ nào
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="w-fit"
+                          onClick={() => setOpenAddStationModal(true)}
+                        >
+                          <span className="material-symbols-outlined text-sm mr-1">add</span>
+                          Tạo trạm cứu trợ mới
+                        </Button>
+                      </div>
+                    ) : (
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn trạm cứu trợ" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {stations.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -652,6 +704,13 @@ export default function ManagerCampaignPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Sub-modal: Add Station */}
+      <AddStationModal
+        open={openAddStationModal}
+        onClose={() => setOpenAddStationModal(false)}
+        onSubmit={handleCreateStation}
+        defaultLocationId={form.getValues('locationId')}
+      />
     </DashboardLayout>
   );
 }
