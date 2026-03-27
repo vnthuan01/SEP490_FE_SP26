@@ -7,9 +7,13 @@ export interface UserProfile {
   displayName: string | null;
   email: string;
   phoneNumber: string | null;
+  address: string | null;
   dateOfBirth: string | null;
   gender: string | null;
   pictureUrl: string | null;
+  banReason: string | null;
+  isBanned: boolean;
+  lockoutEnd: string | null;
   roles: string[];
 }
 
@@ -18,6 +22,7 @@ export interface UpdateProfilePayload {
   phoneNumber?: string;
   dateOfBirth?: string;
   gender?: string;
+  address?: string;
   pictureUrl?: string;
   picturePublicId?: string;
 }
@@ -35,6 +40,17 @@ export interface PaginatedResponse<T> {
 export interface PaginatedParams {
   pageIndex?: number;
   pageSize?: number;
+  search?: string;
+  role?: string;
+  isBanned?: boolean;
+}
+
+export interface BanUserPayload {
+  reason: string;
+}
+
+export interface UnbanUserPayload {
+  note: string;
 }
 
 // === Service ===
@@ -52,4 +68,14 @@ export const userService = {
   /** GET /User/all — admin lấy danh sách users có phân trang */
   getAll: (params?: PaginatedParams) =>
     apiClient.get<PaginatedResponse<UserProfile>>('/User/all', { params }),
+
+  /** GET /User/my-volunteer-profile — Lấy hồ sơ volunteer của user đang đăng nhập */
+  getMyVolunteerProfile: () => apiClient.get<any>('/User/my-volunteer-profile'),
+
+  /** PUT /User/{userId}/ban — Admin khóa tài khoản user */
+  banUser: (userId: string, data: BanUserPayload) => apiClient.put(`/User/${userId}/ban`, data),
+
+  /** PUT /User/{userId}/unban — Admin mở khóa tài khoản user */
+  unbanUser: (userId: string, data: UnbanUserPayload) =>
+    apiClient.put(`/User/${userId}/unban`, data),
 };

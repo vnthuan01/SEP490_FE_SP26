@@ -20,16 +20,87 @@ import { useState } from 'react';
 import { AddUserModal } from './components/AddUserModal';
 import { useAllUsers } from '@/hooks/useUsers';
 import { StatsCard } from '@/pages/admin/components/StatsCard';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useBanUser, useUnbanUser } from '@/hooks/useUsers';
+import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 
 export default function AdminUserManagementPage() {
   const [openAddUser, setOpenAddUser] = useState(false);
   const [pageIndex, setPageIndex] = useState(1);
-  const pageSize = 10;
+  const [pageSize] = useState(10);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<boolean | undefined>(undefined);
+
+  // States for Ban/Unban dialogs
+  const [banUserDialog, setBanUserDialog] = useState<{
+    open: boolean;
+    userId: string;
+    email: string;
+  }>({
+    open: false,
+    userId: '',
+    email: '',
+  });
+  const [banReason, setBanReason] = useState('');
+  const [unbanUserDialog, setUnbanUserDialog] = useState<{
+    open: boolean;
+    userId: string;
+    email: string;
+  }>({
+    open: false,
+    userId: '',
+    email: '',
+  });
 
   const { users, pagination, isLoading, refetch } = useAllUsers({
     pageIndex,
     pageSize,
+    search: search || undefined,
+    role: roleFilter,
+    isBanned: statusFilter,
   });
+
+  const { mutateAsync: banUser } = useBanUser();
+  const { mutateAsync: unbanUser } = useUnbanUser();
+
+  const handleBanUser = async () => {
+    try {
+      await banUser({ userId: banUserDialog.userId, data: { reason: banReason } });
+      toast.success(`Đã khóa người dùng ${banUserDialog.email}`);
+      setBanUserDialog({ open: false, userId: '', email: '' });
+      setBanReason('');
+      refetch();
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleUnbanUser = async () => {
+    try {
+      await unbanUser({ userId: unbanUserDialog.userId, data: { note: 'Admin unbanned' } });
+      toast.success(`Đã mở khóa người dùng ${unbanUserDialog.email}`);
+      setUnbanUserDialog({ open: false, userId: '', email: '' });
+      refetch();
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const handleCreateUser = async () => {
     console.log('Đã tạo user thành công');
@@ -119,20 +190,53 @@ export default function AdminUserManagementPage() {
               <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-muted-foreground dark:text-muted-foreground">
                 search
               </span>
-              <Input className="pl-10 w-full" placeholder="Tìm kiếm theo tên, email, SĐT..." />
+              <Input
+                className="pl-10 w-full"
+                placeholder="Tìm kiếm theo tên, email, SĐT..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPageIndex(1);
+                }}
+              />
             </div>
             <div className="flex w-full sm:w-auto items-center gap-3">
-              <Button variant="outline" size="md" className="gap-2 min-w-[140px] justify-between">
+              <Button
+                variant="outline"
+                size="md"
+                className="gap-2 min-w-[140px] justify-between"
+                onClick={() => {
+                  // Giả lập chọn role, thực tế có thể dùng DropdownMenu
+                  const roles = [undefined, 'Admin', 'Manager', 'Moderator', 'Volunteer'];
+                  const currentIndex = roles.indexOf(roleFilter);
+                  setRoleFilter(roles[(currentIndex + 1) % roles.length]);
+                  setPageIndex(1);
+                }}
+              >
                 <span className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-lg">filter_list</span>
-                  Vai trò: Tất cả
+                  Vai trò: {roleFilter || 'Tất cả'}
                 </span>
                 <span className="material-symbols-outlined text-lg">arrow_drop_down</span>
               </Button>
-              <Button variant="outline" size="md" className="gap-2 min-w-[140px] justify-between">
+              <Button
+                variant="outline"
+                size="md"
+                className="gap-2 min-w-[140px] justify-between"
+                onClick={() => {
+                  const statuses = [undefined, true, false];
+                  const currentIndex = statuses.indexOf(statusFilter);
+                  setStatusFilter(statuses[(currentIndex + 1) % statuses.length]);
+                  setPageIndex(1);
+                }}
+              >
                 <span className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-lg">toggle_on</span>
-                  Trạng thái
+                  {statusFilter === undefined
+                    ? 'Trạng thái'
+                    : statusFilter
+                      ? 'Đã khóa'
+                      : 'Hoạt động'}
                 </span>
                 <span className="material-symbols-outlined text-lg">arrow_drop_down</span>
               </Button>
@@ -171,7 +275,7 @@ export default function AdminUserManagementPage() {
                       <TableHead>Người dùng</TableHead>
                       <TableHead>Vai trò</TableHead>
                       <TableHead>Số điện thoại</TableHead>
-                      <TableHead>Giới tính</TableHead>
+                      <TableHead>Trạng thái</TableHead>
                       <TableHead className="text-right">Thao tác</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -228,18 +332,69 @@ export default function AdminUserManagementPage() {
                           </span>
                         </TableCell>
                         <TableCell>
-                          <span className="text-foreground dark:text-foreground text-sm">
-                            {user.gender === 'Male' ? 'Nam' : user.gender === 'Female' ? 'Nữ' : '—'}
-                          </span>
+                          {user.isBanned ? (
+                            <Badge variant="destructive" size="sm" className="gap-1">
+                              <span className="material-symbols-outlined text-xs">block</span>
+                              Đã bị khóa
+                            </Badge>
+                          ) : (
+                            <Badge variant="success" size="sm" className="gap-1">
+                              <span className="material-symbols-outlined text-xs">
+                                check_circle
+                              </span>
+                              Đang hoạt động
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-muted-foreground dark:text-muted-foreground hover:text-foreground dark:hover:text-foreground"
-                          >
-                            <span className="material-symbols-outlined">more_vert</span>
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-muted-foreground dark:text-muted-foreground hover:text-foreground dark:hover:text-foreground"
+                              >
+                                <span className="material-symbols-outlined">more_vert</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem className="gap-2">
+                                <span className="material-symbols-outlined text-lg">edit</span>
+                                Chỉnh sửa (Soon)
+                              </DropdownMenuItem>
+                              {user.isBanned ? (
+                                <DropdownMenuItem
+                                  className="gap-2 text-success"
+                                  onClick={() =>
+                                    setUnbanUserDialog({
+                                      open: true,
+                                      userId: user.id,
+                                      email: user.email,
+                                    })
+                                  }
+                                >
+                                  <span className="material-symbols-outlined text-lg">
+                                    lock_open
+                                  </span>
+                                  Mở khóa tài khoản
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  className="gap-2 text-destructive"
+                                  onClick={() =>
+                                    setBanUserDialog({
+                                      open: true,
+                                      userId: user.id,
+                                      email: user.email,
+                                    })
+                                  }
+                                >
+                                  <span className="material-symbols-outlined text-lg">block</span>
+                                  Khóa tài khoản
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -309,6 +464,71 @@ export default function AdminUserManagementPage() {
         onClose={() => setOpenAddUser(false)}
         onSubmit={handleCreateUser}
       />
+
+      {/* Ban User Dialog */}
+      <Dialog
+        open={banUserDialog.open}
+        onOpenChange={(open) => !open && setBanUserDialog({ open: false, userId: '', email: '' })}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Khóa tài khoản người dùng</DialogTitle>
+            <DialogDescription>
+              Bạn đang thực hiện khóa tài khoản <b>{banUserDialog.email}</b>. Người dùng sẽ không
+              thể đăng nhập cho đến khi được mở khóa.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="reason">Lý do khóa tài khoản</Label>
+              <Textarea
+                id="reason"
+                placeholder="Ví dụ: Vi phạm điều khoản, spam..."
+                value={banReason}
+                onChange={(e) => setBanReason(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setBanUserDialog({ open: false, userId: '', email: '' })}
+            >
+              Hủy
+            </Button>
+            <Button variant="destructive" onClick={handleBanUser} disabled={!banReason}>
+              Xác nhận khóa
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unban User Dialog */}
+      <Dialog
+        open={unbanUserDialog.open}
+        onOpenChange={(open) => !open && setUnbanUserDialog({ open: false, userId: '', email: '' })}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mở khóa tài khoản</DialogTitle>
+            <DialogDescription>
+              Xác nhận mở khóa cho tài khoản <b>{unbanUserDialog.email}</b>? Người dùng sẽ có thể
+              truy cập lại hệ thống ngay lập tức.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setUnbanUserDialog({ open: false, userId: '', email: '' })}
+            >
+              Hủy
+            </Button>
+            <Button variant="primary" onClick={handleUnbanUser}>
+              Xác nhận mở khóa
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

@@ -12,6 +12,13 @@ import CoordinatorInventoryPage from '@/pages/coordinator/InventoryPage';
 import CoordinatorVolunteerAllocationPage from '@/pages/coordinator/VolunteerAllocationPage';
 import CoordinatorDataManagementPage from '@/pages/coordinator/DataManagementPage';
 import SettingsPage from '@/pages/user/settings';
+
+// Manager pages
+import ManagerStationPage from '@/pages/manager/ManagerStationPage';
+import ManagerVehicleManagementPage from '@/pages/manager/ManagerVehicleManagementPage';
+import ManagerInventoryCoordinationPage from '@/pages/manager/ManagerInventoryCoordinationPage';
+import ManagerCampaignPage from '@/pages/manager/ManagerCampaignPage';
+
 import type { AppRoute } from '@/types/routes';
 import RoleBasedRoute from './protectedRoute';
 import { Navigate } from 'react-router-dom';
@@ -91,6 +98,32 @@ export const routes: AppRoute[] = [
     path: '/portal/coordinator/volunteer-allocation',
     element: <CoordinatorVolunteerAllocationPage />,
     roles: [UserRole.Coordinator],
+    isProtected: true,
+  },
+
+  // Manager routes
+  {
+    path: '/portal/manager/stations',
+    element: <ManagerStationPage />,
+    roles: [UserRole.Manager],
+    isProtected: true,
+  },
+  {
+    path: '/portal/manager/vehicles',
+    element: <ManagerVehicleManagementPage />,
+    roles: [UserRole.Manager],
+    isProtected: true,
+  },
+  {
+    path: '/portal/manager/inventory',
+    element: <ManagerInventoryCoordinationPage />,
+    roles: [UserRole.Manager],
+    isProtected: true,
+  },
+  {
+    path: '/portal/manager/campaigns',
+    element: <ManagerCampaignPage />,
+    roles: [UserRole.Manager],
     isProtected: true,
   },
 

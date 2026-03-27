@@ -6,6 +6,7 @@ import type { PaginatedParams } from '@/services/userService';
 
 export const USER_QUERY_KEYS = {
   profile: ['user', 'profile'] as const,
+  volunteerProfile: ['user', 'volunteerProfile'] as const,
   all: (params?: PaginatedParams) => ['users', 'all', params] as const,
 };
 
@@ -72,4 +73,40 @@ export function useAllUsers(params?: PaginatedParams) {
     isError,
     refetch,
   };
+}
+
+// === 3. Additional Admin and Profile Hooks ===
+
+export function useMyVolunteerProfile() {
+  return useQuery({
+    queryKey: USER_QUERY_KEYS.volunteerProfile,
+    queryFn: async () => {
+      const response = await userService.getMyVolunteerProfile();
+      return response.data;
+    },
+  });
+}
+
+export function useBanUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, data }: { userId: string; data: { reason: string } }) =>
+      userService.banUser(userId, data),
+    onSuccess: () => {
+      // Invalidate all related lists
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}
+
+export function useUnbanUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, data }: { userId: string; data: { note: string } }) =>
+      userService.unbanUser(userId, data),
+    onSuccess: () => {
+      // Invalidate all related lists
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
 }

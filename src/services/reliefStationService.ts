@@ -2,6 +2,7 @@ import { apiClient } from '@/lib/apiClients';
 
 export interface ReliefStation {
   id: string;
+  stationId?: string; // API may return stationId instead of id
   locationId: string;
   name: string;
   address: string;
@@ -33,6 +34,7 @@ export interface SearchProvincialStationParams {
   search?: string;
   pageIndex?: number;
   pageSize?: number;
+  level?: number;
 }
 
 export interface AssignModeratorPayload {
@@ -97,6 +99,8 @@ export const reliefStationService = {
 
   activateProvincialStation: (stationId: string) =>
     apiClient.put(`/relief-stations/provincial/${stationId}/activate`),
+
+  getMyStation: () => apiClient.get<ReliefStation>('/relief-stations/my-station'),
 
   // Station endpoints
   assignModerator: (stationId: string, data: AssignModeratorPayload) =>

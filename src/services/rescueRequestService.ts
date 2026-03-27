@@ -5,6 +5,25 @@ export interface AttachmentPayload {
   contentType: string;
 }
 
+export interface RescueRequest {
+  rescueRequestId: string;
+  rescueType: number;
+  disasterType: number;
+  description: string;
+  latitude: number;
+  longitude: number;
+  address: string;
+  note: string;
+  reporterFullName: string;
+  reporterPhone: string;
+  verificationStatus: number;
+  status: number;
+  createdAt: string;
+  updatedAt: string;
+  attachments?: AttachmentPayload[];
+  selectedPriorityCriteriaIds?: string[];
+}
+
 export interface CreateRescueRequestPayload {
   rescueType: number;
   disasterType: number;
@@ -40,23 +59,27 @@ export interface GetPendingRescueRequestsParams {
 }
 
 export interface PaginatedResponse<T> {
+  data: T[];
   totalCount: number;
   pageNumber: number;
   pageSize: number;
-  items: T[];
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
 }
 
 export const rescueRequestService = {
-  create: (data: CreateRescueRequestPayload) => apiClient.post<any>('/RescueRequest', data),
+  create: (data: CreateRescueRequestPayload) =>
+    apiClient.post<RescueRequest>('/RescueRequest', data),
 
   getAll: (params: GetRescueRequestsParams) =>
-    apiClient.get<PaginatedResponse<any>>('/RescueRequest', { params }),
+    apiClient.get<PaginatedResponse<RescueRequest>>('/RescueRequest', { params }),
 
-  getById: (id: string) => apiClient.get<any>(`/RescueRequest/${id}`),
+  getById: (id: string) => apiClient.get<RescueRequest>(`/RescueRequest/${id}`),
 
   verify: (id: string, data: VerifyRescueRequestPayload) =>
-    apiClient.post(`/RescueRequest/${id}/verify`, data),
+    apiClient.post<RescueRequest>(`/RescueRequest/${id}/verify`, data),
 
   getPendingList: (params: GetPendingRescueRequestsParams) =>
-    apiClient.get<PaginatedResponse<any>>('/RescueRequest/pending/list', { params }),
+    apiClient.get<PaginatedResponse<RescueRequest>>('/RescueRequest/pending/list', { params }),
 };
