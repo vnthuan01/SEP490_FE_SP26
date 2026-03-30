@@ -1,11 +1,34 @@
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
 
 export default function CoordinatorDashboardPage() {
   return (
-    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+    <DashboardLayout
+      projects={[
+        { label: 'Tổng quan', path: '/portal/coordinator/data-management', icon: 'dashboard' },
+        { label: 'Điều phối & Bản đồ', path: '/portal/coordinator/maps', icon: 'map' },
+        { label: 'Đội tình nguyện', path: '/portal/coordinator/teams', icon: 'groups' },
+        {
+          label: 'Yêu cầu tình nguyện',
+          path: '/portal/coordinator/volunteer-request',
+          icon: 'how_to_reg',
+        },
+        {
+          label: 'Yêu cầu cứu trợ',
+          path: '/portal/coordinator/requests',
+          icon: 'person_raised_hand',
+        },
+        {
+          label: 'Kho vận & Nhu yếu phẩm',
+          path: '/portal/coordinator/inventory',
+          icon: 'inventory_2',
+        },
+      ]}
+      navItems={[
+        { label: 'Báo cáo & Thống kê', path: '/portal/coordinator/dashboard', icon: 'description' },
+      ]}
+    >
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
         <div className="flex flex-col gap-2">

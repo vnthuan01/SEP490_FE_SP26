@@ -17,7 +17,6 @@ export const TEAM_QUERY_KEYS = {
   myTeams: ['teams', 'my-teams'] as const,
   myTeam: ['teams', 'my-team'] as const,
   members: (id: string) => ['teams', id, 'members'] as const,
-  inStation: (stationId: string) => ['teams', 'in-station', stationId] as const,
 };
 
 // 1. Main hook for global teams management
@@ -139,33 +138,7 @@ export function useMyTeams() {
   return { myTeams, isLoading, isError, refetch };
 }
 
-// 3. Hook lấy danh sách team theo trạm cứu trợ
-export function useTeamsInStation(stationId?: string) {
-  const {
-    data: pagedTeams,
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
-    queryKey: stationId ? TEAM_QUERY_KEYS.inStation(stationId) : [],
-    queryFn: async () => {
-      if (!stationId) throw new Error('ReliefStationId is required');
-      const response = await teamService.getTeamsInStation(stationId);
-      return response.data;
-    },
-    enabled: !!stationId,
-  });
-
-  return {
-    teams: pagedTeams?.items || [],
-    paging: pagedTeams,
-    isLoading,
-    isError,
-    refetch,
-  };
-}
-
-// 4. Hook cho Volunteer lấy team hiện tại của mình
+// 3. Hook cho Volunteer lấy team hiện tại của mình
 export function useMyTeam() {
   const {
     data: myTeam,
@@ -183,7 +156,7 @@ export function useMyTeam() {
   return { myTeam, isLoading, isError, refetch };
 }
 
-// 5. Hook quản lý members trong 1 team cụ thể
+// 4. Hook quản lý members trong 1 team cụ thể
 export function useTeamMembers(teamId: string) {
   const queryClient = useQueryClient();
 

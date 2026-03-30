@@ -9,10 +9,7 @@ import { getAdministrativeBoundary } from '@/services/goongService';
 
 interface ReliefMapProps {
   locations: ReliefLocation[];
-  teams?: Team[];
   headquarters: Headquarters;
-  availableTeams?: Team[];
-  onAssignTeam?: (locationId: string, teamId: string) => void;
   onLocationSelect: (location: ReliefLocation) => void;
   selectedLocationId?: string;
   apiKey: string;

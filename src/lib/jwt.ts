@@ -1,13 +1,7 @@
 export function decodeJwt(token: string) {
   try {
     const base64Url = token.split('.')[1];
-    if (!base64Url) return null;
-
-    // Convert base64url -> base64 and ensure valid padding
-    const normalized = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const padding = '='.repeat((4 - (normalized.length % 4)) % 4);
-    const base64 = normalized + padding;
-
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
     const jsonPayload = decodeURIComponent(
       window
         .atob(base64)
@@ -26,16 +20,7 @@ export function decodeJwt(token: string) {
 export function getUserRoleFromToken(token: string): string | null {
   const decoded = decodeJwt(token);
   if (!decoded) return null;
-
-  const role =
-    decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ||
-    decoded['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role'] ||
-    decoded.role ||
-    (Array.isArray(decoded.roles) ? decoded.roles[0] : decoded.roles) ||
-    null;
-
-  if (typeof role !== 'string') return null;
-  return role.trim();
+  return decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] || null;
 }
 
 export function getUserIdFromToken(token: string): string | null {

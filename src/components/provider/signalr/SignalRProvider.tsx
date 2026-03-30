@@ -16,13 +16,14 @@ interface SignalRProviderProps {
 }
 
 export function SignalRProvider({ children }: SignalRProviderProps) {
+  const [connection, setConnection] = useState<HubConnection | null>(null);
   const [connectionId, setConnectionId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const connection = useMemo(() => getSignalRConnection(), []);
 
   useEffect(() => {
     let isMounted = true;
-    const conn = connection;
+    const conn = getSignalRConnection();
+    setConnection(conn);
 
     startSignalRConnection()
       .then(async () => {
@@ -47,7 +48,7 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
       isMounted = false;
       conn.stop().catch(() => {});
     };
-  }, [connection]);
+  }, []);
 
   const value = useMemo<SignalRContextValue>(
     () => ({

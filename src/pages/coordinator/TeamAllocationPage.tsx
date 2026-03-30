@@ -15,7 +15,6 @@ import { LocationList } from './components/LocationList';
 import { ReliefMap } from './components/ReliefMap';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { LocationDetailSheet } from './components/LocationDetailSheet';
-import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
 
 const GOONG_API_KEY = import.meta.env.VITE_GOONG_MAP_KEY || '';
 
@@ -54,7 +53,7 @@ export default function CoordinatorTeamAllocationPage() {
         },
       };
     });
-  }, []);
+  }, [reliefLocationsData]);
 
   // Filtered locations
   const filteredLocations = useMemo(() => {
@@ -146,7 +145,35 @@ export default function CoordinatorTeamAllocationPage() {
 
   if (!GOONG_API_KEY) {
     return (
-      <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+      <DashboardLayout
+        projects={[
+          { label: 'Tổng quan', path: '/portal/coordinator/data-management', icon: 'dashboard' },
+          { label: 'Điều phối & Bản đồ', path: '/portal/coordinator/maps', icon: 'map' },
+          { label: 'Đội tình nguyện', path: '/portal/coordinator/teams', icon: 'groups' },
+          {
+            label: 'Yêu cầu tình nguyện',
+            path: '/portal/coordinator/volunteer-requests',
+            icon: 'how_to_reg',
+          },
+          {
+            label: 'Yêu cầu cứu trợ',
+            path: '/portal/coordinator/requests',
+            icon: 'person_raised_hand',
+          },
+          {
+            label: 'Kho vận & Nhu yếu phẩm',
+            path: '/portal/coordinator/inventory',
+            icon: 'inventory_2',
+          },
+        ]}
+        navItems={[
+          {
+            label: 'Báo cáo & Thống kê',
+            path: '/portal/coordinator/dashboard',
+            icon: 'description',
+          },
+        ]}
+      >
         <div className="flex items-center justify-center h-[calc(100vh-64px)]">
           <Card className="p-6">
             <CardContent className="text-center space-y-4">
@@ -275,7 +302,31 @@ export default function CoordinatorTeamAllocationPage() {
 
   // Normal mode with sidebar
   return (
-    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+    <DashboardLayout
+      projects={[
+        { label: 'Tổng quan', path: '/portal/coordinator/data-management', icon: 'dashboard' },
+        { label: 'Điều phối & Bản đồ', path: '/portal/coordinator/maps', icon: 'map' },
+        { label: 'Đội tình nguyện', path: '/portal/coordinator/teams', icon: 'groups' },
+        {
+          label: 'Yêu cầu tình nguyện',
+          path: '/portal/coordinator/volunteer-requests',
+          icon: 'how_to_reg',
+        },
+        {
+          label: 'Yêu cầu cứu trợ',
+          path: '/portal/coordinator/requests',
+          icon: 'person_raised_hand',
+        },
+        {
+          label: 'Kho vận & Nhu yếu phẩm',
+          path: '/portal/coordinator/inventory',
+          icon: 'inventory_2',
+        },
+      ]}
+      navItems={[
+        { label: 'Báo cáo & Thống kê', path: '/portal/coordinator/dashboard', icon: 'description' },
+      ]}
+    >
       <div className="h-[calc(100vh-64px)] flex flex-col overflow-hidden">
         <FilterBar
           search={search}
