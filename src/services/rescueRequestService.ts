@@ -1,190 +1,85 @@
 import { apiClient } from '@/lib/apiClients';
 
-export interface RescueOperationItem {
-  rescueOperationId?: string;
-  stationName?: string | null;
-  startedAt?: string | null;
-  [key: string]: unknown;
+export interface AttachmentPayload {
+  fileUrl: string;
+  contentType: string;
 }
 
-export interface RescueAttachmentItem {
-  attachmentId?: string;
-  fileUrl?: string | null;
-  contentType?: string | null;
-  uploadedAt?: string | null;
+export interface RescueRequest {
+  rescueRequestId: string;
+  rescueType: number;
+  disasterType: number;
+  description: string;
+  latitude: number;
+  longitude: number;
+  address: string;
+  note: string;
+  reporterFullName: string;
+  reporterPhone: string;
+  verificationStatus: number;
+  status: number;
+  createdAt: string;
+  updatedAt: string;
+  attachments?: AttachmentPayload[];
+  selectedPriorityCriteriaIds?: string[];
 }
 
-export interface RequestVerificationItem {
-  requestVerificationId?: string;
-  status?: number | string | null;
-  method?: number | null;
-  note?: string | null;
-  reason?: string | null;
-  verifiedBy?: string | null;
-  verifiedAt?: string | null;
-  [key: string]: unknown;
-}
-
-export interface RescueRequestItem {
-  requestId?: string;
-  rescueRequestId?: string;
-  id?: string;
-  disasterType?: string | null;
-  rescueRequestType?: string | number | null;
-  description?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  address?: string | null;
-  reporterFullName?: string | null;
-  reporterPhone?: string | null;
-  priority?: number | null;
-  rescueRequestStatus?: string | number | null;
-  dispatchMode?: string | null;
-  note?: string | null;
-  stationToRequestDistanceKm?: number | null;
-  stationToRequestDurationMinutes?: number | null;
-  stationToRequestDistanceMeters?: number | null;
-  stationToRequestDurationSeconds?: number | null;
-  createdAt?: string | null;
-  updatedAt?: string | null;
-  attachments?: RescueAttachmentItem[];
-  rescueOperations?: RescueOperationItem[];
-  verifications?: RequestVerificationItem[];
-  [key: string]: unknown;
+export interface CreateRescueRequestPayload {
+  rescueType: number;
+  disasterType: number;
+  description: string;
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+  address: string;
+  locationId: string;
+  note: string;
+  reporterFullName: string;
+  reporterPhone: string;
+  attachments: AttachmentPayload[];
+  selectedPriorityCriteriaIds: string[];
 }
 
 export interface VerifyRescueRequestPayload {
   status: number;
   method: number;
-  note?: string;
-  reason?: string;
-}
-
-export interface RejectRescueRequestPayload {
-  method: number;
+  note: string;
   reason: string;
-  note?: string;
 }
 
-export interface AssignTeamPayload {
-  teamId: string;
-  note?: string;
-}
-
-export interface AssignTeamBulkPayload {
-  teamId: string;
-  requestIds: string[];
-  note?: string;
-}
-
-export interface RescueRequestPaging {
-  currentPage?: number;
-  totalPages?: number;
+export interface GetRescueRequestsParams {
+  pageNumber?: number;
   pageSize?: number;
-  totalCount?: number;
-  hasPrevious?: boolean;
-  hasNext?: boolean;
+  statusFilter?: number;
 }
 
-export interface RescueRequestListResult {
-  items: RescueRequestItem[];
-  paging: RescueRequestPaging | null;
+export interface GetPendingRescueRequestsParams {
+  pageNumber?: number;
+  pageSize?: number;
 }
 
-const isArray = (value: unknown): value is unknown[] => Array.isArray(value);
-
-const parsePaging = (source: any): RescueRequestPaging | null => {
-  if (!source || typeof source !== 'object') return null;
-
-  const hasPagingFields =
-    source.currentPage !== undefined ||
-    source.totalPages !== undefined ||
-    source.pageSize !== undefined ||
-    source.totalCount !== undefined ||
-    source.hasPrevious !== undefined ||
-    source.hasNext !== undefined;
-
-  if (!hasPagingFields) return null;
-
-  return {
-    currentPage: source.currentPage,
-    totalPages: source.totalPages,
-    pageSize: source.pageSize,
-    totalCount: source.totalCount,
-    hasPrevious: source.hasPrevious,
-    hasNext: source.hasNext,
-  };
-};
-
-export const normalizeRescueRequestListResponse = (payload: unknown): RescueRequestListResult => {
-  if (isArray(payload)) {
-    return {
-      items: payload as RescueRequestItem[],
-      paging: null,
-    };
-  }
-
-  const obj = payload as any;
-
-  // Shape A: root contains pagination + items
-  if (obj && isArray(obj.items)) {
-    return {
-      items: obj.items as RescueRequestItem[],
-      paging: parsePaging(obj),
-    };
-  }
-
-  // Shape B: wrapped object { data: RescueRequestItem[] }
-  if (obj && isArray(obj.data)) {
-    return {
-      items: obj.data as RescueRequestItem[],
-      paging: parsePaging(obj),
-    };
-  }
-
-  // Common fallback: { data: { items: [...] } }
-  if (obj?.data && isArray(obj.data.items)) {
-    return {
-      items: obj.data.items as RescueRequestItem[],
-      paging: parsePaging(obj.data) || parsePaging(obj),
-    };
-  }
-
-  return {
-    items: [],
-    paging: parsePaging(obj),
-  };
-};
+export interface PaginatedResponse<T> {
+  data: T[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
 
 export const rescueRequestService = {
-  getRequests: async (statusFilter: number | undefined, pageNumber = 1, pageSize = 10) => {
-    const params: Record<string, number> = { pageNumber, pageSize };
-    if (typeof statusFilter === 'number') {
-      params.statusFilter = statusFilter;
-    }
+  create: (data: CreateRescueRequestPayload) =>
+    apiClient.post<RescueRequest>('/RescueRequest', data),
 
-    const response = await apiClient.get('/RescueRequest', { params });
+  getAll: (params: GetRescueRequestsParams) =>
+    apiClient.get<PaginatedResponse<RescueRequest>>('/RescueRequest', { params }),
 
-    return normalizeRescueRequestListResponse(response.data);
-  },
+  getById: (id: string) => apiClient.get<RescueRequest>(`/RescueRequest/${id}`),
 
-  getPendingRequests: async (pageNumber = 1, pageSize = 10) => {
-    const response = await apiClient.get('/RescueRequest', {
-      params: { statusFilter: 0, pageNumber, pageSize },
-    });
+  verify: (id: string, data: VerifyRescueRequestPayload) =>
+    apiClient.post<RescueRequest>(`/RescueRequest/${id}/verify`, data),
 
-    return normalizeRescueRequestListResponse(response.data);
-  },
-
-  verifyRequest: (requestId: string, payload: VerifyRescueRequestPayload) =>
-    apiClient.post(`/RescueRequest/${requestId}/verify`, payload),
-
-  rejectRequest: (requestId: string, payload: RejectRescueRequestPayload) =>
-    apiClient.post(`/RescueRequest/${requestId}/verify`, payload),
-
-  assignTeam: (requestId: string, payload: AssignTeamPayload) =>
-    apiClient.post(`/RescueRequest/${requestId}/assign-team`, payload),
-
-  assignTeamBulk: (payload: AssignTeamBulkPayload) =>
-    apiClient.post('/RescueRequest/assign-team-bulk', payload),
+  getPendingList: (params: GetPendingRescueRequestsParams) =>
+    apiClient.get<PaginatedResponse<RescueRequest>>('/RescueRequest/pending/list', { params }),
 };

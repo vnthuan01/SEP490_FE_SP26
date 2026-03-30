@@ -14,6 +14,13 @@ import CoordinatorVolunteerAllocationPage from '@/pages/coordinator/VolunteerAll
 import CoordinatorDataManagementPage from '@/pages/coordinator/DataManagementPage';
 import ReliefStationPage from '@/pages/coordinator/ReliefStationPage';
 import SettingsPage from '@/pages/user/settings';
+
+// Manager pages
+import ManagerStationPage from '@/pages/manager/ManagerStationPage';
+import ManagerVehicleManagementPage from '@/pages/manager/ManagerVehicleManagementPage';
+import ManagerInventoryCoordinationPage from '@/pages/manager/ManagerInventoryCoordinationPage';
+import ManagerCampaignPage from '@/pages/manager/ManagerCampaignPage';
+
 import type { AppRoute } from '@/types/routes';
 import RoleBasedRoute from './protectedRoute';
 import { Navigate } from 'react-router-dom';
@@ -30,19 +37,19 @@ export const routes: AppRoute[] = [
     path: '/portal/admin/dashboard',
     element: <AdminDashboardPage />,
     roles: [UserRole.Admin],
-    isProtected: false,
+    isProtected: true,
   },
   {
     path: '/portal/admin/data-management',
     element: <DataManagementPage />,
     roles: [UserRole.Admin],
-    isProtected: false,
+    isProtected: true,
   },
   {
     path: '/portal/admin/users',
     element: <AdminUserManagementPage />,
     roles: [UserRole.Admin],
-    isProtected: false,
+    isProtected: true,
   },
 
   //Coordinator routes
@@ -105,6 +112,32 @@ export const routes: AppRoute[] = [
     path: '/portal/coordinator/relief-station',
     element: <ReliefStationPage />,
     roles: [UserRole.Coordinator],
+    isProtected: true,
+  },
+
+  // Manager routes
+  {
+    path: '/portal/manager/stations',
+    element: <ManagerStationPage />,
+    roles: [UserRole.Manager],
+    isProtected: true,
+  },
+  {
+    path: '/portal/manager/vehicles',
+    element: <ManagerVehicleManagementPage />,
+    roles: [UserRole.Manager],
+    isProtected: true,
+  },
+  {
+    path: '/portal/manager/inventory',
+    element: <ManagerInventoryCoordinationPage />,
+    roles: [UserRole.Manager],
+    isProtected: true,
+  },
+  {
+    path: '/portal/manager/campaigns',
+    element: <ManagerCampaignPage />,
+    roles: [UserRole.Manager],
     isProtected: true,
   },
 

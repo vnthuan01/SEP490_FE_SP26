@@ -1,4 +1,4 @@
-import { UserRole, type UserRoleType } from '@/enums/UserRole';
+import { type UserRoleType } from '@/enums/UserRole';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -54,15 +54,11 @@ export function toTimeOnly(date: Date): string {
   return `${hours}:${minutes}:${seconds}.${fraction}`;
 }
 
+import { roleRoutes } from '@/constants/roleRoutes';
+
 export function getHomeByRole(role?: UserRoleType) {
-  switch (role) {
-    case UserRole.Admin:
-      return '/portal/admin/dashboard';
-
-    case UserRole.Coordinator:
-      return '/portal/coordinator/dashboard';
-
-    default:
-      return '/login';
+  if (role && roleRoutes[role]) {
+    return roleRoutes[role];
   }
+  return '/login';
 }
