@@ -9,10 +9,10 @@ import { getAdministrativeBoundary } from '@/services/goongService';
 
 interface ReliefMapProps {
   locations: ReliefLocation[];
-  teams: Team[];
+  teams?: Team[];
   headquarters: Headquarters;
-  availableTeams: Team[];
-  onAssignTeam: (locationId: string, teamId: string) => void;
+  availableTeams?: Team[];
+  onAssignTeam?: (locationId: string, teamId: string) => void;
   onLocationSelect: (location: ReliefLocation) => void;
   selectedLocationId?: string;
   apiKey: string;
@@ -20,10 +20,7 @@ interface ReliefMapProps {
 
 export function ReliefMap({
   locations,
-  teams,
   headquarters,
-  availableTeams,
-  onAssignTeam,
   onLocationSelect,
   selectedLocationId,
   apiKey,
@@ -77,7 +74,7 @@ export function ReliefMap({
         marker.getElement().style.cursor = 'pointer';
       });
     },
-    [locations, teams, availableTeams, onAssignTeam, onLocationSelect],
+    [locations, onLocationSelect],
   );
 
   // Create headquarters marker

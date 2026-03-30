@@ -17,8 +17,9 @@ import { UserRole, type UserRoleType } from '@/enums/UserRole';
 import { roleVariantMap } from '@/constants/roleVariant';
 import { roleLabelMap } from '@/constants/roleLabel';
 import type { User } from '@/services/authService';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AddUserModal } from './components/AddUserModal';
+import { getCurrentUserProfile } from '@/services/userService';
 
 export const mockUsers: User[] = [
   {
@@ -71,6 +72,17 @@ export const mockUsers: User[] = [
 export default function AdminUserManagementPage() {
   const [openAddUser, setOpenAddUser] = useState(false);
 
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        await getCurrentUserProfile();
+      } catch (err) {
+        console.error('Lỗi lấy profile', err);
+      }
+    };
+
+    fetchProfile();
+  }, []);
   const handleCreateUser = async () => {
     // await createUser(data);
     console.log('Đã tạo user thành công');

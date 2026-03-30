@@ -6,11 +6,13 @@ import AdminUserManagementPage from '@/pages/admin/UserManagementPage';
 import CoordinatorVolunteerRequestPage from '@/pages/coordinator/VolunteerRequestManagement';
 import CoordinatorDashboardPage from '@/pages/coordinator/DashboardPage';
 import CoordinatorRequestManagementPage from '@/pages/coordinator/RequestManagementPage';
+import RescueDispatchPage from '@/pages/coordinator/RescueDispatchPage';
 import CoordinatorMapsPage from '@/pages/coordinator/TeamAllocationPage';
 import CoordinatorTeamsPage from '@/pages/coordinator/TeamManagement';
 import CoordinatorInventoryPage from '@/pages/coordinator/InventoryPage';
 import CoordinatorVolunteerAllocationPage from '@/pages/coordinator/VolunteerAllocationPage';
 import CoordinatorDataManagementPage from '@/pages/coordinator/DataManagementPage';
+import ReliefStationPage from '@/pages/coordinator/ReliefStationPage';
 import SettingsPage from '@/pages/user/settings';
 import type { AppRoute } from '@/types/routes';
 import RoleBasedRoute from './protectedRoute';
@@ -76,6 +78,12 @@ export const routes: AppRoute[] = [
     isProtected: true,
   },
   {
+    path: '/portal/coordinator/rescue-dispatch',
+    element: <RescueDispatchPage />,
+    roles: [UserRole.Coordinator],
+    isProtected: true,
+  },
+  {
     path: '/portal/coordinator/volunteer-requests',
     element: <CoordinatorVolunteerRequestPage />,
     roles: [UserRole.Coordinator],
@@ -90,6 +98,12 @@ export const routes: AppRoute[] = [
   {
     path: '/portal/coordinator/volunteer-allocation',
     element: <CoordinatorVolunteerAllocationPage />,
+    roles: [UserRole.Coordinator],
+    isProtected: true,
+  },
+  {
+    path: '/portal/coordinator/relief-station',
+    element: <ReliefStationPage />,
     roles: [UserRole.Coordinator],
     isProtected: true,
   },
