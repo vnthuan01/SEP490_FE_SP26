@@ -19,26 +19,9 @@ export interface UpdateSkillPayload {
   description: string;
 }
 
-export interface SearchSkillParams {
-  search?: string;
-  pageIndex?: number;
-  pageSize?: number;
-}
-
-export interface SkillPaginatedResponse {
-  currentPage: number;
-  totalPages: number;
-  pageSize: number;
-  totalCount: number;
-  hasPrevious: boolean;
-  hasNext: boolean;
-  items: Skill[];
-}
-
 export const skillsService = {
   // Get all skills
-  getAll: (params?: SearchSkillParams) =>
-    apiClient.get<SkillPaginatedResponse>('/Skill', { params }),
+  getAll: () => apiClient.get<Skill[]>('/Skill'),
 
   // Get skill by id
   getById: (id: string) => apiClient.get<Skill>(`/Skill/${id}`),

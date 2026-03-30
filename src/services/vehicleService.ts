@@ -1,39 +1,12 @@
 import { apiClient } from '@/lib/apiClients';
 
+// Interfaces for Vehicle Models
 export interface Vehicle {
   vehicleId: string;
   vehicleTypeId: string;
-  vehicleTypeName?: string;
   licensePlate: string;
-  createdBy?: string;
-  creatorName?: string;
   teamUsed: string;
   status: number;
-  statusName?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface PaginatedResponse<T> {
-  currentPage: number;
-  totalPages: number;
-  pageSize: number;
-  totalCount: number;
-  hasPrevious: boolean;
-  hasNext: boolean;
-  items: T[];
-}
-
-export interface SearchVehicleParams {
-  search?: string;
-  pageIndex?: number;
-  pageSize?: number;
-}
-
-export interface SearchVehicleTypeParams {
-  search?: string;
-  pageIndex?: number;
-  pageSize?: number;
 }
 
 export interface CreateVehiclePayload {
@@ -67,8 +40,7 @@ export type UpdateVehicleTypePayload = CreateVehicleTypePayload;
 
 export const vehicleService = {
   // Get all vehicles
-  getAll: (params?: SearchVehicleParams) =>
-    apiClient.get<PaginatedResponse<Vehicle>>('/Vehicle', { params }),
+  getAll: () => apiClient.get<Vehicle[]>('/Vehicle'),
 
   // Get vehicle by id
   getById: (id: string) => apiClient.get<Vehicle>(`/Vehicle/${id}`),
@@ -89,8 +61,7 @@ export const vehicleService = {
   getMyVehicles: () => apiClient.get<Vehicle[]>('/Vehicle/my-vehicles'),
 
   // === Vehicle Type APIs ===
-  getTypes: (params?: SearchVehicleTypeParams) =>
-    apiClient.get<PaginatedResponse<VehicleType>>('/VehicleType', { params }),
+  getTypes: () => apiClient.get<VehicleType[]>('/VehicleType'),
 
   getTypeById: (id: string) => apiClient.get<VehicleType>(`/VehicleType/${id}`),
 

@@ -2,7 +2,7 @@
 import { UserRole } from '@/enums/UserRole';
 
 export const roleVariantMap = {
-  [UserRole.Admin]: 'destructive',
+  [UserRole.Admin]: 'primary',
   [UserRole.Coordinator]: 'supporter',
   [UserRole.Manager]: 'warning',
   [UserRole.Volunteer]: 'success',

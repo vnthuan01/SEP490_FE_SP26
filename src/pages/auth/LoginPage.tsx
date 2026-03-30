@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 
-import { useAuthContext } from '@/components/provider/auth/AuthProvider';
+import { useAuth } from '@/hooks/useAuth';
 import { getUserRoleFromToken } from '@/lib/jwt';
 import { roleRoutes } from '@/constants/roleRoutes';
 import type { UserRoleType } from '@/enums/UserRole';
@@ -69,12 +69,8 @@ function LoginPage() {
         });
       }
 
-      if (
-        !role ||
-        !roleRoutes[role as UserRoleType] ||
-        roleRoutes[role as UserRoleType] === '/login'
-      ) {
-        setRootError('Tài khoản của bạn không có quyền truy cập hệ thống.');
+      if (!role) {
+        navigate('/login', { replace: true });
         return;
       }
 
@@ -109,7 +105,8 @@ function LoginPage() {
         setRootError('Tài khoản đã bị khóa');
       } else {
         console.log(err);
-        setRootError('Đăng nhập thất bại. Vui lòng thử lại.');
+
+        setRootError('Đăng nhập thất bại. Vui lòng thử lại');
       }
     }
   };

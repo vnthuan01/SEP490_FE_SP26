@@ -185,7 +185,10 @@ export default function CoordinatorTeamAllocationPage() {
         <div className="flex-1 relative overflow-hidden">
           <ReliefMap
             locations={filteredLocations}
+            teams={teams}
             headquarters={HEADQUARTERS}
+            availableTeams={availableTeams}
+            onAssignTeam={handleAssignTeam}
             onLocationSelect={handleLocationClick}
             selectedLocationId={selectedLocationId}
             apiKey={GOONG_API_KEY}
@@ -297,7 +300,10 @@ export default function CoordinatorTeamAllocationPage() {
           <div className="flex-1 relative">
             <ReliefMap
               locations={filteredLocations}
+              teams={teams}
               headquarters={HEADQUARTERS}
+              availableTeams={availableTeams}
+              onAssignTeam={handleAssignTeam}
               onLocationSelect={handleLocationClick}
               selectedLocationId={selectedLocationId}
               apiKey={GOONG_API_KEY}

@@ -3,7 +3,7 @@ import goongjs, { type Map as GoongMap, type Marker } from '@goongmaps/goong-js'
 import { useGoongMap } from '@/hooks/useGoongMap';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import type { ReliefLocation, Headquarters } from './types';
+import type { ReliefLocation, Team, Headquarters } from './types';
 import { getUrgencyColor, getStatusColor } from './utils';
 import { getAdministrativeBoundary } from '@/services/goongService';
 
@@ -205,12 +205,12 @@ export function ReliefMap({
 
         if (boundaryData) {
           // Use real boundary from API
-          console.log('Got real boundary:', boundaryData.areaName);
+          console.log('✅ Got real boundary:', boundaryData.areaName);
           drawAreaBoundary(map, boundaryData.coordinates, boundaryData.areaName);
           toast.success(`Đã khoanh vùng: ${boundaryData.areaName}`, { id: toastId });
         } else {
           // Fallback: create approximate circular boundary
-          console.log('No boundary from API, using fallback circle');
+          console.log('⚠️ No boundary from API, using fallback circle');
           const areaName = fallbackName || `Khu vực (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
           const radius = 0.01; // ~1km
           const points = 32;

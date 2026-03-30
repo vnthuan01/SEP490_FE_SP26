@@ -5,13 +5,10 @@ import type {
   UpdateVehiclePayload,
   CreateVehicleTypePayload,
   UpdateVehicleTypePayload,
-  SearchVehicleParams,
-  SearchVehicleTypeParams,
 } from '@/services/vehicleService';
 
 export const VEHICLE_QUERY_KEYS = {
   all: ['vehicles'] as const,
-  list: (params?: SearchVehicleParams) => ['vehicles', 'list', params] as const,
   detail: (id: string) => ['vehicles', id] as const,
   byStatus: (status: number) => ['vehicles', 'status', status] as const,
   myVehicles: ['vehicles', 'my-vehicles'] as const,
@@ -19,23 +16,22 @@ export const VEHICLE_QUERY_KEYS = {
 
 export const VEHICLE_TYPE_QUERY_KEYS = {
   all: ['vehicleTypes'] as const,
-  list: (params?: SearchVehicleTypeParams) => ['vehicleTypes', 'list', params] as const,
   detail: (id: string) => ['vehicleTypes', id] as const,
 };
 
-export function useVehicles(id?: string, status?: number, params?: SearchVehicleParams) {
+export function useVehicles(id?: string, status?: number) {
   const queryClient = useQueryClient();
 
   // Query: List all vehicles
   const {
-    data: vehiclesData,
+    data: vehicles,
     isLoading: isLoadingVehicles,
     isError: isErrorVehicles,
     refetch: refetchVehicles,
   } = useQuery({
-    queryKey: VEHICLE_QUERY_KEYS.list(params),
+    queryKey: VEHICLE_QUERY_KEYS.all,
     queryFn: async () => {
-      const response = await vehicleService.getAll(params);
+      const response = await vehicleService.getAll();
       return response.data;
     },
   });
@@ -114,17 +110,7 @@ export function useVehicles(id?: string, status?: number, params?: SearchVehicle
 
   return {
     // List specific
-    vehicles: vehiclesData?.items || [],
-    vehiclesPagination: vehiclesData
-      ? {
-          currentPage: vehiclesData.currentPage,
-          totalPages: vehiclesData.totalPages,
-          pageSize: vehiclesData.pageSize,
-          totalCount: vehiclesData.totalCount,
-          hasPrevious: vehiclesData.hasPrevious,
-          hasNext: vehiclesData.hasNext,
-        }
-      : null,
+    vehicles: vehicles || [],
     isLoadingVehicles,
     isErrorVehicles,
     refetchVehicles,
@@ -159,19 +145,19 @@ export function useVehicles(id?: string, status?: number, params?: SearchVehicle
   };
 }
 
-export function useVehicleTypes(id?: string, params?: SearchVehicleTypeParams) {
+export function useVehicleTypes(id?: string) {
   const queryClient = useQueryClient();
 
   // Query: List all vehicle types
   const {
-    data: vehicleTypesData,
+    data: vehicleTypes,
     isLoading: isLoadingVehicleTypes,
     isError: isErrorVehicleTypes,
     refetch: refetchVehicleTypes,
   } = useQuery({
-    queryKey: VEHICLE_TYPE_QUERY_KEYS.list(params),
+    queryKey: VEHICLE_TYPE_QUERY_KEYS.all,
     queryFn: async () => {
-      const response = await vehicleService.getTypes(params);
+      const response = await vehicleService.getTypes();
       return response.data;
     },
   });
@@ -217,17 +203,7 @@ export function useVehicleTypes(id?: string, params?: SearchVehicleTypeParams) {
 
   return {
     // List specific
-    vehicleTypes: vehicleTypesData?.items || [],
-    vehicleTypesPagination: vehicleTypesData
-      ? {
-          currentPage: vehicleTypesData.currentPage,
-          totalPages: vehicleTypesData.totalPages,
-          pageSize: vehicleTypesData.pageSize,
-          totalCount: vehicleTypesData.totalCount,
-          hasPrevious: vehicleTypesData.hasPrevious,
-          hasNext: vehicleTypesData.hasNext,
-        }
-      : null,
+    vehicleTypes: vehicleTypes || [],
     isLoadingVehicleTypes,
     isErrorVehicleTypes,
     refetchVehicleTypes,

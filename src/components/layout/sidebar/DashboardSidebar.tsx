@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LogOut, Settings } from 'lucide-react';
-import { useAuthContext } from '@/components/provider/auth/AuthProvider';
+import { useAuth } from '@/hooks/useAuth';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
@@ -41,7 +41,7 @@ export function DashboardSidebar({
 }: DashboardSidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuthContext();
+  const { user, logout } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
 

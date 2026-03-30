@@ -416,7 +416,10 @@ export default function CoordinatorDataManagementPage() {
             <div className="w-full h-full relative">
               <ReliefMap
                 locations={reliefLocationsData}
+                teams={teamsData}
                 headquarters={HEADQUARTERS}
+                availableTeams={teamsData.filter((t) => t.status === 'available')}
+                onAssignTeam={() => {}}
                 onLocationSelect={() => {}}
                 apiKey={GOONG_API_KEY}
               />
