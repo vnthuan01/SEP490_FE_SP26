@@ -16,28 +16,58 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { type UserRoleType } from '@/enums/UserRole';
 import { roleVariantMap } from '@/constants/roleVariant';
 import { roleLabelMap } from '@/constants/roleLabel';
-import { useState } from 'react';
+import type { User } from '@/services/authService';
+import { useEffect, useState } from 'react';
 import { AddUserModal } from './components/AddUserModal';
-import { useAllUsers } from '@/hooks/useUsers';
-import { StatsCard } from '@/pages/admin/components/StatsCard';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { useBanUser, useUnbanUser } from '@/hooks/useUsers';
-import { toast } from 'sonner';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { getCurrentUserProfile } from '@/services/userService';
+
+export const mockUsers: User[] = [
+  {
+    id: '1',
+    fullName: 'Nguyễn Văn A',
+    email: 'nguyenvana@relief.vn',
+    role: UserRole.Admin,
+    status: 'active',
+    lastActivity: 'Vừa xong',
+    location: 'IP: 192.168.1.1',
+  },
+  {
+    id: '2',
+    fullName: 'Trần Thị B',
+    email: 'tranthib@gmail.com',
+    role: UserRole.Coordinator,
+    status: 'active',
+    lastActivity: '25 phút trước',
+    location: 'Hà Nội',
+  },
+  {
+    id: '3',
+    fullName: 'Lê Văn C',
+    email: 'levanc@edu.vn',
+    role: UserRole.Volunteer,
+    status: 'offline',
+    lastActivity: '2 ngày trước',
+    location: 'Đà Nẵng',
+  },
+  {
+    id: '4',
+    fullName: 'Phạm Tùng',
+    email: 'tungpham@gmail.com',
+    role: UserRole.Volunteer,
+    status: 'pending',
+    lastActivity: 'Chưa đăng nhập',
+    location: '-',
+  },
+  {
+    id: '5',
+    fullName: 'Hoàng My',
+    email: 'myhoang@relief.vn',
+    role: UserRole.Coordinator,
+    status: 'active',
+    lastActivity: '1 giờ trước',
+    location: 'Quảng Bình',
+  },
+];
 
 export default function AdminUserManagementPage() {
   const [openAddUser, setOpenAddUser] = useState(false);
@@ -102,6 +132,17 @@ export default function AdminUserManagementPage() {
     }
   };
 
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        await getCurrentUserProfile();
+      } catch (err) {
+        console.error('Lỗi lấy profile', err);
+      }
+    };
+
+    fetchProfile();
+  }, []);
   const handleCreateUser = async () => {
     console.log('Đã tạo user thành công');
     refetch();

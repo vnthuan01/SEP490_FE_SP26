@@ -107,7 +107,7 @@ export const volunteerProfileService = {
 
   // Remove skills
   removeSkills: (data: UpdateVolunteerProfileSkillsPayload) =>
-    apiClient.delete<VolunteerProfile>('/VolunteerProfile/skills', { data }),
+    apiClient.delete<VolunteerProfile>('/Voluntehttps://github.com/vnthuan01/SEP490_FE_SP25/pull/15/conflict?name=src%252Fservices%252FuserService.ts&base_oid=9ef2ada36975c49e4007e3ccd4784aea6275aaec&head_oid=a2c67fd118427d2dcb90904751d5b88a2e16349ferProfile/skills', { data }),
 
   // Get my skills
   getMySkills: () => apiClient.get<Skill[]>('/VolunteerProfile/skills'),

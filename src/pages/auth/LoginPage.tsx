@@ -26,7 +26,8 @@ type LoginFormValues = {
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { login, phoneLogin } = useAuthContext();
+  const { login, phoneLogin } = useAuth();
+  const authDebug = import.meta.env.DEV;
 
   const [showPassword, setShowPassword] = useState(false);
   const [rootError, setRootError] = useState('');
@@ -42,6 +43,13 @@ function LoginPage() {
     setRootError('');
 
     try {
+      if (authDebug) {
+        console.log('[AUTH_DEBUG][LoginPage] submit', {
+          identity: values.email,
+          mode: /^\d+$/.test(values.email) ? 'phone' : 'email',
+        });
+      }
+
       let res;
       const isPhoneNumber = /^\d+$/.test(values.email);
       if (isPhoneNumber) {
@@ -50,7 +58,16 @@ function LoginPage() {
         res = await login(values);
       }
 
-      const role = getUserRoleFromToken(res?.data?.accessToken || '');
+      const accessToken = res?.data?.accessToken || (res as any)?.data?.data?.accessToken || '';
+      const role = getUserRoleFromToken(accessToken);
+
+      if (authDebug) {
+        console.log('[AUTH_DEBUG][LoginPage] login success', {
+          hasAccessToken: !!accessToken,
+          roleFromToken: role,
+          responseShapeKeys: Object.keys((res as any)?.data || {}),
+        });
+      }
 
       if (
         !role ||
@@ -61,15 +78,35 @@ function LoginPage() {
         return;
       }
 
-      navigate(roleRoutes[role as UserRoleType], { replace: true });
-    } catch (err: any) {
-      const status = err?.response?.status;
-      const code = err?.response?.data?.code;
+      const normalizedRole =
+        role === 'Coordinator' ? 'Moderator' : role === 'moderator' ? 'Moderator' : role;
 
-      if (status === 401 || code === 'AUTH_INVALID_CREDENTIALS') {
-        setRootError('Sai tên đăng nhập hoặc mật khẩu. Vui lòng thử lại sau.');
-      } else if (status === 400) {
-        setRootError('Tài khoản đã bị khóa.');
+      const targetRoute =
+        roleRoutes[normalizedRole as UserRoleType] || '/portal/coordinator/dashboard';
+
+      if (authDebug) {
+        console.log('[AUTH_DEBUG][LoginPage] navigate', {
+          normalizedRole,
+          targetRoute,
+        });
+      }
+
+      // Force full reload so AuthProvider rehydrates from fresh cookie token.
+      window.location.replace(targetRoute);
+      return;
+    } catch (err: any) {
+      if (authDebug) {
+        console.log('[AUTH_DEBUG][LoginPage] login error', {
+          status: err?.response?.status,
+          data: err?.response?.data,
+        });
+      }
+
+      if (err?.response?.status === 401) {
+        console.log(err);
+        setRootError('Tên đăng nhập hoặc mật khẩu không đúng');
+      } else if (err?.response?.status === 400) {
+        setRootError('Tài khoản đã bị khóa');
       } else {
         console.log(err);
         setRootError('Đăng nhập thất bại. Vui lòng thử lại.');
