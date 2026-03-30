@@ -16,8 +16,7 @@ export interface Team {
 
 export interface CreateTeamPayload {
   name: string;
-  description?: string;
-  contactPhone?: string;
+  description: string;
 }
 
 export interface UpdateTeamPayload {
@@ -39,38 +38,9 @@ export interface AddTeamMemberPayload {
   volunteerId: string;
 }
 
-export interface PagedResponse<T> {
-  currentPage: number;
-  totalPages: number;
-  pageSize: number;
-  totalCount: number;
-  hasPrevious: boolean;
-  hasNext: boolean;
-  items: T[];
-}
-
 export const teamService = {
   //Team CRUD
   getAll: () => apiClient.get<Team[]>('/Team'),
-
-  getTeamInStation: (reliefStationId: string, pageIndex = 1, pageSize = 50) =>
-    apiClient.get<PagedResponse<Team>>('/Team/in-station', {
-      params: {
-        ReliefStationId: reliefStationId,
-        PageIndex: pageIndex,
-        PageSize: pageSize,
-      },
-    }),
-
-  // Alias to avoid naming mismatches across hooks/components
-  getTeamsInStation: (reliefStationId: string, pageIndex = 1, pageSize = 50) =>
-    apiClient.get<PagedResponse<Team>>('/Team/in-station', {
-      params: {
-        ReliefStationId: reliefStationId,
-        PageIndex: pageIndex,
-        PageSize: pageSize,
-      },
-    }),
 
   getById: (id: string) => apiClient.get<Team>(`/Team/${id}`),
 

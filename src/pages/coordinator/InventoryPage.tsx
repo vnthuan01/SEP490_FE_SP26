@@ -6,7 +6,6 @@ import { ExportInventoryDialog } from './components/ExportInventory';
 import { mockTeams } from '@/types/mock';
 import type { ExportItem } from '@/types/exportInventory';
 import { CreateInventoryItemDialog } from './components/CreateItem';
-import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
 
 type InventoryStat = {
   id: string;
@@ -149,7 +148,31 @@ export default function CoordinatorInventoryPage() {
   const [open, setOpen] = useState(false);
 
   return (
-    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+    <DashboardLayout
+      projects={[
+        { label: 'Tổng quan', path: '/portal/coordinator/data-management', icon: 'dashboard' },
+        { label: 'Điều phối & Bản đồ', path: '/portal/coordinator/maps', icon: 'map' },
+        { label: 'Đội tình nguyện', path: '/portal/coordinator/teams', icon: 'groups' },
+        {
+          label: 'Yêu cầu tình nguyện',
+          path: '/portal/coordinator/volunteer-requests',
+          icon: 'how_to_reg',
+        },
+        {
+          label: 'Yêu cầu cứu trợ',
+          path: '/portal/coordinator/requests',
+          icon: 'person_raised_hand',
+        },
+        {
+          label: 'Kho vận & Nhu yếu phẩm',
+          path: '/portal/coordinator/inventory',
+          icon: 'inventory_2',
+        },
+      ]}
+      navItems={[
+        { label: 'Báo cáo & Thống kê', path: '/portal/coordinator/dashboard', icon: 'description' },
+      ]}
+    >
       {/* HEADER */}
       <div className="flex justify-between mb-6">
         <div>
