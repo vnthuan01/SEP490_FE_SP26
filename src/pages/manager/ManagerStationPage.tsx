@@ -348,7 +348,7 @@ export default function ManagerStationPage() {
                                   </DropdownMenuItem>
                                 ) : (
                                   <DropdownMenuItem
-                                    className="gap-2 text-success"
+                                    className="gap-2 text-green-500"
                                     onClick={() =>
                                       sid
                                         ? handleActivate(sid)

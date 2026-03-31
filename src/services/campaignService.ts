@@ -90,13 +90,25 @@ export interface Campaign {
   goals: CampaignGoal[];
 }
 
+export interface CampaignSummary {
+  campaignId: string;
+  name: string;
+  status: number;
+  type: number;
+  completionRule: number;
+  startDate: string;
+  endDate: string;
+  allowOverTarget: boolean;
+  overallProgressPercent: number;
+}
+
 export const campaignService = {
   // Create Campaign
   create: (data: CreateCampaignPayload) => apiClient.post<Campaign>('/campaigns', data),
 
   // Get campaigns list
   getAll: (params?: SearchCampaignParams) =>
-    apiClient.get<PaginatedResponse<Campaign>>('/campaigns', { params }),
+    apiClient.get<PaginatedResponse<CampaignSummary>>('/campaigns', { params }),
 
   // Get campaign details
   getById: (id: string) => apiClient.get<Campaign>(`/campaigns/${id}`),

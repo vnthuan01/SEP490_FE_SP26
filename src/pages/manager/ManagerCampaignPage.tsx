@@ -52,7 +52,7 @@ import {
   RELIEF_STATION_KEYS,
 } from '@/hooks/useReliefStations';
 import { AddStationModal, type CreateStationFormData } from './components/AddStationModal';
-import type { CreateCampaignPayload } from '@/services/campaignService';
+import type { CampaignSummary, CreateCampaignPayload } from '@/services/campaignService';
 import { toast } from 'sonner';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
 
@@ -123,6 +123,17 @@ export default function ManagerCampaignPage() {
     return typeof rawId === 'string' && rawId.trim().length > 0 ? rawId : null;
   };
   const stations = (stationsData?.items || []).filter((station) => getStationId(station));
+
+  const getCampaignId = (campaign: Partial<CampaignSummary> & { id?: string | null }) => {
+    const rawId = campaign.campaignId ?? campaign.id;
+    return typeof rawId === 'string' && rawId.trim().length > 0 ? rawId : null;
+  };
+
+  const getCampaignDateText = (value?: string | null) => {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('vi-VN');
+  };
 
   const form = useForm<CreateCampaignFormValues>({
     defaultValues: {
@@ -289,16 +300,20 @@ export default function ManagerCampaignPage() {
                   </TableHeader>
                   <TableBody>
                     {campaigns.map((c) => {
+                      const campaignId = getCampaignId(c);
                       const statusInfo = CAMPAIGN_STATUS_MAP[c.status] || {
                         label: 'Không rõ',
                         variant: 'outline' as const,
                       };
                       return (
-                        <TableRow key={c.id} className="group hover:bg-card/50 transition-colors">
+                        <TableRow
+                          key={campaignId ?? `${c.name}-${c.startDate ?? 'unknown'}`}
+                          className="group hover:bg-card/50 transition-colors"
+                        >
                           <TableCell>
                             <p className="font-bold text-foreground text-sm">{c.name}</p>
                             <p className="text-[10px] text-muted-foreground uppercase">
-                              ID: {c.id.slice(0, 8)}
+                              ID: {campaignId ? campaignId.slice(0, 8) : '—'}
                             </p>
                           </TableCell>
                           <TableCell>
@@ -308,16 +323,15 @@ export default function ManagerCampaignPage() {
                           </TableCell>
                           <TableCell>
                             <div className="text-xs text-muted-foreground space-y-0.5">
-                              <p>Từ: {new Date(c.startDate).toLocaleDateString('vi-VN')}</p>
-                              <p>Đến: {new Date(c.endDate).toLocaleDateString('vi-VN')}</p>
+                              <p>Từ: {getCampaignDateText(c.startDate)}</p>
+                              <p>Đến: {getCampaignDateText(c.endDate)}</p>
                             </div>
                           </TableCell>
                           <TableCell>
-                            <span
-                              className="text-foreground text-sm truncate max-w-[150px] inline-block"
-                              title={c.addressDetail}
-                            >
-                              {c.addressDetail || '—'}
+                            <span className="text-foreground text-sm truncate max-w-[150px] inline-block">
+                              {typeof c.overallProgressPercent === 'number'
+                                ? `${Math.round(c.overallProgressPercent)}% tiến độ`
+                                : '—'}
                             </span>
                           </TableCell>
                           <TableCell>
@@ -336,7 +350,11 @@ export default function ManagerCampaignPage() {
                                 {c.status === 0 && (
                                   <DropdownMenuItem
                                     className="gap-2 text-success"
-                                    onClick={() => handleUpdateStatus(c.id, 1)}
+                                    onClick={() =>
+                                      campaignId
+                                        ? handleUpdateStatus(campaignId, 1)
+                                        : toast.error('Không tìm thấy mã chiến dịch để kích hoạt')
+                                    }
                                   >
                                     <span className="material-symbols-outlined text-lg">
                                       play_arrow
@@ -347,7 +365,11 @@ export default function ManagerCampaignPage() {
                                 {c.status === 1 && (
                                   <DropdownMenuItem
                                     className="gap-2 text-warning"
-                                    onClick={() => handleUpdateStatus(c.id, 2)}
+                                    onClick={() =>
+                                      campaignId
+                                        ? handleUpdateStatus(campaignId, 2)
+                                        : toast.error('Không tìm thấy mã chiến dịch để tạm dừng')
+                                    }
                                   >
                                     <span className="material-symbols-outlined text-lg">pause</span>
                                     Tạm dừng
@@ -356,7 +378,11 @@ export default function ManagerCampaignPage() {
                                 {c.status === 2 && (
                                   <DropdownMenuItem
                                     className="gap-2 text-success"
-                                    onClick={() => handleUpdateStatus(c.id, 1)}
+                                    onClick={() =>
+                                      campaignId
+                                        ? handleUpdateStatus(campaignId, 1)
+                                        : toast.error('Không tìm thấy mã chiến dịch để tiếp tục')
+                                    }
                                   >
                                     <span className="material-symbols-outlined text-lg">
                                       play_arrow
@@ -367,7 +393,11 @@ export default function ManagerCampaignPage() {
                                 {(c.status === 1 || c.status === 2) && (
                                   <DropdownMenuItem
                                     className="gap-2 text-destructive"
-                                    onClick={() => handleUpdateStatus(c.id, 3)}
+                                    onClick={() =>
+                                      campaignId
+                                        ? handleUpdateStatus(campaignId, 3)
+                                        : toast.error('Không tìm thấy mã chiến dịch để kết thúc')
+                                    }
                                   >
                                     <span className="material-symbols-outlined text-lg">stop</span>
                                     Kết thúc chiến dịch
