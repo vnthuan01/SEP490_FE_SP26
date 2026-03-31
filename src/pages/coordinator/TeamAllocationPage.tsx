@@ -15,6 +15,7 @@ import { ReliefMap } from './components/ReliefMap';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { LocationDetailSheet } from './components/LocationDetailSheet';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // ── API hooks ──
 import { useRescueRequests } from '@/hooks/useRescueRequests';
@@ -272,21 +273,6 @@ export default function CoordinatorTeamAllocationPage() {
   }, []);
 
   // ── loading state ──
-  if (isLoadingRequests) {
-    return (
-      <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
-        <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-          <div className="text-center space-y-3">
-            <span className="material-symbols-outlined text-5xl text-primary animate-spin">
-              progress_activity
-            </span>
-            <p className="text-muted-foreground">Đang tải dữ liệu yêu cầu cứu hộ...</p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
   if (!GOONG_API_KEY) {
     return (
       <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
@@ -302,49 +288,6 @@ export default function CoordinatorTeamAllocationPage() {
               </p>
             </CardContent>
           </Card>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  // ── No verified requests at all (after load) ──
-  if (!isLoadingRequests && reliefLocations.length === 0) {
-    return (
-      <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
-        <div className="h-[calc(100vh-64px)] flex flex-col overflow-hidden">
-          <FilterBar
-            search={search}
-            onSearchChange={setSearch}
-            urgencyFilter={urgencyFilter}
-            onUrgencyFilterChange={setUrgencyFilter}
-            statusFilter={statusFilter}
-            onStatusFilterChange={setStatusFilter}
-            needsFilter={needsFilter}
-            onNeedsFilterChange={setNeedsFilter}
-            onFitBounds={handleFitBounds}
-            onToggleFullscreen={toggleFullscreen}
-            isFullscreen={isFullscreen}
-            stats={stats}
-          />
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center space-y-4 max-w-md px-6">
-              <span className="material-symbols-outlined text-6xl text-muted-foreground">
-                where_to_vote
-              </span>
-              <h2 className="text-xl font-bold text-foreground">Chưa có yêu cầu cứu hộ nào</h2>
-              <p className="text-muted-foreground">
-                Hiện tại không có yêu cầu cứu hộ đã xác minh nào có tọa độ GPS hợp lệ. Bản đồ sẽ
-                hiện dữ liệu khi có yêu cầu được duyệt.
-              </p>
-              <button
-                onClick={() => refetch()}
-                className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
-              >
-                <span className="material-symbols-outlined text-base">refresh</span>
-                Tải lại
-              </button>
-            </div>
-          </div>
         </div>
       </DashboardLayout>
     );
@@ -492,14 +435,26 @@ export default function CoordinatorTeamAllocationPage() {
 
           {/* Sidebar */}
           <aside className="w-[380px] flex flex-col border-l bg-muted/20">
-            {filteredLocations.length === 0 ? (
+            {isLoadingRequests ? (
+              <div className="p-4 space-y-3">
+                {[1, 2, 3, 4].map((k) => (
+                  <Skeleton key={k} className="h-12" />
+                ))}
+              </div>
+            ) : filteredLocations.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-3">
                 <span className="material-symbols-outlined text-4xl text-muted-foreground">
-                  search_off
+                  {reliefLocations.length === 0 ? 'where_to_vote' : 'search_off'}
                 </span>
-                <p className="text-sm font-semibold text-foreground">Không có kết quả phù hợp</p>
+                <p className="text-sm font-semibold text-foreground">
+                  {reliefLocations.length === 0
+                    ? 'Chưa có yêu cầu đã xác minh'
+                    : 'Không có kết quả phù hợp'}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.
+                  {reliefLocations.length === 0
+                    ? 'Bản đồ vẫn hiển thị trụ sở trạm. Dữ liệu sẽ xuất hiện khi có yêu cầu được duyệt.'
+                    : 'Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.'}
                 </p>
               </div>
             ) : (

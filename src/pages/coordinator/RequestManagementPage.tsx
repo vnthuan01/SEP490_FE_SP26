@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useRescueRequestManagement } from '@/hooks/useRescueRequestManagement';
 import type { RescueRequestItem } from '@/services/rescueRequestService';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
@@ -251,7 +252,7 @@ export default function CoordinatorRequestManagementPage() {
             {isLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((k) => (
-                  <div key={k} className="h-20 rounded-lg bg-accent animate-pulse" />
+                  <Skeleton key={k} className="h-12" />
                 ))}
               </div>
             ) : isError ? (

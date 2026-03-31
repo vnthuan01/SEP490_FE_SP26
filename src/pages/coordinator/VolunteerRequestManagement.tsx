@@ -3,6 +3,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useVolunteerReviewApplications } from '@/hooks/useVolunteerReviewApplications';
 import { toast } from 'sonner';
 import {
@@ -280,9 +281,9 @@ export default function CoordinatorVolunteerRequestPage() {
 
             <div className="flex-1 overflow-auto px-3 py-3">
               {isLoading ? (
-                <div className="space-y-2">
-                  {[1, 2, 3, 4, 5].map((k) => (
-                    <div key={k} className="h-24 rounded-xl bg-accent animate-pulse" />
+                <div className="space-y-2 px-1">
+                  {[1, 2, 3].map((k) => (
+                    <Skeleton key={k} className="h-12" />
                   ))}
                 </div>
               ) : isError ? (

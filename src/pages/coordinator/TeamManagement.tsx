@@ -3,6 +3,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useNavigate } from 'react-router-dom';
 import { useTeams, useTeamsInStation } from '@/hooks/useTeams';
@@ -395,12 +396,9 @@ export default function CoordinatorTeamManagementPage() {
           {/* Table */}
           <div className="flex-1 overflow-auto rounded-xl border border-border bg-card dark:bg-card custom-scrollbar">
             {isLoading ? (
-              <div className="p-6 space-y-4">
-                {[...Array(5)].map((_, idx) => (
-                  <div
-                    key={idx}
-                    className="h-10 w-full rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse"
-                  />
+              <div className="p-4 space-y-3">
+                {[1, 2, 3, 4, 5].map((k) => (
+                  <Skeleton key={k} className="h-10 w-full" />
                 ))}
               </div>
             ) : filteredTeams.length === 0 ? (
