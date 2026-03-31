@@ -54,6 +54,7 @@ import {
 import { AddStationModal, type CreateStationFormData } from './components/AddStationModal';
 import type { CreateCampaignPayload } from '@/services/campaignService';
 import { toast } from 'sonner';
+import { managerNavItems, managerProjects } from './components/sidebarConfig';
 
 const CAMPAIGN_STATUS_MAP: Record<
   number,
@@ -113,9 +114,15 @@ export default function ManagerCampaignPage() {
   });
   const { mutateAsync: createStation } = useCreateProvincialStation();
 
-  // Helper: API may return `stationId` or `id`
-  const getStationId = (s: any): string => s.stationId ?? s.id ?? '';
-  const stations = stationsData?.items || [];
+  const getStationId = (station: {
+    id?: string | null;
+    stationId?: string | null;
+    reliefStationId?: string | null;
+  }) => {
+    const rawId = station.reliefStationId ?? station.stationId ?? station.id;
+    return typeof rawId === 'string' && rawId.trim().length > 0 ? rawId : null;
+  };
+  const stations = (stationsData?.items || []).filter((station) => getStationId(station));
 
   const form = useForm<CreateCampaignFormValues>({
     defaultValues: {
@@ -157,12 +164,12 @@ export default function ManagerCampaignPage() {
   const handleCreateStation = async (data: CreateStationFormData) => {
     try {
       const newStation = await createStation(data);
-      // Wait for the stations list to actually refetch before selecting the new station
       await queryClient.refetchQueries({ queryKey: RELIEF_STATION_KEYS.all });
-      // API may return `stationId` or `id`
-      const newId = newStation?.data?.stationId ?? newStation?.data?.id;
+      const newId = getStationId(newStation?.data ?? {});
       if (newId) {
         form.setValue('reliefStationId', newId);
+      } else {
+        toast.warning('Trạm đã tạo nhưng chưa lấy được mã trạm. Hãy chọn lại trong danh sách.');
       }
       setOpenAddStationModal(false);
     } catch (error) {
@@ -179,15 +186,7 @@ export default function ManagerCampaignPage() {
   };
 
   return (
-    <DashboardLayout
-      projects={[
-        { label: 'Chiến dịch', path: '/portal/manager/campaigns', icon: 'campaign' },
-        { label: 'Kho Tổng', path: '/portal/manager/inventory', icon: 'inventory_2' },
-        { label: 'Trạm Cứu Trợ', path: '/portal/manager/stations', icon: 'home_work' },
-        { label: 'Phương Tiện', path: '/portal/manager/vehicles', icon: 'local_shipping' },
-      ]}
-      navItems={[]}
-    >
+    <DashboardLayout projects={managerProjects} navItems={managerNavItems}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -522,11 +521,13 @@ export default function ManagerCampaignPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {provinces?.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.fullName}
-                            </SelectItem>
-                          ))}
+                          {(provinces ?? [])
+                            .filter((p) => typeof p.id === 'string' && p.id.trim().length > 0)
+                            .map((p) => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.fullName}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -576,6 +577,7 @@ export default function ManagerCampaignPage() {
                             <SelectContent>
                               {stations.map((s) => {
                                 const sid = getStationId(s);
+                                if (!sid) return null;
                                 return (
                                   <SelectItem key={sid} value={sid}>
                                     {s.name}
