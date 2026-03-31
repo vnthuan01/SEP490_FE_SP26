@@ -3,6 +3,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useNavigate } from 'react-router-dom';
 import { useTeams, useTeamsInStation } from '@/hooks/useTeams';
@@ -18,6 +19,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { toast } from 'sonner';
+import type { TeamStatus } from '@/enums/beEnums';
+import { TeamStatusLabel, getTeamStatusClass, parseEnumValue } from '@/enums/beEnums';
 
 type LegacyStatus = 'available' | 'moving' | 'rescuing' | 'lost-contact';
 
@@ -49,12 +53,23 @@ const toDisplayText = (value: unknown, fallback = ''): string => {
 export default function CoordinatorTeamManagementPage() {
   const { station, isLoading: isLoadingStation } = useMyReliefStation();
   const reliefStationId = station?.reliefStationId;
+
+  // ── If moderator has a station → load teams in that station
+  // ── If no station → fallback to all teams (read-only, create disabled)
   const {
     teams: inStationTeams,
     isLoading: isLoadingInStationTeams,
-    refetch,
+    refetch: refetchInStation,
   } = useTeamsInStation(reliefStationId);
-  const { createTeam } = useTeams();
+
+  const { teams: allTeamsRaw, isLoadingTeams, refetchTeams, createTeam } = useTeams();
+
+  // Unified refetch
+  const refetch = reliefStationId ? refetchInStation : refetchTeams;
+
+  // Unified raw list depending on station presence
+  const rawTeamList = reliefStationId ? inStationTeams : allTeamsRaw;
+  const isLoadingTeamList = reliefStationId ? isLoadingInStationTeams : isLoadingTeams;
 
   const [selectedTeamId, setSelectedTeamId] = useState<string>();
   const [searchTerm, setSearchTerm] = useState('');
@@ -66,12 +81,12 @@ export default function CoordinatorTeamManagementPage() {
   const [isCreating, setIsCreating] = useState(false);
   const navigate = useNavigate();
 
-  const isLoading = isLoadingStation || isLoadingInStationTeams;
+  const isLoading = isLoadingStation || isLoadingTeamList;
 
   const teams: TeamItem[] = useMemo(() => {
-    if (!Array.isArray(inStationTeams)) return [];
+    if (!Array.isArray(rawTeamList)) return [];
 
-    return inStationTeams.map((team: any) => ({
+    return rawTeamList.map((team: any) => ({
       id: String(team.teamId ?? team.id ?? ''),
       name: toDisplayText(team.name, 'Chưa đặt tên'),
       description: team.description,
@@ -82,7 +97,7 @@ export default function CoordinatorTeamManagementPage() {
       contactPhone: toDisplayText(team.contactPhone, ''),
       memberDetails: Array.isArray(team.memberDetails) ? team.memberDetails : [],
     }));
-  }, [inStationTeams]);
+  }, [rawTeamList]);
 
   useEffect(() => {
     if (!teams.length) {
@@ -117,65 +132,11 @@ export default function CoordinatorTeamManagementPage() {
     areas: new Set(teams.map((t) => t.area).filter(Boolean)).size,
   };
 
-  const getStatusBadge = (status: number | LegacyStatus) => {
-    switch (Number(status)) {
-      case 0:
-        return 'bg-slate-500/20 text-slate-500';
-      case 1:
-        return 'bg-green-500/20 text-green-500';
-      case 2:
-        return 'bg-yellow-500/20 text-yellow-600';
-      case 3:
-        return 'bg-red-500/20 text-red-500';
-      case 4:
-        return 'bg-gray-500/20 text-gray-400';
-      default:
-        break;
-    }
+  const getStatusBadge = (status: number | LegacyStatus) =>
+    getTeamStatusClass(parseEnumValue(status));
 
-    switch (status) {
-      case 'available':
-        return 'bg-green-500/20 text-green-500';
-      case 'moving':
-        return 'bg-blue-500/20 text-blue-500';
-      case 'rescuing':
-        return 'bg-red-500/20 text-red-500';
-      case 'lost-contact':
-        return 'bg-gray-500/20 text-gray-400';
-      default:
-        return 'bg-gray-500/20 text-gray-400';
-    }
-  };
-
-  const getStatusLabel = (status: number | LegacyStatus) => {
-    switch (Number(status)) {
-      case 0:
-        return 'Nháp';
-      case 1:
-        return 'Đang hoạt động';
-      case 2:
-        return 'Tạm ngưng';
-      case 3:
-        return 'Đình chỉ';
-      case 4:
-        return 'Lưu trữ';
-      default:
-        break;
-    }
-
-    switch (status) {
-      case 'available':
-        return 'Sẵn sàng';
-      case 'moving':
-        return 'Đang di chuyển';
-      case 'rescuing':
-        return 'Đang cứu hộ';
-      case 'lost-contact':
-        return 'Mất liên lạc';
-      default:
-        return 'Không xác định';
-    }
-  };
+  const getStatusLabel = (status: number | LegacyStatus) =>
+    TeamStatusLabel[parseEnumValue(status) as TeamStatus] ?? 'Không xác định';
 
   const resetCreateForm = () => {
     setName('');
@@ -185,6 +146,11 @@ export default function CoordinatorTeamManagementPage() {
   };
 
   const handleCreateTeam = async () => {
+    if (!reliefStationId) {
+      toast.error('Bạn chưa được phân vào trạm cứu trợ nào. Không thể tạo đội ngũ.');
+      return;
+    }
+
     const trimmedName = name.trim();
     const trimmedDescription = description.trim();
     const trimmedContactPhone = contactPhone.trim();
@@ -207,9 +173,11 @@ export default function CoordinatorTeamManagementPage() {
       setIsCreateOpen(false);
       resetCreateForm();
       await refetch();
-      window.alert('Tạo đội ngũ mới thành công.');
+      toast.success('Tạo đội ngũ mới thành công!');
     } catch (error: any) {
-      setCreateError(error?.response?.data?.message || 'Không thể tạo đội ngũ. Vui lòng thử lại.');
+      const msg = error?.response?.data?.message || 'Không thể tạo đội ngũ. Vui lòng thử lại.';
+      setCreateError(msg);
+      toast.error(msg);
     } finally {
       setIsCreating(false);
     }
@@ -239,16 +207,27 @@ export default function CoordinatorTeamManagementPage() {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="primary"
-                  className="gap-2 text-base px-6 h-12"
-                  onClick={() => setIsCreateOpen(true)}
-                >
-                  <span className="material-symbols-outlined">add</span>
-                </Button>
+                <span>
+                  <Button
+                    variant="primary"
+                    className="gap-2 text-base px-6 h-12"
+                    onClick={() => {
+                      if (!reliefStationId) {
+                        toast.error('Bạn chưa được phân vào trạm nào. Không thể tạo đội ngũ.');
+                        return;
+                      }
+                      setIsCreateOpen(true);
+                    }}
+                    disabled={isLoadingStation}
+                  >
+                    <span className="material-symbols-outlined">add</span>
+                  </Button>
+                </span>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-white dark:text-black">Tạo đội ngũ mới</p>
+                <p className="text-white dark:text-black">
+                  {reliefStationId ? 'Tạo đội ngũ mới' : 'Cần được phân vào trạm trước khi tạo đội'}
+                </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -348,35 +327,53 @@ export default function CoordinatorTeamManagementPage() {
           </div>
 
           {!isLoading && !reliefStationId && (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 text-amber-800 px-4 py-3 text-sm">
-              Không tìm thấy ReliefStationId của moderator hiện tại, nên chưa thể tải danh sách đội
-              trong trạm.
+            <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 text-amber-800 dark:text-amber-300 px-4 py-3 text-sm flex items-start gap-2">
+              <span className="material-symbols-outlined text-amber-500 shrink-0 mt-0.5">
+                warning
+              </span>
+              <div>
+                <p className="font-semibold">Bạn chưa được phân vào trạm cứu trợ nào.</p>
+                <p className="text-amber-700 dark:text-amber-400 mt-0.5">
+                  Chức năng tạo đội ngũ bị vô hiệu. Đang hiển thị tất cả đội ngũ trong hệ thống (chỉ
+                  đọc).
+                </p>
+              </div>
             </div>
           )}
 
           {/* Table */}
           <div className="flex-1 overflow-auto rounded-xl border border-border bg-card dark:bg-card custom-scrollbar">
             {isLoading ? (
-              <div className="p-6 space-y-4">
-                {[...Array(5)].map((_, idx) => (
-                  <div
-                    key={idx}
-                    className="h-10 w-full rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse"
-                  />
+              <div className="p-4 space-y-3">
+                {[1, 2, 3, 4, 5].map((k) => (
+                  <Skeleton key={k} className="h-10 w-full" />
                 ))}
               </div>
             ) : filteredTeams.length === 0 ? (
               <div className="h-full min-h-[320px] flex flex-col items-center justify-center gap-3 text-center p-6">
+                <span className="material-symbols-outlined text-5xl text-muted-foreground">
+                  {searchTerm ? 'search_off' : 'groups'}
+                </span>
                 <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
-                  Chưa có đội ngũ nào
+                  {searchTerm
+                    ? 'Không tìm thấy đội ngũ phù hợp'
+                    : teams.length === 0
+                      ? 'Chưa có đội ngũ nào'
+                      : 'Không có kết quả'}
                 </p>
                 <p className="text-sm text-muted-foreground max-w-md">
-                  Hãy tạo đội ngũ đầu tiên để bắt đầu quản lý và phân công tình nguyện viên.
+                  {searchTerm
+                    ? 'Thử thay đổi từ khóa tìm kiếm.'
+                    : reliefStationId
+                      ? 'Hãy tạo đội ngũ đầu tiên để bắt đầu quản lý và phân công tình nguyện viên.'
+                      : 'Liên hệ quản lý để được phân vào trạm, sau đó có thể tạo đội ngũ.'}
                 </p>
-                <Button className="gap-2" onClick={() => setIsCreateOpen(true)}>
-                  <span className="material-symbols-outlined">add</span>
-                  Tạo đội ngũ mới
-                </Button>
+                {!searchTerm && reliefStationId && (
+                  <Button className="gap-2" onClick={() => setIsCreateOpen(true)}>
+                    <span className="material-symbols-outlined">add</span>
+                    Tạo đội ngũ mới
+                  </Button>
+                )}
               </div>
             ) : (
               <table className="w-full text-left border-collapse">

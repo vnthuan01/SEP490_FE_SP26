@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useVehicles } from '@/hooks/useVehicles';
+import { managerNavItems, managerProjects } from './components/sidebarConfig';
 
 export default function ManagerVehicleManagementPage() {
   const [pageIndex, setPageIndex] = useState(1);
@@ -32,15 +33,7 @@ export default function ManagerVehicleManagementPage() {
   });
 
   return (
-    <DashboardLayout
-      projects={[
-        { label: 'Chiến dịch', path: '/portal/manager/campaigns', icon: 'campaign' },
-        { label: 'Kho Tổng', path: '/portal/manager/inventory', icon: 'inventory_2' },
-        { label: 'Trạm Cứu Trợ', path: '/portal/manager/stations', icon: 'home_work' },
-        { label: 'Phương Tiện', path: '/portal/manager/vehicles', icon: 'local_shipping' },
-      ]}
-      navItems={[]}
-    >
+    <DashboardLayout projects={managerProjects} navItems={managerNavItems}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>

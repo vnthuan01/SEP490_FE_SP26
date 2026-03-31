@@ -2,8 +2,7 @@ import { useMemo, useState, useCallback } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import type { ReliefLocation, Team } from './components/types';
-import { HEADQUARTERS, reliefLocationsData, teamsData } from './components/mockData';
+import type { ReliefLocation, Team, Headquarters } from './components/types';
 import {
   calculateDangerScore,
   calculatePriorityScore,
@@ -16,11 +15,162 @@ import { ReliefMap } from './components/ReliefMap';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { LocationDetailSheet } from './components/LocationDetailSheet';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { Skeleton } from '@/components/ui/skeleton';
+
+// ── API hooks ──
+import { useRescueRequests } from '@/hooks/useRescueRequests';
+import { useTeamsInStation } from '@/hooks/useTeams';
+import { useMyReliefStation } from '@/hooks/useReliefStation';
+import { rescueRequestService } from '@/services/rescueRequestService';
+import type { RescueRequestItem } from '@/services/rescueRequestService';
+import {
+  RescueRequestType,
+  rescueStatusToLocationStatus,
+  teamStatusToAvailability,
+} from '@/enums/beEnums';
 
 const GOONG_API_KEY = import.meta.env.VITE_GOONG_MAP_KEY || '';
 
+// ─── Adapters: convert API data → existing UI types ─────────────────────────
+
+/** Map a BE rescue‑request status to the UI status the components understand. */
+function mapRequestStatus(req: RescueRequestItem): ReliefLocation['status'] {
+  return rescueStatusToLocationStatus(req.rescueRequestStatus);
+}
+
+/** Map rescue‑request type → urgency level for the UI. */
+function mapUrgency(req: RescueRequestItem): ReliefLocation['urgency'] {
+  const t = req.rescueRequestType;
+  // Emergency (1) = high urgency
+  if (t === RescueRequestType.Emergency || t === 'Emergency') return 'high';
+  // Use priority score from BE if available
+  const p = req.priority ?? 0;
+  if (p >= 70) return 'high';
+  if (p >= 40) return 'medium';
+  return 'medium';
+}
+
+/** Convert a single RescueRequestItem to ReliefLocation for the existing UI. */
+function toReliefLocation(req: RescueRequestItem, hq: Headquarters): ReliefLocation {
+  const lat = Number(req.latitude) || 0;
+  const lng = Number(req.longitude) || 0;
+  const urgency = mapUrgency(req);
+  const status = mapRequestStatus(req);
+
+  const base: ReliefLocation = {
+    id: String(req.requestId ?? req.rescueRequestId ?? req.id ?? ''),
+    coordinates: { lat, lng },
+    locationName: req.address || req.disasterType || 'Yêu cầu cứu hộ',
+    address: req.address || 'Chưa cập nhật',
+    province: '', // BE doesn't return province separately
+    urgency,
+    peopleCount: req.priority ?? 0,
+    needs: {
+      food: false,
+      water: false,
+      medicine: false,
+      emergencyRescue: urgency === 'high',
+    },
+    status,
+    lastUpdated: req.updatedAt ? new Date(req.updatedAt).toLocaleString('vi-VN') : 'Chưa cập nhật',
+    reportedAt: req.createdAt || new Date().toISOString(),
+    description: req.description || undefined,
+    contactPerson: req.reporterFullName || undefined,
+    contactPhone: req.reporterPhone || undefined,
+  };
+
+  // Calculate AI scores using existing utils
+  const dangerScore = calculateDangerScore(base);
+  const priorityScore = calculatePriorityScore(base, dangerScore);
+
+  // Distance from HQ
+  const straightLine = calculateStraightLineDistance(
+    hq.coordinates.lat,
+    hq.coordinates.lng,
+    lat,
+    lng,
+  );
+
+  return {
+    ...base,
+    dangerScore,
+    priorityScore,
+    distanceFromHQ: {
+      straightLine,
+      byMotorcycle: estimateTravelTime(straightLine, 'motorcycle'),
+      byTruck: estimateTravelTime(straightLine, 'truck'),
+      byHelicopter: estimateTravelTime(straightLine, 'helicopter'),
+    },
+  };
+}
+
+/** Convert a team from the API to the UI Team type. */
+function toTeam(apiTeam: any): Team {
+  // TeamStatus: Draft=0, Active=1, Inactive=2, Suspended=3, Archived=4
+  // Only Active(1) = 'available', all others = not available for dispatch
+  const uiStatus = teamStatusToAvailability(apiTeam.status);
+
+  return {
+    id: String(apiTeam.teamId ?? apiTeam.id ?? ''),
+    name: apiTeam.name || 'Không tên',
+    currentLocation: { lat: 0, lng: 0 },
+    vehicle: 'truck',
+    capacity: { people: Number(apiTeam.totalMembers ?? apiTeam.members ?? 0), cargo: 0 },
+    hasMedical: false,
+    members: Number(apiTeam.totalMembers ?? apiTeam.members ?? 0),
+    leader: apiTeam.leaderName ?? apiTeam.leader ?? '',
+    contactPhone: apiTeam.contactPhone ?? '',
+    status: uiStatus,
+    area: apiTeam.area ?? '',
+  };
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
+
 export default function CoordinatorTeamAllocationPage() {
-  const [teams, setTeams] = useState<Team[]>(teamsData);
+  // ── API data ──
+  const { station } = useMyReliefStation();
+  const {
+    requests,
+    isLoading: isLoadingRequests,
+    refetch,
+  } = useRescueRequests({
+    pageNumber: 1,
+    pageSize: 200,
+    statusFilter: 1, // Verified
+  });
+  const { teams: apiTeams } = useTeamsInStation(station?.reliefStationId);
+
+  // ── build headquarters from station ──
+  const headquarters: Headquarters = useMemo(
+    () => ({
+      name: station?.name || 'Trạm cứu trợ',
+      coordinates: {
+        lat: Number(station?.latitude) || 16.0544,
+        lng: Number(station?.longitude) || 108.2022,
+      },
+      address: station?.address || '',
+    }),
+    [station],
+  );
+
+  // ── convert API teams → UI Team type ──
+  const teams: Team[] = useMemo(() => (apiTeams || []).map(toTeam), [apiTeams]);
+
+  // ── convert API requests → ReliefLocation[] with scores ──
+  const reliefLocations: ReliefLocation[] = useMemo(
+    () =>
+      (requests || [])
+        .filter((r: any) => {
+          const lat = Number(r.latitude);
+          const lng = Number(r.longitude);
+          return Number.isFinite(lat) && lat !== 0 && Number.isFinite(lng) && lng !== 0;
+        })
+        .map((r: any) => toReliefLocation(r, headquarters)),
+    [requests, headquarters],
+  );
+
+  // ── filter state (same as old UI) ──
   const [search, setSearch] = useState('');
   const [urgencyFilter, setUrgencyFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -29,34 +179,7 @@ export default function CoordinatorTeamAllocationPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
 
-  // Calculate AI scores and distances on mount
-  const reliefLocations = useMemo(() => {
-    return reliefLocationsData.map((loc) => {
-      const dangerScore = loc.dangerScore ?? calculateDangerScore(loc);
-      const priorityScore = loc.priorityScore ?? calculatePriorityScore(loc, dangerScore);
-
-      const straightLine = calculateStraightLineDistance(
-        HEADQUARTERS.coordinates.lat,
-        HEADQUARTERS.coordinates.lng,
-        loc.coordinates.lat,
-        loc.coordinates.lng,
-      );
-
-      return {
-        ...loc,
-        dangerScore,
-        priorityScore,
-        distanceFromHQ: {
-          straightLine,
-          byMotorcycle: estimateTravelTime(straightLine, 'motorcycle'),
-          byTruck: estimateTravelTime(straightLine, 'truck'),
-          byHelicopter: estimateTravelTime(straightLine, 'helicopter'),
-        },
-      };
-    });
-  }, []);
-
-  // Filtered locations
+  // ── filtered locations ──
   const filteredLocations = useMemo(() => {
     return reliefLocations.filter((loc) => {
       if (urgencyFilter !== 'all' && loc.urgency !== urgencyFilter) return false;
@@ -69,6 +192,8 @@ export default function CoordinatorTeamAllocationPage() {
           loc.address.toLowerCase().includes(query) ||
           loc.province.toLowerCase().includes(query) ||
           loc.description?.toLowerCase().includes(query) ||
+          loc.contactPerson?.toLowerCase().includes(query) ||
+          loc.contactPhone?.toLowerCase().includes(query) ||
           false
         );
       }
@@ -76,12 +201,10 @@ export default function CoordinatorTeamAllocationPage() {
     });
   }, [reliefLocations, urgencyFilter, statusFilter, needsFilter, search]);
 
-  // Available teams
-  const availableTeams = useMemo(() => {
-    return teams.filter((t) => t.status === 'available');
-  }, [teams]);
+  // ── available teams ──
+  const availableTeams = useMemo(() => teams.filter((t) => t.status === 'available'), [teams]);
 
-  // Stats
+  // ── stats ──
   const stats = useMemo(
     () => ({
       total: reliefLocations.length,
@@ -92,58 +215,42 @@ export default function CoordinatorTeamAllocationPage() {
     [reliefLocations],
   );
 
-  // Handle team assignment
+  // ── assign team → real API call ──
   const handleAssignTeam = useCallback(
-    (locationId: string, teamId: string) => {
+    async (locationId: string, teamId: string) => {
       const location = reliefLocations.find((l) => l.id === locationId);
       const team = teams.find((t) => t.id === teamId);
-
       if (!location || !team) return;
 
-      if (location.status !== 'unassigned') {
-        toast.error('Địa điểm này đã được phân công');
-        return;
+      try {
+        await rescueRequestService.assignTeam(locationId, { teamId });
+        toast.success(`Đã phân công ${team.name} đến ${location.locationName}`);
+        await refetch();
+      } catch (e: any) {
+        toast.error(e?.response?.data?.message || 'Không thể phân công đội cứu trợ.');
       }
-
-      if (team.status !== 'available') {
-        toast.error('Đội này đang bận');
-        return;
-      }
-
-      // setReliefLocations((prev) =>
-      //   prev.map((loc) =>
-      //     loc.id === locationId ? { ...loc, status: 'assigned', assignedTeamId: teamId } : loc
-      //   )
-      // );
-
-      setTeams((prev) =>
-        prev.map((t) =>
-          t.id === teamId ? { ...t, status: 'moving', currentAssignment: locationId } : t,
-        ),
-      );
-
-      toast.success(`Đã phân công ${team.name} đến ${location.locationName}`);
     },
-    [reliefLocations, teams],
+    [reliefLocations, teams, refetch],
   );
 
-  // Handle location click
+  // ── location click ──
   const handleLocationClick = useCallback((location: ReliefLocation) => {
     setSelectedLocationId(location.id);
   }, []);
 
-  // Handle fit bounds
+  // ── fit bounds ──
   const handleFitBounds = useCallback(() => {
     if ((window as any).reliefMapFitBounds) {
       (window as any).reliefMapFitBounds();
     }
   }, []);
 
-  // Toggle fullscreen
+  // ── fullscreen ──
   const toggleFullscreen = useCallback(() => {
     setIsFullscreen((prev) => !prev);
   }, []);
 
+  // ── loading state ──
   if (!GOONG_API_KEY) {
     return (
       <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
@@ -164,7 +271,7 @@ export default function CoordinatorTeamAllocationPage() {
     );
   }
 
-  // Fullscreen mode
+  // ── Fullscreen mode (same layout as original) ──
   if (isFullscreen) {
     return (
       <div className="fixed inset-0 z-50 bg-background flex flex-col">
@@ -185,7 +292,7 @@ export default function CoordinatorTeamAllocationPage() {
         <div className="flex-1 relative overflow-hidden">
           <ReliefMap
             locations={filteredLocations}
-            headquarters={HEADQUARTERS}
+            headquarters={headquarters}
             onLocationSelect={handleLocationClick}
             selectedLocationId={selectedLocationId}
             apiKey={GOONG_API_KEY}
@@ -273,7 +380,7 @@ export default function CoordinatorTeamAllocationPage() {
     );
   }
 
-  // Normal mode with sidebar
+  // ── Normal mode with sidebar (same layout as original) ──
   return (
     <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
       <div className="h-[calc(100vh-64px)] flex flex-col overflow-hidden">
@@ -297,7 +404,7 @@ export default function CoordinatorTeamAllocationPage() {
           <div className="flex-1 relative">
             <ReliefMap
               locations={filteredLocations}
-              headquarters={HEADQUARTERS}
+              headquarters={headquarters}
               onLocationSelect={handleLocationClick}
               selectedLocationId={selectedLocationId}
               apiKey={GOONG_API_KEY}
@@ -306,11 +413,35 @@ export default function CoordinatorTeamAllocationPage() {
 
           {/* Sidebar */}
           <aside className="w-[380px] flex flex-col border-l bg-muted/20">
-            <LocationList
-              locations={filteredLocations}
-              onLocationClick={handleLocationClick}
-              selectedLocationId={selectedLocationId}
-            />
+            {isLoadingRequests ? (
+              <div className="p-4 space-y-3">
+                {[1, 2, 3, 4].map((k) => (
+                  <Skeleton key={k} className="h-12" />
+                ))}
+              </div>
+            ) : filteredLocations.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-3">
+                <span className="material-symbols-outlined text-4xl text-muted-foreground">
+                  {reliefLocations.length === 0 ? 'where_to_vote' : 'search_off'}
+                </span>
+                <p className="text-sm font-semibold text-foreground">
+                  {reliefLocations.length === 0
+                    ? 'Chưa có yêu cầu đã xác minh'
+                    : 'Không có kết quả phù hợp'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {reliefLocations.length === 0
+                    ? 'Bản đồ vẫn hiển thị trụ sở trạm. Dữ liệu sẽ xuất hiện khi có yêu cầu được duyệt.'
+                    : 'Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.'}
+                </p>
+              </div>
+            ) : (
+              <LocationList
+                locations={filteredLocations}
+                onLocationClick={handleLocationClick}
+                selectedLocationId={selectedLocationId}
+              />
+            )}
           </aside>
         </div>
       </div>

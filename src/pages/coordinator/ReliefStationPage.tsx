@@ -1,50 +1,25 @@
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
+import { Skeleton } from '@/components/ui/skeleton';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import {
+  ReliefStationStatus,
+  ReliefStationStatusLabel,
+  getReliefStationStatusClass,
+  ReliefStationLevel,
+  ReliefStationLevelLabel,
+  parseEnumValue,
+} from '@/enums/beEnums';
 
-const getStatusText = (status?: number) => {
-  switch (status) {
-    case 0:
-      return 'Nháp';
-    case 1:
-      return 'Đang hoạt động';
-    case 2:
-      return 'Tạm ngưng';
-    case 3:
-      return 'Đã đóng';
-    default:
-      return 'Không xác định';
-  }
-};
+const getStatusText = (status?: number) =>
+  ReliefStationStatusLabel[parseEnumValue(status) as ReliefStationStatus] ?? 'Không xác định';
 
-const getStatusStyle = (status?: number) => {
-  switch (status) {
-    case 1:
-      return 'bg-green-500/10 text-green-600 border-green-500/20';
-    case 2:
-      return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
-    case 3:
-      return 'bg-red-500/10 text-red-600 border-red-500/20';
-    default:
-      return 'bg-slate-500/10 text-slate-600 border-slate-500/20';
-  }
-};
+const getStatusStyle = (status?: number) => getReliefStationStatusClass(parseEnumValue(status));
 
-const getLevelText = (level?: number) => {
-  switch (level) {
-    case 1:
-      return 'Khu vực';
-    case 2:
-      return 'Tỉnh/Thành';
-    case 3:
-      return 'Địa phương';
-    default:
-      return 'Không xác định';
-  }
-};
+const getLevelText = (level?: number) =>
+  ReliefStationLevelLabel[parseEnumValue(level) as ReliefStationLevel] ?? 'Không xác định';
 
 export default function ReliefStationPage() {
   const { station, isLoading, isError, refetch } = useMyReliefStation();
@@ -69,43 +44,10 @@ export default function ReliefStationPage() {
       </div>
 
       {isLoading && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map((key) => (
-              <Card key={key}>
-                <CardContent className="p-5 space-y-3">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-10 w-24" />
-                  <Skeleton className="h-4 w-32" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <Card className="xl:col-span-2">
-              <CardContent className="p-6 space-y-4">
-                <Skeleton className="h-8 w-72" />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                  {[1, 2, 3, 4, 5, 6].map((key) => (
-                    <div key={key} className="space-y-2">
-                      <Skeleton className="h-3 w-24" />
-                      <Skeleton className="h-5 w-40" />
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6 space-y-4">
-                <Skeleton className="h-3 w-28" />
-                <Skeleton className="h-7 w-32" />
-                <Skeleton className="h-3 w-36" />
-                <Skeleton className="h-16 w-full" />
-              </CardContent>
-            </Card>
-          </div>
+        <div className="space-y-3 p-4">
+          {[1, 2, 3, 4].map((k) => (
+            <Skeleton key={k} className="h-12" />
+          ))}
         </div>
       )}
 
@@ -117,8 +59,7 @@ export default function ReliefStationPage() {
             </div>
             <h2 className="text-xl font-bold text-foreground">Không tải được thông tin trạm</h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Hệ thống chưa thể lấy dữ liệu từ API /api/relief-stations/my-station. Vui lòng thử
-              lại.
+              Hệ thống chưa thể lấy dữ liệu từ server. Vui lòng thử lại.
             </p>
             <Button variant="primary" onClick={() => refetch()} className="gap-2">
               <span className="material-symbols-outlined">refresh</span>

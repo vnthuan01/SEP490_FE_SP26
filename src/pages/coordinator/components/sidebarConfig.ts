@@ -13,11 +13,7 @@ export const coordinatorProjects = [
     path: '/portal/coordinator/requests',
     icon: 'person_raised_hand',
   },
-  {
-    label: 'Điều phối cứu hộ',
-    path: '/portal/coordinator/rescue-dispatch',
-    icon: 'conversion_path',
-  },
+
   {
     label: 'Kho vận & Nhu yếu phẩm',
     path: '/portal/coordinator/inventory',

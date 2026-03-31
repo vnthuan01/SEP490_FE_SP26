@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { campaignService } from '@/services/campaignService';
 import type {
+  CampaignSummary,
   CreateCampaignPayload,
   UpdateCampaignPayload,
   SearchCampaignParams,
@@ -30,7 +31,7 @@ export function useCampaigns(params?: SearchCampaignParams) {
   });
 
   return {
-    campaigns: data?.items || [],
+    campaigns: (data?.items || []) as CampaignSummary[],
     pagination: data
       ? {
           currentPage: data.currentPage,

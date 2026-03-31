@@ -39,8 +39,8 @@ export interface CreateStationFormData {
 interface AddStationModalProps {
   open: boolean;
   onClose: () => void;
-   
-  onSubmit: (formData: CreateStationFormData) => void;
+
+  onSubmit: (formData: CreateStationFormData) => Promise<void> | void;
   defaultLocationId?: string;
 }
 
@@ -51,31 +51,36 @@ export function AddStationModal({
   defaultLocationId,
 }: AddStationModalProps) {
   const { data: provinces, isLoading: isLoadingProvinces } = useProvinces();
+  const availableProvinces = (provinces ?? []).filter(
+    (province) => typeof province.id === 'string' && province.id.trim().length > 0,
+  );
+
+  const getDefaultValues = (locationId?: string): CreateStationFormData => ({
+    name: '',
+    address: '',
+    contactNumber: '',
+    locationId: locationId || '',
+    latitude: 0,
+    longitude: 0,
+  });
 
   const form = useForm<CreateStationFormData>({
-    defaultValues: {
-      name: '',
-      address: '',
-      contactNumber: '',
-      locationId: defaultLocationId || '',
-      latitude: 0,
-      longitude: 0,
-    },
+    defaultValues: getDefaultValues(defaultLocationId),
   });
 
   useEffect(() => {
-    if (open && defaultLocationId) {
-      form.setValue('locationId', defaultLocationId);
+    if (open) {
+      form.reset(getDefaultValues(defaultLocationId));
     }
-  }, [open, defaultLocationId, form]);
+  }, [defaultLocationId, form, open]);
 
-  const handleSubmitForm = (formData: CreateStationFormData) => {
-    onSubmit({
+  const handleSubmitForm = async (formData: CreateStationFormData) => {
+    await onSubmit({
       ...formData,
       latitude: Number(formData.latitude),
       longitude: Number(formData.longitude),
     });
-    form.reset();
+    form.reset(getDefaultValues(defaultLocationId));
   };
 
   return (
@@ -133,7 +138,7 @@ export function AddStationModal({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {provinces?.map((province) => (
+                      {availableProvinces.map((province) => (
                         <SelectItem key={province.id} value={province.id}>
                           {province.fullName}
                         </SelectItem>
@@ -218,11 +223,11 @@ export function AddStationModal({
         </Form>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={form.formState.isSubmitting}>
             Hủy
           </Button>
-          <Button type="submit" form="add-station-form">
-            Tạo trạm
+          <Button type="submit" form="add-station-form" disabled={form.formState.isSubmitting}>
+            {form.formState.isSubmitting ? 'Đang tạo...' : 'Tạo trạm'}
           </Button>
         </DialogFooter>
       </DialogContent>

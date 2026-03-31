@@ -12,45 +12,28 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useRescueRequestManagement } from '@/hooks/useRescueRequestManagement';
 import type { RescueRequestItem } from '@/services/rescueRequestService';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { toast } from 'sonner';
+import {
+  getDisasterTypeLabel,
+  getRescueRequestTypeLabel,
+  getVerificationStatusLabel,
+  getVerificationStatusClass,
+  VerificationMethod,
+  VerificationMethodLabel,
+} from '@/enums/beEnums';
 
-const verificationStatusText = (status?: number | string | null) => {
-  if (status === 0 || status === '0' || status === 'Pending') return 'Chờ xác minh';
-  if (status === 1 || status === '1' || status === 'Approved') return 'Đã xác minh';
-  if (status === 2 || status === '2' || status === 'Rejected') return 'Từ chối';
-  return 'Không rõ';
-};
+const verificationStatusText = (status?: number | string | null) =>
+  getVerificationStatusLabel(status);
 
-const verificationStatusClass = (status?: number | string | null) => {
-  if (status === 0 || status === '0' || status === 'Pending')
-    return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
-  if (status === 1 || status === '1' || status === 'Approved')
-    return 'bg-green-500/10 text-green-600 border-green-500/20';
-  if (status === 2 || status === '2' || status === 'Rejected')
-    return 'bg-red-500/10 text-red-600 border-red-500/20';
-  return 'bg-slate-500/10 text-slate-600 border-slate-500/20';
-};
+const verificationStatusClass = (status?: number | string | null) =>
+  getVerificationStatusClass(status);
 
-const verificationMethodLabel = (method: number) => {
-  switch (method) {
-    case 0:
-      return 'Không chọn (None)';
-    case 1:
-      return 'Duyệt thủ công (ManualReview)';
-    case 2:
-      return 'Gọi điện xác minh (PhoneCall)';
-    case 3:
-      return 'Đối chiếu hình ảnh (PhotoEvidence)';
-    case 4:
-      return 'Xác minh hiện trường (FieldVerification)';
-    case 5:
-      return 'Hệ thống tự kiểm tra (SystemAutoCheck)';
-    default:
-      return `Phương thức #${method}`;
-  }
-};
+const verificationMethodLabel = (method: number) =>
+  VerificationMethodLabel[method as VerificationMethod] ?? `Phương thức #${method}`;
 
 const formatDate = (value?: string | null) => {
   if (!value) return '--';
@@ -158,9 +141,11 @@ export default function CoordinatorRequestManagementPage() {
       });
       setVerifyNote('');
       await refetch();
-      window.alert('Đã xác minh yêu cầu cứu hộ.');
+      toast.success('Đã xác minh yêu cầu cứu hộ thành công!');
     } catch (error: any) {
-      setActionError(error?.response?.data?.message || 'Không thể xác minh yêu cầu.');
+      const msg = error?.response?.data?.message || 'Không thể xác minh yêu cầu.';
+      setActionError(msg);
+      toast.error(msg);
     }
   };
 
@@ -181,9 +166,11 @@ export default function CoordinatorRequestManagementPage() {
       setRejectNote('');
       setIsRejectOpen(false);
       await refetch();
-      window.alert('Đã từ chối yêu cầu cứu hộ.');
+      toast.success('Đã từ chối yêu cầu cứu hộ.');
     } catch (error: any) {
-      setActionError(error?.response?.data?.message || 'Không thể từ chối yêu cầu.');
+      const msg = error?.response?.data?.message || 'Không thể từ chối yêu cầu.';
+      setActionError(msg);
+      toast.error(msg);
     }
   };
 
@@ -246,7 +233,7 @@ export default function CoordinatorRequestManagementPage() {
             {isLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((k) => (
-                  <div key={k} className="h-20 rounded-lg bg-accent animate-pulse" />
+                  <Skeleton key={k} className="h-12" />
                 ))}
               </div>
             ) : isError ? (
@@ -335,23 +322,17 @@ export default function CoordinatorRequestManagementPage() {
                   <div>
                     <p className="text-xs uppercase text-muted-foreground">Loại thiên tai</p>
                     <p className="font-medium">
-                      {selected.disasterType == 'Flood'
-                        ? 'Lũ lụt'
-                        : selected.disasterType == 'Earthquake'
-                          ? 'Động đất'
-                          : '--'}
+                      {selected.disasterType != null
+                        ? getDisasterTypeLabel(selected.disasterType)
+                        : '--'}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs uppercase text-muted-foreground">Loại yêu cầu cứu hộ</p>
                     <p className="font-medium">
-                      {String(
-                        selected.rescueRequestType == 'Normal'
-                          ? 'Cứu hộ bình thường'
-                          : selected.rescueRequestType == 'Emergency'
-                            ? 'Cứu hộ khẩn cấp'
-                            : '--',
-                      )}
+                      {selected.rescueRequestType != null
+                        ? getRescueRequestTypeLabel(selected.rescueRequestType)
+                        : '--'}
                     </p>
                   </div>
                   <div>

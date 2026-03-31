@@ -3,7 +3,9 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useVolunteerReviewApplications } from '@/hooks/useVolunteerReviewApplications';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -14,21 +16,19 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import {
+  VerificationStatus,
+  VerificationStatusLabel,
+  VolunteerStatus,
+  VolunteerStatusLabel,
+  TeamRolePreference,
+  TeamRolePreferenceLabel,
+} from '@/enums/beEnums';
 
 type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
 
-const getVerificationStatusText = (status: number) => {
-  switch (status) {
-    case 1:
-      return 'Chờ duyệt';
-    case 2:
-      return 'Đã duyệt';
-    case 3:
-      return 'Đã từ chối';
-    default:
-      return 'Không rõ';
-  }
-};
+const getVerificationStatusText = (status: number) =>
+  VerificationStatusLabel[status as VerificationStatus] ?? 'Không rõ';
 
 const getVerificationStatusStyle = (status: number) => {
   switch (status) {
@@ -43,29 +43,11 @@ const getVerificationStatusStyle = (status: number) => {
   }
 };
 
-const getVolunteerStatusText = (status: number) => {
-  switch (status) {
-    case 1:
-      return 'Đang hoạt động';
-    case 2:
-      return 'Không hoạt động';
-    default:
-      return 'Không rõ';
-  }
-};
+const getVolunteerStatusText = (status: number) =>
+  VolunteerStatusLabel[status as VolunteerStatus] ?? 'Không rõ';
 
-const getPreferredTeamRoleText = (role: number) => {
-  switch (role) {
-    case 1:
-      return 'Thành viên (Member)';
-    case 2:
-      return 'Đội trưởng (Leader)';
-    case 3:
-      return 'Tài xế (Driver)';
-    default:
-      return `Vai trò #${role}`;
-  }
-};
+const getPreferredTeamRoleText = (role: number) =>
+  TeamRolePreferenceLabel[role as TeamRolePreference] ?? `Vai trò #${role}`;
 
 const formatDateTimeVN = (value?: string | null) => {
   if (!value) return '--';
@@ -166,9 +148,11 @@ export default function CoordinatorVolunteerRequestPage() {
     try {
       await approveApplication(selectedApplication.volunteerProfileId);
       await refetch();
-      window.alert('Đã chấp nhận request volunteer.');
+      toast.success('Đã chấp nhận hồ sơ tình nguyện viên!');
     } catch (error: any) {
-      setActionError(error?.response?.data?.message || 'Không thể chấp nhận request.');
+      const msg = error?.response?.data?.message || 'Không thể chấp nhận request.';
+      setActionError(msg);
+      toast.error(msg);
     }
   };
 
@@ -186,9 +170,11 @@ export default function CoordinatorVolunteerRequestPage() {
       setIsRejectDialogOpen(false);
       setRejectReason('');
       await refetch();
-      window.alert('Đã từ chối request volunteer.');
+      toast.success('Đã từ chối hồ sơ tình nguyện viên.');
     } catch (error: any) {
-      setActionError(error?.response?.data?.message || 'Không thể từ chối request.');
+      const msg = error?.response?.data?.message || 'Không thể từ chối request.';
+      setActionError(msg);
+      toast.error(msg);
     }
   };
 
@@ -275,9 +261,9 @@ export default function CoordinatorVolunteerRequestPage() {
 
             <div className="flex-1 overflow-auto px-3 py-3">
               {isLoading ? (
-                <div className="space-y-2">
-                  {[1, 2, 3, 4, 5].map((k) => (
-                    <div key={k} className="h-24 rounded-xl bg-accent animate-pulse" />
+                <div className="space-y-2 px-1">
+                  {[1, 2, 3].map((k) => (
+                    <Skeleton key={k} className="h-12" />
                   ))}
                 </div>
               ) : isError ? (
