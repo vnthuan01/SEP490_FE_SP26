@@ -7,7 +7,7 @@ import { getUrgencyColor, getStatusColor, getDangerColor } from './utils';
 
 interface LocationListProps {
   locations: ReliefLocation[];
-  onLocationClick: (location: ReliefLocation) => void;
+  onLocationClick: (_location: ReliefLocation) => void;
   selectedLocationId?: string;
 }
 

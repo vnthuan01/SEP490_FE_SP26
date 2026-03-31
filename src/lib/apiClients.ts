@@ -2,7 +2,7 @@ import axios, { type AxiosRequestHeaders, type InternalAxiosRequestConfig } from
 import Cookies from 'js-cookie';
 import { getAuthToken, setAuthToken } from './cookies';
 
-const BASE_URL = import.meta.env.VITE_BASE_API_URI;
+const BASE_URL = import.meta.env.VITE_BASE_API_URI || import.meta.env.VITE_API_BASE_URL;
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,

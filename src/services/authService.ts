@@ -47,6 +47,7 @@ export interface User {
   avatarUrl?: string | null;
   email?: string;
   fullName?: string;
+  displayName?: string;
   phoneNumber?: string;
   address?: string;
   dateOfBirth?: string;

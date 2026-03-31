@@ -19,7 +19,7 @@ interface LocationDetailSheetProps {
   onClose: () => void;
   availableTeams: Team[];
   assignedTeam?: Team;
-  onAssignTeam: (locationId: string, teamId: string) => void;
+  onAssignTeam: (_locationId: string, _teamId: string) => void;
 }
 
 const getPriorityColor = (value: number) => {

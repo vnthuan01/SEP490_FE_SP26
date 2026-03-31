@@ -1,7 +1,13 @@
 import { apiClient } from '@/lib/apiClients';
-import type { Skill } from './skillsService';
 
-export interface Certificate {
+export interface VolunteerSkill {
+  skillId: string;
+  code: string;
+  name: string;
+  description: string;
+}
+
+export interface VolunteerCertificate {
   name: string;
   issuedBy: string;
   issuedDate: string;
@@ -9,39 +15,49 @@ export interface Certificate {
   fileUrl: string;
 }
 
-export interface VolunteerProfile {
+export interface VolunteerApplication {
   volunteerProfileId: string;
-  userId?: string;
+  userId: string;
   fullName: string;
   email: string;
   phoneNumber: string;
+  address: string;
+  dateOfBirth: string;
+  gender: string;
+  appliedAt: string;
+  verificationStatus: number;
+  status: number;
+  verifiedBy: string;
+  verifiedAt: string;
+  reason: string;
+  descriptions: string;
+  yearsOfExperience: number;
+  preferredTeamRole: number;
+  volunteerType: number;
+  skills: VolunteerSkill[];
+  certificates: VolunteerCertificate[];
+}
+
+export interface VolunteerProfile {
+  volunteerProfileId: string;
+  userId?: string;
+  fullName?: string;
+  email?: string;
+  phoneNumber?: string;
   address?: string;
   dateOfBirth?: string;
   gender?: string;
-  descriptions: string;
-  verificationStatus: number;
-  yearsOfExperience: number;
-  preferredTeamRole: number;
-  skills: any[]; // Could be array of strings or Skill objects depending on the endpoint
-  certificates: Certificate[];
-  // properties from pending-applications / review-applications
-  appliedAt?: string;
-  status?: number;
-  verifiedBy?: string;
-  verifiedAt?: string;
-  reason?: string;
+  yearsOfExperience?: number;
+  preferredTeamRole?: number;
   volunteerType?: number;
+  verificationStatus?: number;
+  status?: number;
+  reason?: string;
+  skills?: VolunteerSkill[];
+  certificates?: VolunteerCertificate[];
 }
 
-export interface CreateVolunteerProfilePayload {
-  skillIds: string[];
-  descriptions: string;
-  yearsOfExperience: number;
-  preferredTeamRole: number;
-  certificates: Certificate[];
-}
-
-export interface PaginatedResponse<T> {
+export interface PagedResponse<T> {
   currentPage: number;
   totalPages: number;
   pageSize: number;
@@ -52,16 +68,23 @@ export interface PaginatedResponse<T> {
 }
 
 export interface SearchVolunteerProfileParams {
+  pageIndex?: number;
+  pageSize?: number;
   search?: string;
+  verificationStatus?: number;
+}
+
+export interface SearchVolunteerProfileApplicationsParams {
   pageIndex?: number;
   pageSize?: number;
 }
 
-export interface SearchVolunteerProfileApplicationsParams {
-  search?: string;
-  verificationStatus?: number;
-  pageIndex?: number;
-  pageSize?: number;
+export interface CreateVolunteerProfilePayload {
+  yearsOfExperience?: number;
+  preferredTeamRole?: number;
+  volunteerType?: number;
+  descriptions?: string;
+  skillIds?: string[];
 }
 
 export interface UpdateVolunteerProfileSkillsPayload {
@@ -69,46 +92,57 @@ export interface UpdateVolunteerProfileSkillsPayload {
 }
 
 export const volunteerProfileService = {
-  // Create profile
-  create: (data: CreateVolunteerProfilePayload) =>
-    apiClient.post<VolunteerProfile>('/VolunteerProfile', data),
-
-  // Get all paginated
   getAll: (params?: SearchVolunteerProfileParams) =>
-    apiClient.get<PaginatedResponse<VolunteerProfile>>('/VolunteerProfile', { params }),
+    apiClient.get<PagedResponse<VolunteerProfile>>('/VolunteerProfile', {
+      params: {
+        PageIndex: params?.pageIndex,
+        PageSize: params?.pageSize,
+        Search: params?.search,
+        VerificationStatus: params?.verificationStatus,
+      },
+    }),
 
-  // Get my profile
   getMyProfile: () => apiClient.get<VolunteerProfile>('/VolunteerProfile/my-profile'),
 
-  // Get pending applications
   getPendingApplications: (params?: SearchVolunteerProfileApplicationsParams) =>
-    apiClient.get<PaginatedResponse<VolunteerProfile>>('/VolunteerProfile/pending-applications', {
-      params,
+    apiClient.get<PagedResponse<VolunteerApplication>>('/VolunteerProfile/review-applications', {
+      params: {
+        PageIndex: params?.pageIndex,
+        PageSize: params?.pageSize,
+      },
     }),
 
-  // Get review applications
   getReviewApplications: (params?: SearchVolunteerProfileApplicationsParams) =>
-    apiClient.get<PaginatedResponse<VolunteerProfile>>('/VolunteerProfile/review-applications', {
-      params,
+    apiClient.get<PagedResponse<VolunteerApplication>>('/VolunteerProfile/review-applications', {
+      params: {
+        PageIndex: params?.pageIndex,
+        PageSize: params?.pageSize,
+      },
     }),
 
-  // Approve application
-  approve: (id: string) => apiClient.put<VolunteerProfile>(`/VolunteerProfile/${id}/approve`),
+  getMySkills: () => apiClient.get<VolunteerSkill[]>('/VolunteerProfile/my-skills'),
 
-  // Reject application
+  create: (data: CreateVolunteerProfilePayload) => apiClient.post('/VolunteerProfile', data),
+
+  approve: (id: string) => apiClient.put(`/VolunteerProfile/${id}/approve`),
+  approveApplication: (id: string) => apiClient.put(`/VolunteerProfile/${id}/approve`),
+
   reject: (id: string, reason: string) =>
-    apiClient.put<VolunteerProfile>(`/VolunteerProfile/${id}/reject`, `"${reason}"`, {
-      headers: { 'Content-Type': 'application/json' },
+    apiClient.put(`/VolunteerProfile/${id}/reject`, reason, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    }),
+  rejectApplication: (id: string, reason: string) =>
+    apiClient.put(`/VolunteerProfile/${id}/reject`, reason, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
     }),
 
-  // Add skills
   addSkills: (data: UpdateVolunteerProfileSkillsPayload) =>
-    apiClient.post<VolunteerProfile>('/VolunteerProfile/skills', data),
+    apiClient.put('/VolunteerProfile/my-skills', data),
 
-  // Remove skills
   removeSkills: (data: UpdateVolunteerProfileSkillsPayload) =>
-    apiClient.delete<VolunteerProfile>('/VolunteerProfile/skills', { data }),
-
-  // Get my skills
-  getMySkills: () => apiClient.get<Skill[]>('/VolunteerProfile/skills'),
+    apiClient.delete('/VolunteerProfile/my-skills', { data }),
 };
