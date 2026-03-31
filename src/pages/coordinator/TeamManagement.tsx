@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { toast } from 'sonner';
 
 type LegacyStatus = 'available' | 'moving' | 'rescuing' | 'lost-contact';
 
@@ -49,12 +50,23 @@ const toDisplayText = (value: unknown, fallback = ''): string => {
 export default function CoordinatorTeamManagementPage() {
   const { station, isLoading: isLoadingStation } = useMyReliefStation();
   const reliefStationId = station?.reliefStationId;
+
+  // ── If moderator has a station → load teams in that station
+  // ── If no station → fallback to all teams (read-only, create disabled)
   const {
     teams: inStationTeams,
     isLoading: isLoadingInStationTeams,
-    refetch,
+    refetch: refetchInStation,
   } = useTeamsInStation(reliefStationId);
-  const { createTeam } = useTeams();
+
+  const { teams: allTeamsRaw, isLoadingTeams, refetchTeams, createTeam } = useTeams();
+
+  // Unified refetch
+  const refetch = reliefStationId ? refetchInStation : refetchTeams;
+
+  // Unified raw list depending on station presence
+  const rawTeamList = reliefStationId ? inStationTeams : allTeamsRaw;
+  const isLoadingTeamList = reliefStationId ? isLoadingInStationTeams : isLoadingTeams;
 
   const [selectedTeamId, setSelectedTeamId] = useState<string>();
   const [searchTerm, setSearchTerm] = useState('');
@@ -66,12 +78,12 @@ export default function CoordinatorTeamManagementPage() {
   const [isCreating, setIsCreating] = useState(false);
   const navigate = useNavigate();
 
-  const isLoading = isLoadingStation || isLoadingInStationTeams;
+  const isLoading = isLoadingStation || isLoadingTeamList;
 
   const teams: TeamItem[] = useMemo(() => {
-    if (!Array.isArray(inStationTeams)) return [];
+    if (!Array.isArray(rawTeamList)) return [];
 
-    return inStationTeams.map((team: any) => ({
+    return rawTeamList.map((team: any) => ({
       id: String(team.teamId ?? team.id ?? ''),
       name: toDisplayText(team.name, 'Chưa đặt tên'),
       description: team.description,
@@ -82,7 +94,7 @@ export default function CoordinatorTeamManagementPage() {
       contactPhone: toDisplayText(team.contactPhone, ''),
       memberDetails: Array.isArray(team.memberDetails) ? team.memberDetails : [],
     }));
-  }, [inStationTeams]);
+  }, [rawTeamList]);
 
   useEffect(() => {
     if (!teams.length) {
@@ -185,6 +197,11 @@ export default function CoordinatorTeamManagementPage() {
   };
 
   const handleCreateTeam = async () => {
+    if (!reliefStationId) {
+      toast.error('Bạn chưa được phân vào trạm cứu trợ nào. Không thể tạo đội ngũ.');
+      return;
+    }
+
     const trimmedName = name.trim();
     const trimmedDescription = description.trim();
     const trimmedContactPhone = contactPhone.trim();
@@ -207,9 +224,11 @@ export default function CoordinatorTeamManagementPage() {
       setIsCreateOpen(false);
       resetCreateForm();
       await refetch();
-      window.alert('Tạo đội ngũ mới thành công.');
+      toast.success('Tạo đội ngũ mới thành công!');
     } catch (error: any) {
-      setCreateError(error?.response?.data?.message || 'Không thể tạo đội ngũ. Vui lòng thử lại.');
+      const msg = error?.response?.data?.message || 'Không thể tạo đội ngũ. Vui lòng thử lại.';
+      setCreateError(msg);
+      toast.error(msg);
     } finally {
       setIsCreating(false);
     }
@@ -239,16 +258,27 @@ export default function CoordinatorTeamManagementPage() {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="primary"
-                  className="gap-2 text-base px-6 h-12"
-                  onClick={() => setIsCreateOpen(true)}
-                >
-                  <span className="material-symbols-outlined">add</span>
-                </Button>
+                <span>
+                  <Button
+                    variant="primary"
+                    className="gap-2 text-base px-6 h-12"
+                    onClick={() => {
+                      if (!reliefStationId) {
+                        toast.error('Bạn chưa được phân vào trạm nào. Không thể tạo đội ngũ.');
+                        return;
+                      }
+                      setIsCreateOpen(true);
+                    }}
+                    disabled={isLoadingStation}
+                  >
+                    <span className="material-symbols-outlined">add</span>
+                  </Button>
+                </span>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-white dark:text-black">Tạo đội ngũ mới</p>
+                <p className="text-white dark:text-black">
+                  {reliefStationId ? 'Tạo đội ngũ mới' : 'Cần được phân vào trạm trước khi tạo đội'}
+                </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -348,9 +378,17 @@ export default function CoordinatorTeamManagementPage() {
           </div>
 
           {!isLoading && !reliefStationId && (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 text-amber-800 px-4 py-3 text-sm">
-              Không tìm thấy ReliefStationId của moderator hiện tại, nên chưa thể tải danh sách đội
-              trong trạm.
+            <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 text-amber-800 dark:text-amber-300 px-4 py-3 text-sm flex items-start gap-2">
+              <span className="material-symbols-outlined text-amber-500 shrink-0 mt-0.5">
+                warning
+              </span>
+              <div>
+                <p className="font-semibold">Bạn chưa được phân vào trạm cứu trợ nào.</p>
+                <p className="text-amber-700 dark:text-amber-400 mt-0.5">
+                  Chức năng tạo đội ngũ bị vô hiệu. Đang hiển thị tất cả đội ngũ trong hệ thống (chỉ
+                  đọc).
+                </p>
+              </div>
             </div>
           )}
 
@@ -367,16 +405,29 @@ export default function CoordinatorTeamManagementPage() {
               </div>
             ) : filteredTeams.length === 0 ? (
               <div className="h-full min-h-[320px] flex flex-col items-center justify-center gap-3 text-center p-6">
+                <span className="material-symbols-outlined text-5xl text-muted-foreground">
+                  {searchTerm ? 'search_off' : 'groups'}
+                </span>
                 <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
-                  Chưa có đội ngũ nào
+                  {searchTerm
+                    ? 'Không tìm thấy đội ngũ phù hợp'
+                    : teams.length === 0
+                      ? 'Chưa có đội ngũ nào'
+                      : 'Không có kết quả'}
                 </p>
                 <p className="text-sm text-muted-foreground max-w-md">
-                  Hãy tạo đội ngũ đầu tiên để bắt đầu quản lý và phân công tình nguyện viên.
+                  {searchTerm
+                    ? 'Thử thay đổi từ khóa tìm kiếm.'
+                    : reliefStationId
+                      ? 'Hãy tạo đội ngũ đầu tiên để bắt đầu quản lý và phân công tình nguyện viên.'
+                      : 'Liên hệ quản lý để được phân vào trạm, sau đó có thể tạo đội ngũ.'}
                 </p>
-                <Button className="gap-2" onClick={() => setIsCreateOpen(true)}>
-                  <span className="material-symbols-outlined">add</span>
-                  Tạo đội ngũ mới
-                </Button>
+                {!searchTerm && reliefStationId && (
+                  <Button className="gap-2" onClick={() => setIsCreateOpen(true)}>
+                    <span className="material-symbols-outlined">add</span>
+                    Tạo đội ngũ mới
+                  </Button>
+                )}
               </div>
             ) : (
               <table className="w-full text-left border-collapse">

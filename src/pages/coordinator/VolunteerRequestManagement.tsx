@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { useVolunteerReviewApplications } from '@/hooks/useVolunteerReviewApplications';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -166,9 +167,11 @@ export default function CoordinatorVolunteerRequestPage() {
     try {
       await approveApplication(selectedApplication.volunteerProfileId);
       await refetch();
-      window.alert('Đã chấp nhận request volunteer.');
+      toast.success('Đã chấp nhận hồ sơ tình nguyện viên!');
     } catch (error: any) {
-      setActionError(error?.response?.data?.message || 'Không thể chấp nhận request.');
+      const msg = error?.response?.data?.message || 'Không thể chấp nhận request.';
+      setActionError(msg);
+      toast.error(msg);
     }
   };
 
@@ -186,9 +189,11 @@ export default function CoordinatorVolunteerRequestPage() {
       setIsRejectDialogOpen(false);
       setRejectReason('');
       await refetch();
-      window.alert('Đã từ chối request volunteer.');
+      toast.success('Đã từ chối hồ sơ tình nguyện viên.');
     } catch (error: any) {
-      setActionError(error?.response?.data?.message || 'Không thể từ chối request.');
+      const msg = error?.response?.data?.message || 'Không thể từ chối request.';
+      setActionError(msg);
+      toast.error(msg);
     }
   };
 

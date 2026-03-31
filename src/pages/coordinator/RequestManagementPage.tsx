@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { useRescueRequestManagement } from '@/hooks/useRescueRequestManagement';
 import type { RescueRequestItem } from '@/services/rescueRequestService';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { toast } from 'sonner';
 
 const verificationStatusText = (status?: number | string | null) => {
   if (status === 0 || status === '0' || status === 'Pending') return 'Chờ xác minh';
@@ -158,9 +159,11 @@ export default function CoordinatorRequestManagementPage() {
       });
       setVerifyNote('');
       await refetch();
-      window.alert('Đã xác minh yêu cầu cứu hộ.');
+      toast.success('Đã xác minh yêu cầu cứu hộ thành công!');
     } catch (error: any) {
-      setActionError(error?.response?.data?.message || 'Không thể xác minh yêu cầu.');
+      const msg = error?.response?.data?.message || 'Không thể xác minh yêu cầu.';
+      setActionError(msg);
+      toast.error(msg);
     }
   };
 
@@ -181,9 +184,11 @@ export default function CoordinatorRequestManagementPage() {
       setRejectNote('');
       setIsRejectOpen(false);
       await refetch();
-      window.alert('Đã từ chối yêu cầu cứu hộ.');
+      toast.success('Đã từ chối yêu cầu cứu hộ.');
     } catch (error: any) {
-      setActionError(error?.response?.data?.message || 'Không thể từ chối yêu cầu.');
+      const msg = error?.response?.data?.message || 'Không thể từ chối yêu cầu.';
+      setActionError(msg);
+      toast.error(msg);
     }
   };
 
