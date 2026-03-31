@@ -20,6 +20,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
 import { toast } from 'sonner';
+import type { TeamStatus } from '@/enums/beEnums';
+import { TeamStatusLabel, getTeamStatusClass, parseEnumValue } from '@/enums/beEnums';
 
 type LegacyStatus = 'available' | 'moving' | 'rescuing' | 'lost-contact';
 
@@ -130,65 +132,11 @@ export default function CoordinatorTeamManagementPage() {
     areas: new Set(teams.map((t) => t.area).filter(Boolean)).size,
   };
 
-  const getStatusBadge = (status: number | LegacyStatus) => {
-    switch (Number(status)) {
-      case 0:
-        return 'bg-slate-500/20 text-slate-500';
-      case 1:
-        return 'bg-green-500/20 text-green-500';
-      case 2:
-        return 'bg-yellow-500/20 text-yellow-600';
-      case 3:
-        return 'bg-red-500/20 text-red-500';
-      case 4:
-        return 'bg-gray-500/20 text-gray-400';
-      default:
-        break;
-    }
+  const getStatusBadge = (status: number | LegacyStatus) =>
+    getTeamStatusClass(parseEnumValue(status));
 
-    switch (status) {
-      case 'available':
-        return 'bg-green-500/20 text-green-500';
-      case 'moving':
-        return 'bg-blue-500/20 text-blue-500';
-      case 'rescuing':
-        return 'bg-red-500/20 text-red-500';
-      case 'lost-contact':
-        return 'bg-gray-500/20 text-gray-400';
-      default:
-        return 'bg-gray-500/20 text-gray-400';
-    }
-  };
-
-  const getStatusLabel = (status: number | LegacyStatus) => {
-    switch (Number(status)) {
-      case 0:
-        return 'Nháp';
-      case 1:
-        return 'Đang hoạt động';
-      case 2:
-        return 'Tạm ngưng';
-      case 3:
-        return 'Đình chỉ';
-      case 4:
-        return 'Lưu trữ';
-      default:
-        break;
-    }
-
-    switch (status) {
-      case 'available':
-        return 'Sẵn sàng';
-      case 'moving':
-        return 'Đang di chuyển';
-      case 'rescuing':
-        return 'Đang cứu hộ';
-      case 'lost-contact':
-        return 'Mất liên lạc';
-      default:
-        return 'Không xác định';
-    }
-  };
+  const getStatusLabel = (status: number | LegacyStatus) =>
+    TeamStatusLabel[parseEnumValue(status) as TeamStatus] ?? 'Không xác định';
 
   const resetCreateForm = () => {
     setName('');

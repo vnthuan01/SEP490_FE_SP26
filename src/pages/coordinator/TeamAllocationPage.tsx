@@ -23,6 +23,11 @@ import { useTeamsInStation } from '@/hooks/useTeams';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { rescueRequestService } from '@/services/rescueRequestService';
 import type { RescueRequestItem } from '@/services/rescueRequestService';
+import {
+  RescueRequestType,
+  rescueStatusToLocationStatus,
+  teamStatusToAvailability,
+} from '@/enums/beEnums';
 
 const GOONG_API_KEY = import.meta.env.VITE_GOONG_MAP_KEY || '';
 
@@ -30,30 +35,14 @@ const GOONG_API_KEY = import.meta.env.VITE_GOONG_MAP_KEY || '';
 
 /** Map a BE rescue‑request status to the UI status the components understand. */
 function mapRequestStatus(req: RescueRequestItem): ReliefLocation['status'] {
-  // rescueRequestStatus from BE can be string or number
-  const raw = req.rescueRequestStatus;
-  const s = typeof raw === 'string' ? raw.trim().toLowerCase() : raw;
-
-  // 0 / Pending → unassigned
-  if (s === 0 || s === 'pending') return 'unassigned';
-  // 1 / Verified → unassigned (verified but no team yet)
-  if (s === 1 || s === 'verified') return 'unassigned';
-  // 2 / Assigned
-  if (s === 2 || s === 'assigned') return 'assigned';
-  // 3 / InProgress / OnRoute / OnScene
-  if (s === 3 || s === 'inprogress' || s === 'onroute' || s === 'onscene') return 'on-the-way';
-  // 4 / Completed
-  if (s === 4 || s === 'completed') return 'completed';
-  // 5+ / Cancelled / Failed
-  if (s === 5 || s === 'cancelled' || s === 'failed') return 'failed';
-  return 'unassigned';
+  return rescueStatusToLocationStatus(req.rescueRequestStatus);
 }
 
 /** Map rescue‑request type → urgency level for the UI. */
 function mapUrgency(req: RescueRequestItem): ReliefLocation['urgency'] {
   const t = req.rescueRequestType;
-  const v = typeof t === 'string' ? t.trim().toLowerCase() : t;
-  if (v === 1 || v === 'emergency') return 'high';
+  // Emergency (1) = high urgency
+  if (t === RescueRequestType.Emergency || t === 'Emergency') return 'high';
   // Use priority score from BE if available
   const p = req.priority ?? 0;
   if (p >= 70) return 'high';
@@ -117,20 +106,9 @@ function toReliefLocation(req: RescueRequestItem, hq: Headquarters): ReliefLocat
 
 /** Convert a team from the API to the UI Team type. */
 function toTeam(apiTeam: any): Team {
-  const statusRaw = apiTeam.status;
-  let uiStatus: Team['status'] = 'available';
-  if (typeof statusRaw === 'string') {
-    const s = statusRaw.trim().toLowerCase();
-    if (s === 'available' || s === '1') uiStatus = 'available';
-    else if (s === 'moving' || s === 'onroute') uiStatus = 'moving';
-    else if (s === 'rescuing' || s === 'busy' || s === 'onscene') uiStatus = 'rescuing';
-    else uiStatus = 'lost-contact';
-  } else if (typeof statusRaw === 'number') {
-    if (statusRaw === 1) uiStatus = 'available';
-    else if (statusRaw === 2) uiStatus = 'moving';
-    else if (statusRaw === 3) uiStatus = 'rescuing';
-    else uiStatus = 'lost-contact';
-  }
+  // TeamStatus: Draft=0, Active=1, Inactive=2, Suspended=3, Archived=4
+  // Only Active(1) = 'available', all others = not available for dispatch
+  const uiStatus = teamStatusToAvailability(apiTeam.status);
 
   return {
     id: String(apiTeam.teamId ?? apiTeam.id ?? ''),

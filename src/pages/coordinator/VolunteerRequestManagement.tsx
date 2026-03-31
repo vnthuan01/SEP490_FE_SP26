@@ -16,21 +16,19 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import {
+  VerificationStatus,
+  VerificationStatusLabel,
+  VolunteerStatus,
+  VolunteerStatusLabel,
+  TeamRolePreference,
+  TeamRolePreferenceLabel,
+} from '@/enums/beEnums';
 
 type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
 
-const getVerificationStatusText = (status: number) => {
-  switch (status) {
-    case 1:
-      return 'Chờ duyệt';
-    case 2:
-      return 'Đã duyệt';
-    case 3:
-      return 'Đã từ chối';
-    default:
-      return 'Không rõ';
-  }
-};
+const getVerificationStatusText = (status: number) =>
+  VerificationStatusLabel[status as VerificationStatus] ?? 'Không rõ';
 
 const getVerificationStatusStyle = (status: number) => {
   switch (status) {
@@ -45,29 +43,11 @@ const getVerificationStatusStyle = (status: number) => {
   }
 };
 
-const getVolunteerStatusText = (status: number) => {
-  switch (status) {
-    case 1:
-      return 'Đang hoạt động';
-    case 2:
-      return 'Không hoạt động';
-    default:
-      return 'Không rõ';
-  }
-};
+const getVolunteerStatusText = (status: number) =>
+  VolunteerStatusLabel[status as VolunteerStatus] ?? 'Không rõ';
 
-const getPreferredTeamRoleText = (role: number) => {
-  switch (role) {
-    case 1:
-      return 'Thành viên (Member)';
-    case 2:
-      return 'Đội trưởng (Leader)';
-    case 3:
-      return 'Tài xế (Driver)';
-    default:
-      return `Vai trò #${role}`;
-  }
-};
+const getPreferredTeamRoleText = (role: number) =>
+  TeamRolePreferenceLabel[role as TeamRolePreference] ?? `Vai trò #${role}`;
 
 const formatDateTimeVN = (value?: string | null) => {
   if (!value) return '--';

@@ -4,47 +4,22 @@ import { Button } from '@/components/ui/button';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { Skeleton } from '@/components/ui/skeleton';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import {
+  ReliefStationStatus,
+  ReliefStationStatusLabel,
+  getReliefStationStatusClass,
+  ReliefStationLevel,
+  ReliefStationLevelLabel,
+  parseEnumValue,
+} from '@/enums/beEnums';
 
-const getStatusText = (status?: number) => {
-  switch (status) {
-    case 0:
-      return 'Nháp';
-    case 1:
-      return 'Đang hoạt động';
-    case 2:
-      return 'Tạm ngưng';
-    case 3:
-      return 'Đã đóng';
-    default:
-      return 'Không xác định';
-  }
-};
+const getStatusText = (status?: number) =>
+  ReliefStationStatusLabel[parseEnumValue(status) as ReliefStationStatus] ?? 'Không xác định';
 
-const getStatusStyle = (status?: number) => {
-  switch (status) {
-    case 1:
-      return 'bg-green-500/10 text-green-600 border-green-500/20';
-    case 2:
-      return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
-    case 3:
-      return 'bg-red-500/10 text-red-600 border-red-500/20';
-    default:
-      return 'bg-slate-500/10 text-slate-600 border-slate-500/20';
-  }
-};
+const getStatusStyle = (status?: number) => getReliefStationStatusClass(parseEnumValue(status));
 
-const getLevelText = (level?: number) => {
-  switch (level) {
-    case 1:
-      return 'Khu vực';
-    case 2:
-      return 'Tỉnh/Thành';
-    case 3:
-      return 'Địa phương';
-    default:
-      return 'Không xác định';
-  }
-};
+const getLevelText = (level?: number) =>
+  ReliefStationLevelLabel[parseEnumValue(level) as ReliefStationLevel] ?? 'Không xác định';
 
 export default function ReliefStationPage() {
   const { station, isLoading, isError, refetch } = useMyReliefStation();
