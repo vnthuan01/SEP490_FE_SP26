@@ -346,6 +346,24 @@ export const SupplyCategoryLabel: Record<SupplyCategory, string> = {
   [SupplyCategory.Khac]: 'Khác',
 };
 
+export const SupplyCategoryIcon: Record<SupplyCategory, string> = {
+  [SupplyCategory.LuongThuc]: 'restaurant',
+  [SupplyCategory.YTeVaThuoc]: 'medication',
+  [SupplyCategory.NuocUong]: 'water_drop',
+  [SupplyCategory.DungCuVaLeuTrai]: 'camping',
+  [SupplyCategory.Khac]: 'category',
+};
+
+export const SupplyCategoryClass: Record<SupplyCategory, string> = {
+  [SupplyCategory.LuongThuc]:
+    'border-orange-500/20 bg-orange-500/10 text-orange-600 dark:text-orange-300',
+  [SupplyCategory.YTeVaThuoc]: 'border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-300',
+  [SupplyCategory.NuocUong]: 'border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-300',
+  [SupplyCategory.DungCuVaLeuTrai]:
+    'border-green-500/20 bg-green-500/10 text-green-600 dark:text-green-300',
+  [SupplyCategory.Khac]: 'border-border bg-muted text-muted-foreground',
+};
+
 export const SupplyAllocationStatusLabel: Record<SupplyAllocationStatus, string> = {
   [SupplyAllocationStatus.Pending]: 'Chờ duyệt',
   [SupplyAllocationStatus.Approved]: 'Đã duyệt',
@@ -736,6 +754,39 @@ export function getSupplyCategoryLabel(value: unknown): string {
   }
 
   return 'Không rõ';
+}
+
+export function getSupplyCategoryIcon(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in SupplyCategoryIcon) return SupplyCategoryIcon[n as SupplyCategory];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'luongthuc') return SupplyCategoryIcon[SupplyCategory.LuongThuc];
+    if (normalized === 'ytevathuoc') return SupplyCategoryIcon[SupplyCategory.YTeVaThuoc];
+    if (normalized === 'nuocuong') return SupplyCategoryIcon[SupplyCategory.NuocUong];
+    if (normalized === 'dungcuvaleutrai') return SupplyCategoryIcon[SupplyCategory.DungCuVaLeuTrai];
+    if (normalized === 'khac') return SupplyCategoryIcon[SupplyCategory.Khac];
+  }
+
+  return 'category';
+}
+
+export function getSupplyCategoryClass(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in SupplyCategoryClass) return SupplyCategoryClass[n as SupplyCategory];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'luongthuc') return SupplyCategoryClass[SupplyCategory.LuongThuc];
+    if (normalized === 'ytevathuoc') return SupplyCategoryClass[SupplyCategory.YTeVaThuoc];
+    if (normalized === 'nuocuong') return SupplyCategoryClass[SupplyCategory.NuocUong];
+    if (normalized === 'dungcuvaleutrai')
+      return SupplyCategoryClass[SupplyCategory.DungCuVaLeuTrai];
+    if (normalized === 'khac') return SupplyCategoryClass[SupplyCategory.Khac];
+  }
+
+  return 'border-border bg-muted text-muted-foreground';
 }
 
 export function getSupplyAllocationStatusLabel(value: unknown): string {

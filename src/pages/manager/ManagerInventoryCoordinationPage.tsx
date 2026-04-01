@@ -58,6 +58,8 @@ import {
   getEntityStatusClass,
   getEntityStatusLabel,
   getInventoryLevelLabel,
+  getSupplyCategoryClass,
+  getSupplyCategoryIcon,
   getSupplyCategoryLabel,
 } from '@/enums/beEnums';
 import { toast } from 'sonner';
@@ -128,31 +130,11 @@ type DongCapNhatTonKho = {
 };
 
 const DANH_MUC_VAT_PHAM = [
-  {
-    value: SupplyCategory.LuongThuc,
-    icon: 'restaurant',
-    color: 'text-orange-600 bg-orange-500/10 border-orange-500/20 dark:text-orange-300',
-  },
-  {
-    value: SupplyCategory.YTeVaThuoc,
-    icon: 'medication',
-    color: 'text-red-600 bg-red-500/10 border-red-500/20 dark:text-red-300',
-  },
-  {
-    value: SupplyCategory.NuocUong,
-    icon: 'water_drop',
-    color: 'text-blue-600 bg-blue-500/10 border-blue-500/20 dark:text-blue-300',
-  },
-  {
-    value: SupplyCategory.DungCuVaLeuTrai,
-    icon: 'camping',
-    color: 'text-green-600 bg-green-500/10 border-green-500/20 dark:text-green-300',
-  },
-  {
-    value: SupplyCategory.Khac,
-    icon: 'category',
-    color: 'text-muted-foreground bg-muted border-border',
-  },
+  SupplyCategory.LuongThuc,
+  SupplyCategory.YTeVaThuoc,
+  SupplyCategory.NuocUong,
+  SupplyCategory.DungCuVaLeuTrai,
+  SupplyCategory.Khac,
 ] as const;
 
 const taoDongVatPham = (): DongVatPham => ({
@@ -222,7 +204,7 @@ const getCampaignStatusBadge = (status: number) => {
     case CampaignStatus.Draft:
       return { icon: 'edit_note', label: 'Bản nháp', className };
     case CampaignStatus.Active:
-      return { icon: 'campaign', label: 'Đang hoạt động', className };
+      return { icon: 'rocket_launch', label: 'Đang hoạt động', className };
     case CampaignStatus.ReadyToExecute:
       return { icon: 'task_alt', label: 'Sẵn sàng triển khai', className };
     case CampaignStatus.InProgress:
@@ -348,7 +330,7 @@ export default function ManagerInventoryCoordinationPage() {
         value: tongVatPham,
         icon: 'inventory_2',
         iconClass: 'bg-sky-500/10 text-sky-600 dark:text-sky-300',
-        note: 'Danh mục vật phẩm hiện có',
+        note: 'Danh mục vật phẩm/hàng hóa hiện có',
       },
       {
         id: 'chien-dich',
@@ -892,9 +874,12 @@ export default function ManagerInventoryCoordinationPage() {
               <Card className="border-border bg-card">
                 <CardContent className="p-0">
                   <div className="px-5 py-4 border-b border-border">
-                    <h2 className="text-xl font-bold text-foreground">Danh mục vật phẩm</h2>
+                    <h2 className="text-xl font-bold text-foreground">
+                      Danh mục Vật phẩm/Hàng hóa
+                    </h2>
                     <p className="text-sm text-muted-foreground">
-                      Tạo vật phẩm trước, sau đó nhập hoặc cập nhật tồn kho theo vật phẩm đã có.
+                      Tạo Vật phẩm/Hàng hóa trước, sau đó nhập hoặc cập nhật tồn kho theo Vật
+                      phẩm/Hàng hóa đã có.
                     </p>
                   </div>
 
@@ -905,14 +890,14 @@ export default function ManagerInventoryCoordinationPage() {
                           <span className="material-symbols-outlined text-4xl animate-spin text-primary">
                             progress_activity
                           </span>
-                          <p>Đang tải danh mục vật phẩm...</p>
+                          <p>Đang tải danh mục Vật phẩm/Hàng hóa...</p>
                         </div>
                       </div>
                     ) : supplyItems.length === 0 ? (
                       <div className="flex items-center justify-center py-16 text-muted-foreground">
                         <div className="flex flex-col items-center gap-3">
                           <span className="material-symbols-outlined text-4xl">inventory_2</span>
-                          <p>Chưa có vật phẩm nào</p>
+                          <p>Chưa có Vật phẩm/Hàng hóa nào</p>
                         </div>
                       </div>
                     ) : (
@@ -939,8 +924,18 @@ export default function ManagerInventoryCoordinationPage() {
                                 </div>
                               </td>
                               <td className="px-5 py-4">
-                                <Badge variant="outline" appearance="outline" size="sm">
-                                  {getSupplyCategoryLabel(item.category)}
+                                <Badge
+                                  variant="outline"
+                                  appearance="outline"
+                                  size="sm"
+                                  className={`gap-1.5 border ${getSupplyCategoryClass(item.category)}`}
+                                >
+                                  <span className="material-symbols-outlined text-[15px] shrink-0">
+                                    {getSupplyCategoryIcon(item.category)}
+                                  </span>
+                                  <span className="truncate">
+                                    {getSupplyCategoryLabel(item.category)}
+                                  </span>
                                 </Badge>
                               </td>
                               <td className="px-5 py-4 text-muted-foreground">{item.unit}</td>
@@ -1233,7 +1228,7 @@ export default function ManagerInventoryCoordinationPage() {
                     <div>
                       <p className="font-semibold text-foreground">Vật phẩm #{index + 1}</p>
                       <p className="text-xs text-muted-foreground">
-                        Điền đủ thông tin để thêm vào danh mục vật phẩm.
+                        Điền đủ thông tin để thêm vào danh mục Vật phẩm/Hàng hóa.
                       </p>
                     </div>
                     <Button
@@ -1272,15 +1267,15 @@ export default function ManagerInventoryCoordinationPage() {
                         </SelectTrigger>
                         <SelectContent>
                           {DANH_MUC_VAT_PHAM.map((category) => (
-                            <SelectItem key={category.value} value={String(category.value)}>
+                            <SelectItem key={category} value={String(category)}>
                               <div className="flex items-center gap-2">
                                 <span
-                                  className={`material-symbols-outlined text-[18px] border rounded-full p-1 leading-none ${category.color}`}
+                                  className={`material-symbols-outlined text-[18px] border rounded-full p-1 leading-none ${getSupplyCategoryClass(category)}`}
                                 >
-                                  {category.icon}
+                                  {getSupplyCategoryIcon(category)}
                                 </span>
                                 <span className="font-medium">
-                                  {getSupplyCategoryLabel(category.value)}
+                                  {getSupplyCategoryLabel(category)}
                                 </span>
                               </div>
                             </SelectItem>
