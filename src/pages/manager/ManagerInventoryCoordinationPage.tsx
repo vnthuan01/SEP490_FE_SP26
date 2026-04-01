@@ -29,7 +29,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useCreateInventory, useInventories, useUpdateInventory } from '@/hooks/useInventory';
+import {
+  useAddStock,
+  useCreateInventory,
+  useCreateTransaction,
+  useInventories,
+  useInventoryStocks,
+  useUpdateInventory,
+  useUpdateStock,
+} from '@/hooks/useInventory';
 import { useCampaigns } from '@/hooks/useCampaigns';
 import {
   useCreateSupplyAllocation,
@@ -42,6 +50,8 @@ import {
   EntityStatus,
   InventoryLevel,
   SupplyCategory,
+  TransactionReason,
+  TransactionType,
   getCampaignStatusClass,
   getCampaignStatusLabel,
   getEntityStatusClass,
@@ -106,6 +116,16 @@ type DongDieuPhoi = {
   quantity: string;
 };
 
+type DongCapNhatTonKho = {
+  id: string;
+  supplyItemId: string;
+  importQuantity: string;
+  minimumStockLevel: string;
+  maximumStockLevel: string;
+  stockId?: string;
+  isExisting?: boolean;
+};
+
 const DANH_MUC_VAT_PHAM = [
   {
     value: SupplyCategory.LuongThuc,
@@ -147,6 +167,14 @@ const taoDongDieuPhoi = (): DongDieuPhoi => ({
   id: crypto.randomUUID(),
   supplyItemId: '',
   quantity: '1',
+});
+
+const taoDongCapNhatTonKho = (): DongCapNhatTonKho => ({
+  id: crypto.randomUUID(),
+  supplyItemId: '',
+  importQuantity: '0',
+  minimumStockLevel: '0',
+  maximumStockLevel: '0',
 });
 
 const getInventoryLevelBadge = (level: number) => {
@@ -199,11 +227,17 @@ export default function ManagerInventoryCoordinationPage() {
   const [openCreateInventory, setOpenCreateInventory] = useState(false);
   const [openCreateSupply, setOpenCreateSupply] = useState(false);
   const [openCreateAllocation, setOpenCreateAllocation] = useState(false);
+  const [openStockDialog, setOpenStockDialog] = useState(false);
+  const [selectedInventoryForStock, setSelectedInventoryForStock] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [inventoryForm, setInventoryForm] = useState({
     reliefStationId: '',
     level: String(InventoryLevel.Provincial),
   });
   const [supplyDrafts, setSupplyDrafts] = useState<DongVatPham[]>([taoDongVatPham()]);
+  const [stockDrafts, setStockDrafts] = useState<DongCapNhatTonKho[]>([taoDongCapNhatTonKho()]);
   const [allocationForm, setAllocationForm] = useState({
     campaignId: '',
     sourceInventoryId: '',
@@ -226,9 +260,17 @@ export default function ManagerInventoryCoordinationPage() {
     pageIndex: 1,
     pageSize: 100,
   });
+  const { data: inventoryStocksResponse, isLoading: isLoadingInventoryStocks } = useInventoryStocks(
+    selectedInventoryForStock?.id || '',
+    { pageIndex: 1, pageSize: 200 },
+  );
 
   const { mutateAsync: createInventory, status: createInventoryStatus } = useCreateInventory();
   const { mutateAsync: updateInventory, status: updateInventoryStatus } = useUpdateInventory();
+  const { mutateAsync: addStock, status: addStockStatus } = useAddStock();
+  const { mutateAsync: updateStock, status: updateStockStatus } = useUpdateStock();
+  const { mutateAsync: createTransaction, status: createTransactionStatus } =
+    useCreateTransaction();
   const { mutateAsync: createSupplyItem, status: createSupplyItemStatus } = useCreateSupplyItem();
   const { mutateAsync: createSupplyAllocation, status: createSupplyAllocationStatus } =
     useCreateSupplyAllocation();
@@ -238,10 +280,15 @@ export default function ManagerInventoryCoordinationPage() {
   const supplyItems = supplyItemsResponse?.items || [];
   const supplyPagination = supplyItemsResponse;
   const stations = stationsResponse?.items || [];
+  const inventoryStocks = inventoryStocksResponse?.items || [];
 
   const activeInventories = useMemo(
     () => inventories.filter((inv) => inv.status === EntityStatus.Active),
     [inventories],
+  );
+  const stockMapBySupplyItemId = useMemo(
+    () => new Map(inventoryStocks.map((stock) => [stock.supplyItemId, stock])),
+    [inventoryStocks],
   );
 
   const thongKe = useMemo(() => {
@@ -410,6 +457,119 @@ export default function ManagerInventoryCoordinationPage() {
     setOpenCreateAllocation(false);
   };
 
+  const openStockManagement = (inventoryId: string, inventoryName: string) => {
+    setSelectedInventoryForStock({ id: inventoryId, name: inventoryName });
+    setStockDrafts([taoDongCapNhatTonKho()]);
+    setOpenStockDialog(true);
+  };
+
+  const addStockDraft = () => setStockDrafts((prev) => [...prev, taoDongCapNhatTonKho()]);
+
+  const removeStockDraft = (id: string) => {
+    setStockDrafts((prev) => (prev.length === 1 ? prev : prev.filter((item) => item.id !== id)));
+  };
+
+  const updateStockDraft = (id: string, key: keyof DongCapNhatTonKho, value: string) => {
+    setStockDrafts((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+
+        if (key === 'supplyItemId') {
+          const existingStock = stockMapBySupplyItemId.get(value);
+          return {
+            ...item,
+            supplyItemId: value,
+            stockId: existingStock?.stockId,
+            isExisting: !!existingStock,
+            minimumStockLevel: existingStock
+              ? String(existingStock.minimumStockLevel)
+              : item.minimumStockLevel,
+            maximumStockLevel: existingStock
+              ? String(existingStock.maximumStockLevel)
+              : item.maximumStockLevel,
+          };
+        }
+
+        return { ...item, [key]: value };
+      }),
+    );
+  };
+
+  const handleSaveStocks = async () => {
+    if (!selectedInventoryForStock?.id) {
+      toast.error('Không tìm thấy kho để cập nhật tồn kho.');
+      return;
+    }
+
+    const validDrafts = stockDrafts.filter((item) => item.supplyItemId);
+    if (validDrafts.length === 0) {
+      toast.error('Vui lòng chọn ít nhất một vật phẩm.');
+      return;
+    }
+
+    for (const item of validDrafts) {
+      const minimumStockLevel = Number(item.minimumStockLevel || 0);
+      const maximumStockLevel = Number(item.maximumStockLevel || 0);
+      const importQuantity = Number(item.importQuantity || 0);
+
+      if (minimumStockLevel < 0 || maximumStockLevel < 0 || importQuantity < 0) {
+        toast.error('Số lượng tồn kho không được nhỏ hơn 0.');
+        return;
+      }
+
+      if (maximumStockLevel > 0 && minimumStockLevel > maximumStockLevel) {
+        toast.error('Mức tồn tối thiểu không được lớn hơn mức tồn tối đa.');
+        return;
+      }
+    }
+
+    for (const item of validDrafts) {
+      const minimumStockLevel = Number(item.minimumStockLevel || 0);
+      const maximumStockLevel = Number(item.maximumStockLevel || 0);
+      const importQuantity = Number(item.importQuantity || 0);
+
+      if (item.isExisting && item.stockId) {
+        await updateStock({
+          stockId: item.stockId,
+          inventoryId: selectedInventoryForStock.id,
+          data: {
+            minimumStockLevel,
+            maximumStockLevel,
+          },
+        });
+
+        if (importQuantity > 0) {
+          await createTransaction({
+            inventoryId: selectedInventoryForStock.id,
+            type: TransactionType.Import,
+            reason: TransactionReason.Other,
+            notes: `Nhập bổ sung vật phẩm cho kho ${selectedInventoryForStock.name}`,
+            items: [
+              {
+                supplyItemId: item.supplyItemId,
+                quantity: importQuantity,
+                notes: 'Nhập hoặc cập nhật tồn kho từ trang điều phối kho',
+              },
+            ],
+          });
+        }
+      } else {
+        await addStock({
+          id: selectedInventoryForStock.id,
+          data: {
+            supplyItemId: item.supplyItemId,
+            currentQuantity: importQuantity,
+            minimumStockLevel,
+            maximumStockLevel,
+          },
+        });
+      }
+    }
+
+    setStockDrafts([taoDongCapNhatTonKho()]);
+    setOpenStockDialog(false);
+  };
+
   return (
     <DashboardLayout projects={managerProjects} navItems={managerNavItems}>
       <div className="flex flex-col gap-6">
@@ -554,7 +714,7 @@ export default function ManagerInventoryCoordinationPage() {
                                 <td className="px-5 py-4">
                                   <div>
                                     <p className="font-bold uppercase text-foreground">
-                                      {inv.inventoryId}
+                                      {inv.inventoryId.slice(0, 6)}...
                                     </p>
                                     <p className="text-xs text-muted-foreground">
                                       {inv.totalStockSlots} ô lưu trữ
@@ -612,7 +772,15 @@ export default function ManagerInventoryCoordinationPage() {
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
-                                      <DropdownMenuItem className="gap-2 text-primary">
+                                      <DropdownMenuItem
+                                        className="gap-2 text-primary"
+                                        onClick={() =>
+                                          openStockManagement(
+                                            inv.inventoryId,
+                                            inv.reliefStationName,
+                                          )
+                                        }
+                                      >
                                         <span className="material-symbols-outlined text-lg">
                                           inventory
                                         </span>
@@ -895,12 +1063,12 @@ export default function ManagerInventoryCoordinationPage() {
                               <div>
                                 <p className="font-semibold text-foreground">{campaign.name}</p>
                                 <p className="text-xs text-muted-foreground font-mono">
-                                  {campaign.campaignId}
+                                  {campaign.campaignId.slice(0, 6)}...
                                 </p>
                               </div>
                             </td>
                             <td className="px-5 py-4 text-muted-foreground">
-                              {new Date(campaign.startDate).toLocaleDateString('vi-VN')} -{' '}
+                              Từ: {new Date(campaign.startDate).toLocaleDateString('vi-VN')} - Đến:{' '}
                               {new Date(campaign.endDate).toLocaleDateString('vi-VN')}
                             </td>
                             <td className="px-5 py-4">
@@ -1168,6 +1336,9 @@ export default function ManagerInventoryCoordinationPage() {
                   <SelectContent>
                     {campaigns.map((campaign) => (
                       <SelectItem key={campaign.campaignId} value={campaign.campaignId}>
+                        <span className="material-symbols-outlined text-[18px] text-blue-500">
+                          campaign
+                        </span>
                         {campaign.name}
                       </SelectItem>
                     ))}
@@ -1191,7 +1362,10 @@ export default function ManagerInventoryCoordinationPage() {
                   <SelectContent>
                     {activeInventories.map((inventory) => (
                       <SelectItem key={inventory.inventoryId} value={inventory.inventoryId}>
-                        {inventory.inventoryId} - {inventory.reliefStationName}
+                        <span className="material-symbols-outlined text-[18px] text-green-500">
+                          warehouse
+                        </span>
+                        {inventory.reliefStationName}{' '}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1278,6 +1452,161 @@ export default function ManagerInventoryCoordinationPage() {
             >
               <span className="material-symbols-outlined text-lg">local_shipping</span>
               {createSupplyAllocationStatus === 'pending' ? 'Đang tạo...' : 'Xác nhận điều phối'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={openStockDialog} onOpenChange={setOpenStockDialog}>
+        <DialogContent className="!max-w-none w-[94vw] max-w-5xl h-[88vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border">
+            <DialogTitle>Nhập hoặc cập nhật tồn kho</DialogTitle>
+            <DialogDescription>
+              {selectedInventoryForStock
+                ? `Kho đang chọn: ${selectedInventoryForStock.name}`
+                : 'Chọn vật phẩm để thêm mới hoặc cập nhật mức tồn kho hiện có.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
+            <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+              {isLoadingInventoryStocks
+                ? 'Đang tải tồn kho hiện tại của kho...'
+                : `Kho này hiện có ${inventoryStocks.length} vật phẩm trong tồn kho.`}
+            </div>
+
+            {stockDrafts.map((item, index) => {
+              const selectedSupply = supplyItems.find((supply) => supply.id === item.supplyItemId);
+              const existingStock = item.supplyItemId
+                ? stockMapBySupplyItemId.get(item.supplyItemId)
+                : undefined;
+
+              return (
+                <Card key={item.id} className="border-border bg-card">
+                  <CardContent className="p-5 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-foreground">Dòng tồn kho #{index + 1}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {existingStock
+                            ? 'Vật phẩm này đã có trong kho. Có thể cập nhật ngưỡng tồn và nhập bổ sung.'
+                            : 'Vật phẩm này chưa có trong kho. Hệ thống sẽ tạo mới tồn kho cho vật phẩm.'}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive"
+                        disabled={stockDrafts.length === 1}
+                        onClick={() => removeStockDraft(item.id)}
+                      >
+                        <span className="material-symbols-outlined text-lg">delete</span>
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid gap-2">
+                        <Label>
+                          Vật phẩm <RequiredMark />
+                        </Label>
+                        <Select
+                          value={item.supplyItemId}
+                          onValueChange={(value) =>
+                            updateStockDraft(item.id, 'supplyItemId', value)
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn vật phẩm" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {supplyItems.map((supplyItem) => (
+                              <SelectItem key={supplyItem.id} value={supplyItem.id}>
+                                {supplyItem.name} - {getSupplyCategoryLabel(supplyItem.category)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label>Số lượng nhập thêm</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={item.importQuantity}
+                          onChange={(e) =>
+                            updateStockDraft(item.id, 'importQuantity', e.target.value)
+                          }
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label>Mức tồn tối thiểu</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={item.minimumStockLevel}
+                          onChange={(e) =>
+                            updateStockDraft(item.id, 'minimumStockLevel', e.target.value)
+                          }
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label>Mức tồn tối đa</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={item.maximumStockLevel}
+                          onChange={(e) =>
+                            updateStockDraft(item.id, 'maximumStockLevel', e.target.value)
+                          }
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+
+                    {selectedSupply && (
+                      <div className="rounded-xl border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground">{selectedSupply.name}</p>
+                        <p>Đơn vị: {selectedSupply.unit}</p>
+                        {existingStock && (
+                          <p>
+                            Hiện có trong kho: {existingStock.currentQuantity} • Ngưỡng hiện tại:{' '}
+                            {existingStock.minimumStockLevel} - {existingStock.maximumStockLevel}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            <Button variant="outline" className="gap-2" onClick={addStockDraft}>
+              <span className="material-symbols-outlined text-lg">add</span>
+              Thêm dòng tồn kho
+            </Button>
+          </div>
+
+          <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
+            <Button variant="outline" onClick={() => setOpenStockDialog(false)}>
+              Hủy
+            </Button>
+            <Button
+              variant="primary"
+              className="gap-2"
+              onClick={handleSaveStocks}
+              disabled={
+                addStockStatus === 'pending' ||
+                updateStockStatus === 'pending' ||
+                createTransactionStatus === 'pending'
+              }
+            >
+              <span className="material-symbols-outlined text-lg">inventory</span>
+              Lưu tồn kho
             </Button>
           </DialogFooter>
         </DialogContent>
