@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -50,6 +51,44 @@ import {
 } from '@/enums/beEnums';
 import { toast } from 'sonner';
 
+const RequiredMark = () => <span className="text-red-500">*</span>;
+
+const IconGuide = () => (
+  <TooltipProvider>
+    <Tooltip delayDuration={200}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex items-center text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <span className="material-symbols-outlined text-[18px]">help</span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        align="start"
+        variant="light"
+        className="max-w-[280px] rounded-lg border border-border bg-background text-foreground p-3 leading-relaxed"
+      >
+        <p className="font-semibold mb-1">Cách lấy icon từ Google Material</p>
+        <p className="text-muted-foreground">
+          Truy cập{' '}
+          <a
+            href="https://fonts.google.com/icons"
+            target="_blank"
+            rel="noreferrer"
+            className="underline text-primary"
+          >
+            Google Material Symbols
+          </a>{' '}
+          rồi sao chép tên icon.
+        </p>
+        <p className="mt-2 text-muted-foreground">Ví dụ: inventory_2, water_drop, medication</p>
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+);
+
 type QuanLyTab = 'hang-hoa' | 'chien-dich';
 
 type DongVatPham = {
@@ -68,11 +107,31 @@ type DongDieuPhoi = {
 };
 
 const DANH_MUC_VAT_PHAM = [
-  SupplyCategory.LuongThuc,
-  SupplyCategory.YTeVaThuoc,
-  SupplyCategory.NuocUong,
-  SupplyCategory.DungCuVaLeuTrai,
-  SupplyCategory.Khac,
+  {
+    value: SupplyCategory.LuongThuc,
+    icon: 'restaurant',
+    color: 'text-orange-600 bg-orange-500/10 border-orange-500/20 dark:text-orange-300',
+  },
+  {
+    value: SupplyCategory.YTeVaThuoc,
+    icon: 'medication',
+    color: 'text-red-600 bg-red-500/10 border-red-500/20 dark:text-red-300',
+  },
+  {
+    value: SupplyCategory.NuocUong,
+    icon: 'water_drop',
+    color: 'text-blue-600 bg-blue-500/10 border-blue-500/20 dark:text-blue-300',
+  },
+  {
+    value: SupplyCategory.DungCuVaLeuTrai,
+    icon: 'camping',
+    color: 'text-green-600 bg-green-500/10 border-green-500/20 dark:text-green-300',
+  },
+  {
+    value: SupplyCategory.Khac,
+    icon: 'category',
+    color: 'text-muted-foreground bg-muted border-border',
+  },
 ] as const;
 
 const taoDongVatPham = (): DongVatPham => ({
@@ -892,7 +951,9 @@ export default function ManagerInventoryCoordinationPage() {
 
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
-              <Label htmlFor="inventory-station">Trạm trực thuộc</Label>
+              <Label htmlFor="inventory-station">
+                Trạm trực thuộc <RequiredMark />
+              </Label>
               <Select
                 value={inventoryForm.reliefStationId}
                 onValueChange={(value) =>
@@ -916,7 +977,9 @@ export default function ManagerInventoryCoordinationPage() {
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="inventory-level">Cấp kho</Label>
+              <Label htmlFor="inventory-level">
+                Cấp kho <RequiredMark />
+              </Label>
               <Select
                 value={inventoryForm.level}
                 onValueChange={(value) => setInventoryForm((prev) => ({ ...prev, level: value }))}
@@ -948,7 +1011,7 @@ export default function ManagerInventoryCoordinationPage() {
       </Dialog>
 
       <Dialog open={openCreateSupply} onOpenChange={setOpenCreateSupply}>
-        <DialogContent className="!max-w-none w-[94vw] max-w-5xl max-h-[88vh] overflow-hidden p-0">
+        <DialogContent className="!max-w-none w-[94vw] max-w-5xl h-[88vh] overflow-hidden p-0 flex flex-col">
           <DialogHeader className="px-6 py-4 border-b border-border">
             <DialogTitle>Tạo nhiều vật phẩm cứu trợ</DialogTitle>
             <DialogDescription>
@@ -957,7 +1020,7 @@ export default function ManagerInventoryCoordinationPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
             {supplyDrafts.map((item, index) => (
               <Card key={item.id} className="border-border bg-card">
                 <CardContent className="p-5 space-y-4">
@@ -981,7 +1044,9 @@ export default function ManagerInventoryCoordinationPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="grid gap-2">
-                      <Label>Tên vật phẩm</Label>
+                      <Label>
+                        Tên vật phẩm <RequiredMark />
+                      </Label>
                       <Input
                         value={item.name}
                         onChange={(e) => updateSupplyDraft(item.id, 'name', e.target.value)}
@@ -990,7 +1055,9 @@ export default function ManagerInventoryCoordinationPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <Label>Danh mục</Label>
+                      <Label>
+                        Danh mục <RequiredMark />
+                      </Label>
                       <Select
                         value={item.category}
                         onValueChange={(value) => updateSupplyDraft(item.id, 'category', value)}
@@ -1000,8 +1067,17 @@ export default function ManagerInventoryCoordinationPage() {
                         </SelectTrigger>
                         <SelectContent>
                           {DANH_MUC_VAT_PHAM.map((category) => (
-                            <SelectItem key={category} value={String(category)}>
-                              {getSupplyCategoryLabel(category)}
+                            <SelectItem key={category.value} value={String(category.value)}>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`material-symbols-outlined text-[18px] border rounded-full p-1 leading-none ${category.color}`}
+                                >
+                                  {category.icon}
+                                </span>
+                                <span className="font-medium">
+                                  {getSupplyCategoryLabel(category.value)}
+                                </span>
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1009,7 +1085,9 @@ export default function ManagerInventoryCoordinationPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <Label>Đơn vị tính</Label>
+                      <Label>
+                        Đơn vị tính <RequiredMark />
+                      </Label>
                       <Input
                         value={item.unit}
                         onChange={(e) => updateSupplyDraft(item.id, 'unit', e.target.value)}
@@ -1018,7 +1096,10 @@ export default function ManagerInventoryCoordinationPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <Label>Đường dẫn biểu tượng</Label>
+                      <Label className="flex items-center gap-2">
+                        Đường dẫn biểu tượng
+                        <IconGuide />
+                      </Label>
                       <Input
                         value={item.iconUrl}
                         onChange={(e) => updateSupplyDraft(item.id, 'iconUrl', e.target.value)}
@@ -1045,7 +1126,7 @@ export default function ManagerInventoryCoordinationPage() {
             </Button>
           </div>
 
-          <DialogFooter className="px-6 py-4 border-t border-border">
+          <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
             <Button variant="outline" onClick={() => setOpenCreateSupply(false)}>
               Hủy
             </Button>
@@ -1072,7 +1153,9 @@ export default function ManagerInventoryCoordinationPage() {
           <div className="p-6 space-y-5 overflow-y-auto max-h-[70vh]">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label>Chiến dịch</Label>
+                <Label>
+                  Chiến dịch <RequiredMark />
+                </Label>
                 <Select
                   value={allocationForm.campaignId}
                   onValueChange={(value) =>
@@ -1093,7 +1176,9 @@ export default function ManagerInventoryCoordinationPage() {
               </div>
 
               <div className="grid gap-2">
-                <Label>Kho nguồn</Label>
+                <Label>
+                  Kho nguồn <RequiredMark />
+                </Label>
                 <Select
                   value={allocationForm.sourceInventoryId}
                   onValueChange={(value) =>
@@ -1137,7 +1222,9 @@ export default function ManagerInventoryCoordinationPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-4">
                     <div className="grid gap-2">
-                      <Label>Vật phẩm</Label>
+                      <Label>
+                        Vật phẩm <RequiredMark />
+                      </Label>
                       <Select
                         value={item.supplyItemId}
                         onValueChange={(value) =>
@@ -1158,7 +1245,9 @@ export default function ManagerInventoryCoordinationPage() {
                     </div>
 
                     <div className="grid gap-2">
-                      <Label>Số lượng</Label>
+                      <Label>
+                        Số lượng <RequiredMark />
+                      </Label>
                       <Input
                         type="number"
                         min={1}
