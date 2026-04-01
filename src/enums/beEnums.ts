@@ -569,10 +569,51 @@ export const InventoryLevelLabel: Record<InventoryLevel, string> = {
   [InventoryLevel.Provincial]: 'Kho tỉnh / thành phố',
 };
 
+export const InventoryLevelIcon: Record<InventoryLevel, string> = {
+  [InventoryLevel.Regional]: 'warehouse',
+  [InventoryLevel.Provincial]: 'inventory_2',
+};
+
+export const InventoryLevelClass: Record<InventoryLevel, string> = {
+  [InventoryLevel.Regional]:
+    'border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-300',
+  [InventoryLevel.Provincial]: 'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+};
+
 export const EntityStatusLabel: Record<EntityStatus, string> = {
   [EntityStatus.Inactive]: 'Không hoạt động',
   [EntityStatus.Active]: 'Đang hoạt động',
   [EntityStatus.Deleted]: 'Đã xoá',
+};
+
+export const EntityStatusIcon: Record<EntityStatus, string> = {
+  [EntityStatus.Inactive]: 'pause_circle',
+  [EntityStatus.Active]: 'verified',
+  [EntityStatus.Deleted]: 'delete',
+};
+
+export const CampaignStatusIcon: Record<CampaignStatus, string> = {
+  [CampaignStatus.Draft]: 'edit_note',
+  [CampaignStatus.Active]: 'rocket_launch',
+  [CampaignStatus.Suspended]: 'pause_circle',
+  [CampaignStatus.Completed]: 'check_circle',
+  [CampaignStatus.Cancelled]: 'cancel',
+  [CampaignStatus.GoalsMet]: 'emoji_events',
+  [CampaignStatus.ReadyToExecute]: 'task_alt',
+  [CampaignStatus.InProgress]: 'deployed_code_history',
+  [CampaignStatus.Closing]: 'hourglass_top',
+};
+
+export const CampaignStatusShortLabel: Record<CampaignStatus, string> = {
+  [CampaignStatus.Draft]: 'Bản nháp',
+  [CampaignStatus.Active]: 'Đang hoạt động',
+  [CampaignStatus.Suspended]: 'Tạm dừng',
+  [CampaignStatus.Completed]: 'Hoàn thành',
+  [CampaignStatus.Cancelled]: 'Đã hủy',
+  [CampaignStatus.GoalsMet]: 'Đạt mục tiêu',
+  [CampaignStatus.ReadyToExecute]: 'Sẵn sàng triển khai',
+  [CampaignStatus.InProgress]: 'Đang triển khai',
+  [CampaignStatus.Closing]: 'Đang kết thúc',
 };
 
 export const CampaignStatusLabel: Record<CampaignStatus, string> = {
@@ -738,6 +779,32 @@ export function getInventoryLevelLabel(value: unknown): string {
   return 'Không rõ';
 }
 
+export function getInventoryLevelIcon(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in InventoryLevelIcon) return InventoryLevelIcon[n as InventoryLevel];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'regional') return InventoryLevelIcon[InventoryLevel.Regional];
+    if (normalized === 'provincial') return InventoryLevelIcon[InventoryLevel.Provincial];
+  }
+
+  return 'layers';
+}
+
+export function getInventoryLevelClass(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in InventoryLevelClass) return InventoryLevelClass[n as InventoryLevel];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'regional') return InventoryLevelClass[InventoryLevel.Regional];
+    if (normalized === 'provincial') return InventoryLevelClass[InventoryLevel.Provincial];
+  }
+
+  return 'border-border bg-muted/50 text-muted-foreground';
+}
+
 export function getSupplyCategoryLabel(value: unknown): string {
   const n = parseEnumValue(value);
   if (n in SupplyCategoryLabel) return SupplyCategoryLabel[n as SupplyCategory];
@@ -853,6 +920,20 @@ export function getEntityStatusClass(status: number): string {
   }
 }
 
+export function getEntityStatusIcon(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in EntityStatusIcon) return EntityStatusIcon[n as EntityStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'inactive') return EntityStatusIcon[EntityStatus.Inactive];
+    if (normalized === 'active') return EntityStatusIcon[EntityStatus.Active];
+    if (normalized === 'deleted') return EntityStatusIcon[EntityStatus.Deleted];
+  }
+
+  return 'help';
+}
+
 export function getCampaignStatusLabel(value: unknown): string {
   const n = parseEnumValue(value);
   if (n in CampaignStatusLabel) return CampaignStatusLabel[n as CampaignStatus];
@@ -861,6 +942,20 @@ export function getCampaignStatusLabel(value: unknown): string {
     const normalized = value.trim();
     const matched = Object.entries(CampaignStatus).find(([key]) => key === normalized);
     if (matched) return CampaignStatusLabel[matched[1] as CampaignStatus];
+    return value;
+  }
+
+  return 'Không rõ';
+}
+
+export function getCampaignStatusShortLabel(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in CampaignStatusShortLabel) return CampaignStatusShortLabel[n as CampaignStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    const matched = Object.entries(CampaignStatus).find(([key]) => key === normalized);
+    if (matched) return CampaignStatusShortLabel[matched[1] as CampaignStatus];
     return value;
   }
 
@@ -902,6 +997,19 @@ export function getCampaignStatusClass(status: number): string {
     default:
       return 'bg-gray-500/20 text-gray-400';
   }
+}
+
+export function getCampaignStatusIcon(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in CampaignStatusIcon) return CampaignStatusIcon[n as CampaignStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    const matched = Object.entries(CampaignStatus).find(([key]) => key === normalized);
+    if (matched) return CampaignStatusIcon[matched[1] as CampaignStatus];
+  }
+
+  return 'help';
 }
 
 /** Chuyển RescueRequestStatus → UI location status */

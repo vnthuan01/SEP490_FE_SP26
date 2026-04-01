@@ -21,7 +21,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -47,60 +46,31 @@ import {
 import { useProvincialStations } from '@/hooks/useReliefStations';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
 import {
-  CampaignStatus,
+  IconGuide,
+  RequiredMark,
+  StatCard,
+  SupplyCategoryBadge,
+} from './components/ManagerInventoryShared';
+import {
   EntityStatus,
   InventoryLevel,
   SupplyCategory,
   TransactionReason,
   TransactionType,
   getCampaignStatusClass,
-  getCampaignStatusLabel,
+  getCampaignStatusIcon,
+  getCampaignStatusShortLabel,
   getEntityStatusClass,
+  getEntityStatusIcon,
   getEntityStatusLabel,
+  getInventoryLevelClass,
+  getInventoryLevelIcon,
   getInventoryLevelLabel,
   getSupplyCategoryClass,
   getSupplyCategoryIcon,
   getSupplyCategoryLabel,
 } from '@/enums/beEnums';
 import { toast } from 'sonner';
-
-const RequiredMark = () => <span className="text-red-500">*</span>;
-
-const IconGuide = () => (
-  <TooltipProvider>
-    <Tooltip delayDuration={200}>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex items-center text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <span className="material-symbols-outlined text-[18px]">help</span>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent
-        side="top"
-        align="start"
-        variant="light"
-        className="max-w-[280px] rounded-lg border border-border bg-background text-foreground p-3 leading-relaxed"
-      >
-        <p className="font-semibold mb-1">Cách lấy icon từ Google Material</p>
-        <p className="text-muted-foreground">
-          Truy cập{' '}
-          <a
-            href="https://fonts.google.com/icons"
-            target="_blank"
-            rel="noreferrer"
-            className="underline text-primary"
-          >
-            Google Material Symbols
-          </a>{' '}
-          rồi sao chép tên icon.
-        </p>
-        <p className="mt-2 text-muted-foreground">Ví dụ: inventory_2, water_drop, medication</p>
-      </TooltipContent>
-    </Tooltip>
-  </TooltipProvider>
-);
 
 type QuanLyTab = 'hang-hoa' | 'chien-dich';
 
@@ -159,70 +129,6 @@ const taoDongCapNhatTonKho = (): DongCapNhatTonKho => ({
   minimumStockLevel: '0',
   maximumStockLevel: '0',
 });
-
-const getInventoryLevelBadge = (level: number) => {
-  switch (level) {
-    case InventoryLevel.Regional:
-      return {
-        icon: 'warehouse',
-        className: 'border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-300',
-      };
-    case InventoryLevel.Provincial:
-      return {
-        icon: 'inventory_2',
-        className: 'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300',
-      };
-    default:
-      return {
-        icon: 'layers',
-        className: 'border-border bg-muted/50 text-muted-foreground',
-      };
-  }
-};
-
-const getInventoryStatusBadge = (status: number) => {
-  const className = getEntityStatusClass(status);
-
-  switch (status) {
-    case EntityStatus.Active:
-      return { icon: 'verified', variant: 'success' as const, className };
-    case EntityStatus.Inactive:
-      return { icon: 'pause_circle', variant: 'warning' as const, className };
-    default:
-      return {
-        icon: 'help',
-        variant: 'outline' as const,
-        className: 'border border-border bg-muted/50 text-muted-foreground',
-      };
-  }
-};
-
-const getCampaignStatusBadge = (status: number) => {
-  const className = getCampaignStatusClass(status);
-
-  switch (status) {
-    case CampaignStatus.Draft:
-      return { icon: 'edit_note', label: 'Bản nháp', className };
-    case CampaignStatus.Active:
-      return { icon: 'rocket_launch', label: 'Đang hoạt động', className };
-    case CampaignStatus.ReadyToExecute:
-      return { icon: 'task_alt', label: 'Sẵn sàng triển khai', className };
-    case CampaignStatus.InProgress:
-      return { icon: 'deployed_code_history', label: 'Đang triển khai', className };
-    case CampaignStatus.Suspended:
-      return { icon: 'pause_circle', label: 'Tạm dừng', className };
-    case CampaignStatus.Closing:
-      return { icon: 'hourglass_top', label: 'Đang kết thúc', className };
-    case CampaignStatus.Completed:
-      return { icon: 'check_circle', label: 'Hoàn thành', className };
-    case CampaignStatus.GoalsMet:
-      return { icon: 'emoji_events', label: 'Đạt mục tiêu', className };
-    case CampaignStatus.Cancelled:
-      return { icon: 'cancel', label: 'Đã hủy', className };
-    default:
-      return { icon: 'help', label: getCampaignStatusLabel(status), className };
-  }
-};
 
 const responsiveBadgeTextClass =
   'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap max-w-[84px] sm:max-w-[140px]';
@@ -609,22 +515,7 @@ export default function ManagerInventoryCoordinationPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           {thongKe.map((item) => (
-            <Card key={item.id} className="border-border bg-card">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
-                    <p className="mt-2 text-3xl font-black text-foreground">{item.value}</p>
-                    <p className="mt-2 text-xs text-muted-foreground">{item.note}</p>
-                  </div>
-                  <div
-                    className={`size-11 rounded-2xl border border-border flex items-center justify-center ${item.iconClass}`}
-                  >
-                    <span className="material-symbols-outlined text-[22px]">{item.icon}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <StatCard key={item.id} {...item} />
           ))}
         </div>
 
@@ -711,10 +602,12 @@ export default function ManagerInventoryCoordinationPage() {
                         <tbody>
                           {inventories.map((inv) => {
                             const isUpdating = updateInventoryStatus === 'pending';
-                            const levelBadge = getInventoryLevelBadge(inv.level);
                             const levelLabel = getInventoryLevelLabel(inv.level);
-                            const statusBadge = getInventoryStatusBadge(inv.status);
+                            const levelIcon = getInventoryLevelIcon(inv.level);
+                            const levelClass = getInventoryLevelClass(inv.level);
                             const statusLabel = getEntityStatusLabel(inv.status);
+                            const statusIcon = getEntityStatusIcon(inv.status);
+                            const statusClass = getEntityStatusClass(inv.status);
 
                             return (
                               <tr
@@ -739,10 +632,10 @@ export default function ManagerInventoryCoordinationPage() {
                                     variant="outline"
                                     appearance="outline"
                                     size="xs"
-                                    className={`gap-1 rounded-full py-1 sm:size-auto sm:gap-1.5 border ${responsiveBadgeClass} ${levelBadge.className}`}
+                                    className={`gap-1 rounded-full py-1 sm:size-auto sm:gap-1.5 border ${responsiveBadgeClass} ${levelClass}`}
                                   >
                                     <span className="material-symbols-outlined shrink-0 text-xs">
-                                      {levelBadge.icon}
+                                      {levelIcon}
                                     </span>
                                     <span
                                       className={`hidden sm:inline ${responsiveBadgeTextClass}`}
@@ -756,13 +649,19 @@ export default function ManagerInventoryCoordinationPage() {
                                 </td>
                                 <td className="px-5 py-4">
                                   <Badge
-                                    variant={statusBadge.variant}
+                                    variant={
+                                      inv.status === EntityStatus.Active
+                                        ? 'success'
+                                        : inv.status === EntityStatus.Inactive
+                                          ? 'warning'
+                                          : 'outline'
+                                    }
                                     appearance="outline"
                                     size="xs"
-                                    className={`gap-1 rounded-full py-1 sm:size-auto sm:gap-1.5 border ${responsiveBadgeClass} ${statusBadge.className}`}
+                                    className={`gap-1 rounded-full py-1 sm:size-auto sm:gap-1.5 border ${responsiveBadgeClass} ${statusClass}`}
                                   >
                                     <span className="material-symbols-outlined shrink-0 text-xs">
-                                      {statusBadge.icon}
+                                      {statusIcon}
                                     </span>
                                     <span
                                       className={`hidden sm:inline ${responsiveBadgeTextClass}`}
@@ -924,19 +823,7 @@ export default function ManagerInventoryCoordinationPage() {
                                 </div>
                               </td>
                               <td className="px-5 py-4">
-                                <Badge
-                                  variant="outline"
-                                  appearance="outline"
-                                  size="sm"
-                                  className={`gap-1.5 border ${getSupplyCategoryClass(item.category)}`}
-                                >
-                                  <span className="material-symbols-outlined text-[15px] shrink-0">
-                                    {getSupplyCategoryIcon(item.category)}
-                                  </span>
-                                  <span className="truncate">
-                                    {getSupplyCategoryLabel(item.category)}
-                                  </span>
-                                </Badge>
+                                <SupplyCategoryBadge category={item.category} />
                               </td>
                               <td className="px-5 py-4 text-muted-foreground">{item.unit}</td>
                             </tr>
@@ -1096,19 +983,21 @@ export default function ManagerInventoryCoordinationPage() {
                             </td>
                             <td className="px-5 py-4">
                               {(() => {
-                                const statusBadge = getCampaignStatusBadge(campaign.status);
+                                const statusIcon = getCampaignStatusIcon(campaign.status);
+                                const statusLabel = getCampaignStatusShortLabel(campaign.status);
+                                const statusClass = getCampaignStatusClass(campaign.status);
 
                                 return (
                                   <Badge
                                     variant="outline"
                                     appearance="outline"
                                     size="sm"
-                                    className={`gap-1.5 border ${statusBadge.className}`}
+                                    className={`gap-1.5 border ${statusClass}`}
                                   >
                                     <span className="material-symbols-outlined text-[15px] shrink-0">
-                                      {statusBadge.icon}
+                                      {statusIcon}
                                     </span>
-                                    <span className="truncate">{statusBadge.label}</span>
+                                    <span className="truncate">{statusLabel}</span>
                                   </Badge>
                                 );
                               })()}
