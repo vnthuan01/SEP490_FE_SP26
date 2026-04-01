@@ -15,6 +15,15 @@ export interface UserProfile {
   roles: string[];
 }
 
+export interface ModeratorListItem {
+  id: string;
+  displayName: string | null;
+  email: string;
+  phoneNumber: string | null;
+  isBanned: boolean;
+  isManagingStation: boolean;
+}
+
 export interface UpdateProfilePayload {
   displayName?: string;
   phoneNumber?: string;
@@ -40,6 +49,13 @@ export interface PaginatedParams {
   pageSize?: number;
   search?: string;
   role?: string;
+  isBanned?: boolean;
+}
+
+export interface ModeratorPaginatedParams {
+  pageIndex?: number;
+  pageSize?: number;
+  search?: string;
   isBanned?: boolean;
 }
 
@@ -69,6 +85,16 @@ export const userService = {
 
   getAll: (params?: PaginatedParams) =>
     apiClient.get<PaginatedResponse<UserProfile>>('/User/all', { params }),
+
+  getModerators: (params?: ModeratorPaginatedParams) =>
+    apiClient.get<PaginatedResponse<ModeratorListItem>>('/User/moderators', {
+      params: {
+        PageIndex: params?.pageIndex,
+        PageSize: params?.pageSize,
+        Search: params?.search,
+        IsBanned: params?.isBanned,
+      },
+    }),
 
   getMyVolunteerProfile: () => apiClient.get<any>('/User/my-volunteer-profile'),
 

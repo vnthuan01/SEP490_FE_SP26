@@ -1,0 +1,102 @@
+import { apiClient } from '@/lib/apiClients';
+
+export interface PaginatedResponse<T> {
+  currentPage: number;
+  totalPages: number;
+  pageSize: number;
+  totalCount: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+  items: T[];
+}
+
+export interface SupplyItem {
+  id: string;
+  name: string;
+  description: string;
+  iconUrl: string;
+  category: number;
+  unit: string;
+}
+
+export interface CreateSupplyItemPayload {
+  name: string;
+  description: string;
+  iconUrl: string;
+  category: number;
+  unit: string;
+}
+
+export interface UpdateSupplyItemPayload {
+  name: string;
+  description: string;
+  iconUrl: string;
+  category: number;
+  unit: string;
+}
+
+export interface SearchSupplyItemsParams {
+  category?: number;
+  pageIndex?: number;
+  pageSize?: number;
+}
+
+export interface SupplyAllocationItemPayload {
+  supplyItemId: string;
+  quantity: number;
+}
+
+export interface CreateSupplyAllocationPayload {
+  campaignId: string;
+  sourceInventoryId: string;
+  items: SupplyAllocationItemPayload[];
+}
+
+export interface UpdateSupplyAllocationStatusPayload {
+  status: number;
+}
+
+export interface SupplyAllocation {
+  id: string;
+  campaignId: string;
+  sourceInventoryId: string;
+  status: number;
+  items: SupplyAllocationItemPayload[];
+}
+
+export interface SearchSupplyAllocationByStatusParams {
+  status?: number;
+}
+
+export const supplyItemService = {
+  create: (data: CreateSupplyItemPayload) => apiClient.post<SupplyItem>('/SupplyItem', data),
+
+  getAll: (params?: SearchSupplyItemsParams) =>
+    apiClient.get<PaginatedResponse<SupplyItem>>('/SupplyItem', { params }),
+
+  getById: (id: string) => apiClient.get<SupplyItem>(`/SupplyItem/${id}`),
+
+  update: (id: string, data: UpdateSupplyItemPayload) =>
+    apiClient.put<SupplyItem>(`/SupplyItem/${id}`, data),
+
+  delete: (id: string) => apiClient.delete(`/SupplyItem/${id}`),
+};
+
+export const supplyAllocationService = {
+  create: (data: CreateSupplyAllocationPayload) =>
+    apiClient.post<SupplyAllocation>('/SupplyAllocation', data),
+
+  getById: (id: string) => apiClient.get<SupplyAllocation>(`/SupplyAllocation/${id}`),
+
+  getByCampaign: (campaignId: string) =>
+    apiClient.get<SupplyAllocation[]>(`/SupplyAllocation/by-campaign/${campaignId}`),
+
+  getByInventory: (inventoryId: string) =>
+    apiClient.get<SupplyAllocation[]>(`/SupplyAllocation/by-inventory/${inventoryId}`),
+
+  getByStatus: (params?: SearchSupplyAllocationByStatusParams) =>
+    apiClient.get<SupplyAllocation[]>('/SupplyAllocation/by-status', { params }),
+
+  updateStatus: (id: string, data: UpdateSupplyAllocationStatusPayload) =>
+    apiClient.patch<SupplyAllocation>(`/SupplyAllocation/${id}/status`, data),
+};

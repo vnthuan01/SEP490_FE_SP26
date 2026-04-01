@@ -115,8 +115,6 @@ export const inventoryService = {
   update: (id: string, data: UpdateInventoryPayload) =>
     apiClient.put<Inventory>(`/Inventory/${id}`, data),
 
-  delete: (id: string) => apiClient.delete(`/Inventory/${id}`),
-
   // Stock APIs
   getStocks: (id: string, params?: { pageIndex?: number; pageSize?: number }) =>
     apiClient.get<PaginatedResponse<Stock>>(`/Inventory/${id}/stocks`, { params }),
