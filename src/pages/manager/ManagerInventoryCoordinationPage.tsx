@@ -23,12 +23,6 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
   useAddStock,
   useCreateInventory,
   useCreateTransaction,
@@ -42,15 +36,14 @@ import {
   useCreateSupplyAllocation,
   useCreateSupplyItem,
   useSupplyItems,
+  useUpdateSupplyItem,
 } from '@/hooks/useSupplies';
 import { useProvincialStations } from '@/hooks/useReliefStations';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
-import {
-  IconGuide,
-  RequiredMark,
-  StatCard,
-  SupplyCategoryBadge,
-} from './components/ManagerInventoryShared';
+import { ManagerInventoryTable } from './components/ManagerInventoryTable';
+import { ManagerPaginationControls } from './components/ManagerPaginationControls';
+import { ManagerSupplyCatalogTable } from './components/ManagerSupplyCatalogTable';
+import { IconGuide, RequiredMark, StatCard } from './components/ManagerInventoryShared';
 import {
   EntityStatus,
   InventoryLevel,
@@ -60,21 +53,32 @@ import {
   getCampaignStatusClass,
   getCampaignStatusIcon,
   getCampaignStatusShortLabel,
-  getEntityStatusClass,
-  getEntityStatusIcon,
-  getEntityStatusLabel,
-  getInventoryLevelClass,
   getInventoryLevelIcon,
   getInventoryLevelLabel,
   getSupplyCategoryClass,
   getSupplyCategoryIcon,
   getSupplyCategoryLabel,
 } from '@/enums/beEnums';
+import {
+  formatNumberInputVN,
+  formatNumberVN,
+  normalizeNumberInput,
+  parseFormattedNumber,
+} from '@/lib/utils';
 import { toast } from 'sonner';
 
 type QuanLyTab = 'hang-hoa' | 'chien-dich';
 
 type DongVatPham = {
+  id: string;
+  name: string;
+  description: string;
+  iconUrl: string;
+  category: string;
+  unit: string;
+};
+
+type DongVatPhamCapNhat = {
   id: string;
   name: string;
   description: string;
@@ -130,18 +134,16 @@ const taoDongCapNhatTonKho = (): DongCapNhatTonKho => ({
   maximumStockLevel: '0',
 });
 
-const responsiveBadgeTextClass =
-  'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap max-w-[84px] sm:max-w-[140px]';
-
-const responsiveBadgeClass =
-  'max-w-[46px] px-1.5 sm:max-w-[180px] sm:px-2.5 justify-start overflow-hidden';
-
 export default function ManagerInventoryCoordinationPage() {
   const [selectedTab, setSelectedTab] = useState<QuanLyTab>('hang-hoa');
   const [pageIndex, setPageIndex] = useState(1);
+  const [inventoryJumpPage, setInventoryJumpPage] = useState('1');
   const [supplyPageIndex, setSupplyPageIndex] = useState(1);
+  const [supplyJumpPage, setSupplyJumpPage] = useState('1');
   const [openCreateInventory, setOpenCreateInventory] = useState(false);
   const [openCreateSupply, setOpenCreateSupply] = useState(false);
+  const [openEditSupply, setOpenEditSupply] = useState(false);
+  const [openBulkEditSupply, setOpenBulkEditSupply] = useState(false);
   const [openCreateAllocation, setOpenCreateAllocation] = useState(false);
   const [openStockDialog, setOpenStockDialog] = useState(false);
   const [selectedInventoryForStock, setSelectedInventoryForStock] = useState<{
@@ -153,6 +155,24 @@ export default function ManagerInventoryCoordinationPage() {
     level: String(InventoryLevel.Provincial),
   });
   const [supplyDrafts, setSupplyDrafts] = useState<DongVatPham[]>([taoDongVatPham()]);
+  const [selectedSupplyIds, setSelectedSupplyIds] = useState<string[]>([]);
+  const [keywordFilter, setKeywordFilter] = useState('');
+  const [supplyCategoryFilter, setSupplyCategoryFilter] = useState('all');
+  const [supplyInventoryFilter, setSupplyInventoryFilter] = useState('all');
+  const [inventoryLevelFilter, setInventoryLevelFilter] = useState('all');
+  const [inventoryStatusFilter, setInventoryStatusFilter] = useState('all');
+  const [supplySort, setSupplySort] = useState<'default' | 'category-asc' | 'category-desc'>(
+    'default',
+  );
+  const [editSupplyForm, setEditSupplyForm] = useState({
+    id: '',
+    name: '',
+    description: '',
+    iconUrl: '',
+    category: String(SupplyCategory.LuongThuc),
+    unit: '',
+  });
+  const [bulkEditSupplyDrafts, setBulkEditSupplyDrafts] = useState<DongVatPhamCapNhat[]>([]);
   const [stockDrafts, setStockDrafts] = useState<DongCapNhatTonKho[]>([taoDongCapNhatTonKho()]);
   const [allocationForm, setAllocationForm] = useState({
     campaignId: '',
@@ -162,11 +182,12 @@ export default function ManagerInventoryCoordinationPage() {
 
   const { data: inventoriesResponse, isLoading: isLoadingInventories } = useInventories({
     pageIndex,
-    pageSize: 10,
+    pageSize: 4,
   });
   const { data: supplyItemsResponse, isLoading: isLoadingSupplies } = useSupplyItems({
     pageIndex: supplyPageIndex,
-    pageSize: 10,
+    pageSize: 6,
+    category: supplyCategoryFilter === 'all' ? undefined : Number(supplyCategoryFilter),
   });
   const { campaigns, isLoading: isLoadingCampaigns } = useCampaigns({
     pageIndex: 1,
@@ -180,6 +201,10 @@ export default function ManagerInventoryCoordinationPage() {
     selectedInventoryForStock?.id || '',
     { pageIndex: 1, pageSize: 200 },
   );
+  const { data: inventoryStocksFilterResponse } = useInventoryStocks(
+    supplyInventoryFilter === 'all' ? '' : supplyInventoryFilter,
+    { pageIndex: 1, pageSize: 500 },
+  );
 
   const { mutateAsync: createInventory, status: createInventoryStatus } = useCreateInventory();
   const { mutateAsync: updateInventory, status: updateInventoryStatus } = useUpdateInventory();
@@ -188,6 +213,7 @@ export default function ManagerInventoryCoordinationPage() {
   const { mutateAsync: createTransaction, status: createTransactionStatus } =
     useCreateTransaction();
   const { mutateAsync: createSupplyItem, status: createSupplyItemStatus } = useCreateSupplyItem();
+  const { mutateAsync: updateSupplyItem, status: updateSupplyItemStatus } = useUpdateSupplyItem();
   const { mutateAsync: createSupplyAllocation, status: createSupplyAllocationStatus } =
     useCreateSupplyAllocation();
 
@@ -197,6 +223,7 @@ export default function ManagerInventoryCoordinationPage() {
   const supplyPagination = supplyItemsResponse;
   const stations = stationsResponse?.items || [];
   const inventoryStocks = inventoryStocksResponse?.items || [];
+  const inventoryStockFilters = inventoryStocksFilterResponse?.items || [];
 
   const activeInventories = useMemo(
     () => inventories.filter((inv) => inv.status === EntityStatus.Active),
@@ -206,6 +233,43 @@ export default function ManagerInventoryCoordinationPage() {
     () => new Map(inventoryStocks.map((stock) => [stock.supplyItemId, stock])),
     [inventoryStocks],
   );
+  const filteredInventories = useMemo(() => {
+    return inventories.filter((inv) => {
+      const matchesLevel =
+        inventoryLevelFilter === 'all' || String(inv.level) === inventoryLevelFilter;
+      const matchesStatus =
+        inventoryStatusFilter === 'all' || String(inv.status) === inventoryStatusFilter;
+      const normalizedKeyword = keywordFilter.trim().toLowerCase();
+      const matchesKeyword =
+        !normalizedKeyword ||
+        inv.inventoryId.toLowerCase().includes(normalizedKeyword) ||
+        inv.reliefStationName.toLowerCase().includes(normalizedKeyword);
+      return matchesLevel && matchesStatus && matchesKeyword;
+    });
+  }, [inventories, inventoryLevelFilter, inventoryStatusFilter, keywordFilter]);
+
+  const sortedSupplyItems = useMemo(() => {
+    const inventorySupplyIds =
+      supplyInventoryFilter === 'all'
+        ? null
+        : new Set(inventoryStockFilters.map((stock) => stock.supplyItemId));
+    const normalizedKeyword = keywordFilter.trim().toLowerCase();
+    const items = supplyItems.filter((item) => {
+      const matchesInventory = !inventorySupplyIds || inventorySupplyIds.has(item.id);
+      const matchesKeyword =
+        !normalizedKeyword ||
+        item.name.toLowerCase().includes(normalizedKeyword) ||
+        item.description.toLowerCase().includes(normalizedKeyword) ||
+        item.unit.toLowerCase().includes(normalizedKeyword);
+      return matchesInventory && matchesKeyword;
+    });
+    if (supplySort === 'category-asc') {
+      items.sort((a, b) => a.category - b.category || a.name.localeCompare(b.name, 'vi'));
+    } else if (supplySort === 'category-desc') {
+      items.sort((a, b) => b.category - a.category || a.name.localeCompare(b.name, 'vi'));
+    }
+    return items;
+  }, [supplyItems, supplySort, supplyInventoryFilter, inventoryStockFilters, keywordFilter]);
 
   const thongKe = useMemo(() => {
     const tongKho = inventories.length;
@@ -320,6 +384,113 @@ export default function ManagerInventoryCoordinationPage() {
     setOpenCreateSupply(false);
   };
 
+  const handleToggleSupplySelect = (id: string, checked: boolean) => {
+    setSelectedSupplyIds((prev) =>
+      checked ? [...new Set([...prev, id])] : prev.filter((itemId) => itemId !== id),
+    );
+  };
+
+  const handleToggleSelectAllSupplies = (checked: boolean) => {
+    setSelectedSupplyIds(checked ? sortedSupplyItems.map((item) => item.id) : []);
+  };
+
+  const openEditSupplyDialog = (item: {
+    id: string;
+    name: string;
+    description: string;
+    iconUrl?: string;
+    category: number;
+    unit: string;
+  }) => {
+    setEditSupplyForm({
+      id: item.id,
+      name: item.name,
+      description: item.description || '',
+      iconUrl: item.iconUrl || '',
+      category: String(item.category),
+      unit: item.unit,
+    });
+    setOpenEditSupply(true);
+  };
+
+  const handleBulkEditSupply = () => {
+    if (selectedSupplyIds.length === 0) {
+      toast.error('Vui lòng chọn ít nhất một vật phẩm để cập nhật.');
+      return;
+    }
+
+    const selectedItems = sortedSupplyItems.filter((item) => selectedSupplyIds.includes(item.id));
+    if (selectedItems.length === 0) {
+      toast.error('Không tìm thấy vật phẩm đã chọn.');
+      return;
+    }
+
+    setBulkEditSupplyDrafts(
+      selectedItems.map((item) => ({
+        id: item.id,
+        name: item.name,
+        description: item.description || '',
+        iconUrl: item.iconUrl || '',
+        category: String(item.category),
+        unit: item.unit,
+      })),
+    );
+    setOpenBulkEditSupply(true);
+  };
+
+  const handleSaveEditedSupply = async () => {
+    if (!editSupplyForm.id || !editSupplyForm.name.trim() || !editSupplyForm.unit.trim()) {
+      toast.error('Vui lòng nhập đầy đủ tên vật phẩm và đơn vị tính.');
+      return;
+    }
+
+    await updateSupplyItem({
+      id: editSupplyForm.id,
+      data: {
+        name: editSupplyForm.name.trim(),
+        description: editSupplyForm.description.trim(),
+        iconUrl: editSupplyForm.iconUrl.trim(),
+        category: Number(editSupplyForm.category),
+        unit: editSupplyForm.unit.trim(),
+      },
+    });
+
+    setOpenEditSupply(false);
+  };
+
+  const handleBulkEditDraftChange = (id: string, key: keyof DongVatPhamCapNhat, value: string) => {
+    setBulkEditSupplyDrafts((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)),
+    );
+  };
+
+  const handleSaveBulkEditedSupply = async () => {
+    const validItems = bulkEditSupplyDrafts.filter((item) => item.name.trim() && item.unit.trim());
+    if (validItems.length === 0) {
+      toast.error('Vui lòng nhập tên vật phẩm và đơn vị tính cho ít nhất một dòng hợp lệ.');
+      return;
+    }
+
+    await Promise.all(
+      validItems.map((item) =>
+        updateSupplyItem({
+          id: item.id,
+          data: {
+            name: item.name.trim(),
+            description: item.description.trim(),
+            iconUrl: item.iconUrl.trim(),
+            category: Number(item.category),
+            unit: item.unit.trim(),
+          },
+        }),
+      ),
+    );
+
+    setOpenBulkEditSupply(false);
+    setSelectedSupplyIds([]);
+    setBulkEditSupplyDrafts([]);
+  };
+
   const updateAllocationItem = (id: string, key: keyof DongDieuPhoi, value: string) => {
     setAllocationForm((prev) => ({
       ...prev,
@@ -350,7 +521,7 @@ export default function ManagerInventoryCoordinationPage() {
     const validItems = allocationForm.items
       .map((item) => ({
         supplyItemId: item.supplyItemId,
-        quantity: Number(item.quantity),
+        quantity: parseFormattedNumber(item.quantity),
       }))
       .filter((item) => item.supplyItemId && Number.isFinite(item.quantity) && item.quantity > 0);
 
@@ -424,9 +595,9 @@ export default function ManagerInventoryCoordinationPage() {
     }
 
     for (const item of validDrafts) {
-      const minimumStockLevel = Number(item.minimumStockLevel || 0);
-      const maximumStockLevel = Number(item.maximumStockLevel || 0);
-      const importQuantity = Number(item.importQuantity || 0);
+      const minimumStockLevel = parseFormattedNumber(item.minimumStockLevel);
+      const maximumStockLevel = parseFormattedNumber(item.maximumStockLevel);
+      const importQuantity = parseFormattedNumber(item.importQuantity);
 
       if (minimumStockLevel < 0 || maximumStockLevel < 0 || importQuantity < 0) {
         toast.error('Số lượng tồn kho không được nhỏ hơn 0.');
@@ -440,9 +611,9 @@ export default function ManagerInventoryCoordinationPage() {
     }
 
     for (const item of validDrafts) {
-      const minimumStockLevel = Number(item.minimumStockLevel || 0);
-      const maximumStockLevel = Number(item.maximumStockLevel || 0);
-      const importQuantity = Number(item.importQuantity || 0);
+      const minimumStockLevel = parseFormattedNumber(item.minimumStockLevel);
+      const maximumStockLevel = parseFormattedNumber(item.maximumStockLevel);
+      const importQuantity = parseFormattedNumber(item.importQuantity);
 
       if (item.isExisting && item.stockId) {
         await updateStock({
@@ -541,27 +712,51 @@ export default function ManagerInventoryCoordinationPage() {
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-muted-foreground">
                     search
                   </span>
-                  <Input className="pl-10" placeholder="Tìm kiếm kho hoặc vật phẩm..." disabled />
+                  <Input
+                    className="pl-10"
+                    placeholder="Tìm kiếm kho hoặc vật phẩm..."
+                    value={keywordFilter}
+                    onChange={(e) => setKeywordFilter(e.target.value)}
+                  />
                 </div>
 
                 <div className="flex flex-wrap gap-3">
-                  <Button variant="outline" className="gap-2">
-                    <span className="material-symbols-outlined text-lg">tune</span>
-                    Lọc dữ liệu
-                  </Button>
-                  <Button
-                    variant="primary"
-                    className="gap-2"
-                    onClick={() => setOpenCreateSupply(true)}
-                  >
-                    <span className="material-symbols-outlined text-lg">playlist_add</span>
-                    Tạo nhiều vật phẩm
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="">
+                      {' '}
+                      <span className="material-symbols-outlined text-[18px] text-green-500">
+                        warehouse
+                      </span>
+                    </label>
+                    <Select value={inventoryLevelFilter} onValueChange={setInventoryLevelFilter}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Lọc cấp kho" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tất cả cấp kho</SelectItem>
+                        <SelectItem value={String(InventoryLevel.Regional)}>Kho khu vực</SelectItem>
+                        <SelectItem value={String(InventoryLevel.Provincial)}>
+                          Kho tỉnh/thành
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Select value={inventoryStatusFilter} onValueChange={setInventoryStatusFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Lọc trạng thái kho" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tất cả trạng thái kho</SelectItem>
+                      <SelectItem value={String(EntityStatus.Active)}>Đang hoạt động</SelectItem>
+                      <SelectItem value={String(EntityStatus.Inactive)}>Ngừng hoạt động</SelectItem>
+                      <SelectItem value={String(EntityStatus.Deleted)}>Đã xóa</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </CardContent>
             </Card>
 
-            <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_1fr] gap-6">
+            <div className="grid grid-cols-1  gap-6">
               <Card className="border-border bg-card">
                 <CardContent className="p-0">
                   <div className="px-5 py-4 border-b border-border">
@@ -571,294 +766,162 @@ export default function ManagerInventoryCoordinationPage() {
                     </p>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    {isLoadingInventories ? (
-                      <div className="flex items-center justify-center py-16 text-muted-foreground">
-                        <div className="flex flex-col items-center gap-3">
-                          <span className="material-symbols-outlined text-4xl animate-spin text-primary">
-                            progress_activity
-                          </span>
-                          <p>Đang tải danh sách kho...</p>
-                        </div>
-                      </div>
-                    ) : inventories.length === 0 ? (
-                      <div className="flex items-center justify-center py-16 text-muted-foreground">
-                        <div className="flex flex-col items-center gap-3">
-                          <span className="material-symbols-outlined text-4xl">warehouse</span>
-                          <p>Chưa có kho nào được tạo</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-border text-left">
-                            <th className="px-5 py-3 font-semibold">Kho</th>
-                            <th className="px-5 py-3 font-semibold">Trạm</th>
-                            <th className="px-5 py-3 font-semibold">Cấp kho</th>
-                            <th className="px-5 py-3 font-semibold">Trạng thái</th>
-                            <th className="px-5 py-3 font-semibold text-right">Thao tác</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {inventories.map((inv) => {
-                            const isUpdating = updateInventoryStatus === 'pending';
-                            const levelLabel = getInventoryLevelLabel(inv.level);
-                            const levelIcon = getInventoryLevelIcon(inv.level);
-                            const levelClass = getInventoryLevelClass(inv.level);
-                            const statusLabel = getEntityStatusLabel(inv.status);
-                            const statusIcon = getEntityStatusIcon(inv.status);
-                            const statusClass = getEntityStatusClass(inv.status);
+                  <ManagerInventoryTable
+                    inventories={filteredInventories}
+                    isLoading={isLoadingInventories}
+                    isUpdating={updateInventoryStatus === 'pending'}
+                    onManageStock={openStockManagement}
+                    onToggleStatus={handleInventoryStatusChange}
+                  />
 
-                            return (
-                              <tr
-                                key={inv.inventoryId}
-                                className="border-b border-border/70 hover:bg-muted/30"
-                              >
-                                <td className="px-5 py-4">
-                                  <div>
-                                    <p className="font-bold uppercase text-foreground">
-                                      {inv.inventoryId.slice(0, 6)}...
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">
-                                      {inv.totalStockSlots} ô lưu trữ
-                                    </p>
-                                  </div>
-                                </td>
-                                <td className="px-5 py-4 text-muted-foreground">
-                                  {inv.reliefStationName}
-                                </td>
-                                <td className="px-5 py-4">
-                                  <Badge
-                                    variant="outline"
-                                    appearance="outline"
-                                    size="xs"
-                                    className={`gap-1 rounded-full py-1 sm:size-auto sm:gap-1.5 border ${responsiveBadgeClass} ${levelClass}`}
-                                  >
-                                    <span className="material-symbols-outlined shrink-0 text-xs">
-                                      {levelIcon}
-                                    </span>
-                                    <span
-                                      className={`hidden sm:inline ${responsiveBadgeTextClass}`}
-                                    >
-                                      {levelLabel}
-                                    </span>
-                                    <span className={`sm:hidden ${responsiveBadgeTextClass}`}>
-                                      ...
-                                    </span>
-                                  </Badge>
-                                </td>
-                                <td className="px-5 py-4">
-                                  <Badge
-                                    variant={
-                                      inv.status === EntityStatus.Active
-                                        ? 'success'
-                                        : inv.status === EntityStatus.Inactive
-                                          ? 'warning'
-                                          : 'outline'
-                                    }
-                                    appearance="outline"
-                                    size="xs"
-                                    className={`gap-1 rounded-full py-1 sm:size-auto sm:gap-1.5 border ${responsiveBadgeClass} ${statusClass}`}
-                                  >
-                                    <span className="material-symbols-outlined shrink-0 text-xs">
-                                      {statusIcon}
-                                    </span>
-                                    <span
-                                      className={`hidden sm:inline ${responsiveBadgeTextClass}`}
-                                    >
-                                      {statusLabel}
-                                    </span>
-                                    <span className={`sm:hidden ${responsiveBadgeTextClass}`}>
-                                      ...
-                                    </span>
-                                  </Badge>
-                                </td>
-                                <td className="px-5 py-4 text-right">
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="sm">
-                                        <span className="material-symbols-outlined">more_vert</span>
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem
-                                        className="gap-2 text-primary"
-                                        onClick={() =>
-                                          openStockManagement(
-                                            inv.inventoryId,
-                                            inv.reliefStationName,
-                                          )
-                                        }
-                                      >
-                                        <span className="material-symbols-outlined text-lg">
-                                          inventory
-                                        </span>
-                                        Nhập hoặc cập nhật tồn kho
-                                      </DropdownMenuItem>
-                                      {inv.status === EntityStatus.Active ? (
-                                        <DropdownMenuItem
-                                          className="gap-2 text-amber-600 dark:text-amber-300"
-                                          disabled={isUpdating}
-                                          onClick={() =>
-                                            handleInventoryStatusChange(
-                                              inv.inventoryId,
-                                              inv.level,
-                                              EntityStatus.Inactive,
-                                            )
-                                          }
-                                        >
-                                          <span className="material-symbols-outlined text-lg">
-                                            block
-                                          </span>
-                                          Ngừng hoạt động
-                                        </DropdownMenuItem>
-                                      ) : (
-                                        <DropdownMenuItem
-                                          className="gap-2 text-emerald-600 dark:text-emerald-300"
-                                          disabled={isUpdating}
-                                          onClick={() =>
-                                            handleInventoryStatusChange(
-                                              inv.inventoryId,
-                                              inv.level,
-                                              EntityStatus.Active,
-                                            )
-                                          }
-                                        >
-                                          <span className="material-symbols-outlined text-lg">
-                                            check_circle
-                                          </span>
-                                          Kích hoạt kho
-                                        </DropdownMenuItem>
-                                      )}
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-
-                  {inventoryPagination && inventoryPagination.totalCount > 10 && (
-                    <div className="flex items-center justify-between px-5 py-4 border-t border-border">
-                      <p className="text-sm text-muted-foreground">
-                        Trang {inventoryPagination.currentPage} — Tổng{' '}
-                        {inventoryPagination.totalCount} kho
-                      </p>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={!inventoryPagination.hasPrevious}
-                          onClick={() => setPageIndex((prev) => Math.max(1, prev - 1))}
-                        >
-                          Trước
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={!inventoryPagination.hasNext}
-                          onClick={() => setPageIndex((prev) => prev + 1)}
-                        >
-                          Sau
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                  <ManagerPaginationControls
+                    pagination={inventoryPagination}
+                    itemLabel="kho"
+                    jumpValue={inventoryJumpPage}
+                    onJumpValueChange={setInventoryJumpPage}
+                    onJump={() => {
+                      const nextPage = Math.min(
+                        Math.max(parseFormattedNumber(inventoryJumpPage), 1),
+                        inventoryPagination?.totalPages || 1,
+                      );
+                      setPageIndex(nextPage);
+                    }}
+                    onPrevious={() => setPageIndex((prev) => Math.max(1, prev - 1))}
+                    onNext={() => setPageIndex((prev) => prev + 1)}
+                  />
                 </CardContent>
               </Card>
 
               <Card className="border-border bg-card">
                 <CardContent className="p-0">
                   <div className="px-5 py-4 border-b border-border">
-                    <h2 className="text-xl font-bold text-foreground">
-                      Danh mục Vật phẩm/Hàng hóa
-                    </h2>
-                    <p className="text-sm text-muted-foreground">
-                      Tạo Vật phẩm/Hàng hóa trước, sau đó nhập hoặc cập nhật tồn kho theo Vật
-                      phẩm/Hàng hóa đã có.
-                    </p>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    {isLoadingSupplies ? (
-                      <div className="flex items-center justify-center py-16 text-muted-foreground">
-                        <div className="flex flex-col items-center gap-3">
-                          <span className="material-symbols-outlined text-4xl animate-spin text-primary">
-                            progress_activity
-                          </span>
-                          <p>Đang tải danh mục Vật phẩm/Hàng hóa...</p>
-                        </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-xl font-bold text-foreground">
+                          Danh mục Vật phẩm/Hàng hóa
+                        </h2>
+                        <p className="text-sm text-muted-foreground">
+                          Tạo Vật phẩm/Hàng hóa trước, sau đó nhập hoặc cập nhật tồn kho theo Vật
+                          phẩm/Hàng hóa đã có.
+                        </p>
                       </div>
-                    ) : supplyItems.length === 0 ? (
-                      <div className="flex items-center justify-center py-16 text-muted-foreground">
-                        <div className="flex flex-col items-center gap-3">
-                          <span className="material-symbols-outlined text-4xl">inventory_2</span>
-                          <p>Chưa có Vật phẩm/Hàng hóa nào</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-border text-left">
-                            <th className="px-5 py-3 font-semibold">Vật phẩm</th>
-                            <th className="px-5 py-3 font-semibold">Danh mục</th>
-                            <th className="px-5 py-3 font-semibold">Đơn vị</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {supplyItems.map((item) => (
-                            <tr
-                              key={item.id}
-                              className="border-b border-border/70 hover:bg-muted/30"
-                            >
-                              <td className="px-5 py-4">
-                                <div>
-                                  <p className="font-semibold text-foreground">{item.name}</p>
-                                  <p className="text-xs text-muted-foreground line-clamp-1">
-                                    {item.description || 'Chưa có mô tả'}
-                                  </p>
-                                </div>
-                              </td>
-                              <td className="px-5 py-4">
-                                <SupplyCategoryBadge category={item.category} />
-                              </td>
-                              <td className="px-5 py-4 text-muted-foreground">{item.unit}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-
-                  {supplyPagination && supplyPagination.totalCount > 10 && (
-                    <div className="flex items-center justify-between px-5 py-4 border-t border-border">
-                      <p className="text-sm text-muted-foreground">
-                        Trang {supplyPagination.currentPage} — Tổng {supplyPagination.totalCount}{' '}
-                        vật phẩm
-                      </p>
-                      <div className="flex gap-2">
+                      <Button
+                        variant="primary"
+                        className="gap-2"
+                        onClick={() => setOpenCreateSupply(true)}
+                      >
+                        <span className="material-symbols-outlined text-lg">playlist_add</span>
+                        Tạo nhiều vật phẩm
+                      </Button>
+                    </div>
+                    <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={!supplyPagination.hasPrevious}
-                          onClick={() => setSupplyPageIndex((prev) => Math.max(1, prev - 1))}
+                          className="gap-2"
+                          disabled={selectedSupplyIds.length === 0}
+                          onClick={handleBulkEditSupply}
                         >
-                          Trước
+                          <span className="material-symbols-outlined text-sm">edit</span>
+                          Sửa đã chọn
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={!supplyPagination.hasNext}
-                          onClick={() => setSupplyPageIndex((prev) => prev + 1)}
+                          disabled={sortedSupplyItems.length === 0}
+                          onClick={() =>
+                            setSelectedSupplyIds(sortedSupplyItems.map((item) => item.id))
+                          }
                         >
-                          Sau
+                          Chọn tất cả trang
                         </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setSelectedSupplyIds([])}
+                        >
+                          Bỏ chọn
+                        </Button>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <Label className="text-sm text-muted-foreground">Danh mục</Label>
+                        <Select
+                          value={supplyCategoryFilter}
+                          onValueChange={setSupplyCategoryFilter}
+                        >
+                          <SelectTrigger className="w-[220px]">
+                            <SelectValue placeholder="Lọc danh mục vật phẩm" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Tất cả danh mục</SelectItem>
+                            {DANH_MUC_VAT_PHAM.map((category) => (
+                              <SelectItem key={category} value={String(category)}>
+                                {getSupplyCategoryLabel(category)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Label className="text-sm text-muted-foreground">Kho</Label>
+                        <Select
+                          value={supplyInventoryFilter}
+                          onValueChange={setSupplyInventoryFilter}
+                        >
+                          <SelectTrigger className="w-[220px]">
+                            <SelectValue placeholder="Lọc theo kho" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Tất cả kho</SelectItem>
+                            {inventories.map((inventory) => (
+                              <SelectItem key={inventory.inventoryId} value={inventory.inventoryId}>
+                                {inventory.reliefStationName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Label className="text-sm text-muted-foreground">Sắp xếp</Label>
+                        <Select
+                          value={supplySort}
+                          onValueChange={(value) => setSupplySort(value as typeof supplySort)}
+                        >
+                          <SelectTrigger className="w-[220px]">
+                            <SelectValue placeholder="Chọn kiểu sắp xếp" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="default">Mặc định</SelectItem>
+                            <SelectItem value="category-asc">Danh mục tăng dần</SelectItem>
+                            <SelectItem value="category-desc">Danh mục giảm dần</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
-                  )}
+                  </div>
+
+                  <ManagerSupplyCatalogTable
+                    supplyItems={sortedSupplyItems}
+                    isLoading={isLoadingSupplies}
+                    selectedIds={selectedSupplyIds}
+                    onToggleSelect={handleToggleSupplySelect}
+                    onToggleSelectAll={handleToggleSelectAllSupplies}
+                    onEdit={openEditSupplyDialog}
+                  />
+
+                  <ManagerPaginationControls
+                    pagination={supplyPagination}
+                    itemLabel="vật phẩm"
+                    jumpValue={supplyJumpPage}
+                    onJumpValueChange={setSupplyJumpPage}
+                    onJump={() => {
+                      const nextPage = Math.min(
+                        Math.max(parseFormattedNumber(supplyJumpPage), 1),
+                        supplyPagination?.totalPages || 1,
+                      );
+                      setSupplyPageIndex(nextPage);
+                    }}
+                    onPrevious={() => setSupplyPageIndex((prev) => Math.max(1, prev - 1))}
+                    onNext={() => setSupplyPageIndex((prev) => prev + 1)}
+                  />
                 </CardContent>
               </Card>
             </div>
@@ -1057,6 +1120,9 @@ export default function ManagerInventoryCoordinationPage() {
                     const stationId = station.reliefStationId ?? station.stationId ?? station.id;
                     return (
                       <SelectItem key={stationId} value={stationId}>
+                        <span className="material-symbols-outlined text-[18px] text-green-500">
+                          warehouse
+                        </span>{' '}
                         {station.name}
                       </SelectItem>
                     );
@@ -1078,9 +1144,15 @@ export default function ManagerInventoryCoordinationPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={String(InventoryLevel.Regional)}>
+                    <span className="material-symbols-outlined text-[18px] text-green-500">
+                      {getInventoryLevelIcon(InventoryLevel.Regional)}
+                    </span>
                     {getInventoryLevelLabel(InventoryLevel.Regional)}
                   </SelectItem>
                   <SelectItem value={String(InventoryLevel.Provincial)}>
+                    <span className="material-symbols-outlined text-[18px] text-primary">
+                      {getInventoryLevelIcon(InventoryLevel.Provincial)}
+                    </span>{' '}
                     {getInventoryLevelLabel(InventoryLevel.Provincial)}
                   </SelectItem>
                 </SelectContent>
@@ -1229,6 +1301,198 @@ export default function ManagerInventoryCoordinationPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={openEditSupply} onOpenChange={setOpenEditSupply}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>Sửa vật phẩm</DialogTitle>
+            <DialogDescription>Cập nhật thông tin cho vật phẩm đã chọn.</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label>
+                Tên vật phẩm <RequiredMark />
+              </Label>
+              <Input
+                value={editSupplyForm.name}
+                onChange={(e) => setEditSupplyForm((prev) => ({ ...prev, name: e.target.value }))}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>
+                Danh mục <RequiredMark />
+              </Label>
+              <Select
+                value={editSupplyForm.category}
+                onValueChange={(value) =>
+                  setEditSupplyForm((prev) => ({ ...prev, category: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn danh mục" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DANH_MUC_VAT_PHAM.map((category) => (
+                    <SelectItem key={category} value={String(category)}>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`material-symbols-outlined text-[18px] border rounded-full p-1 leading-none ${getSupplyCategoryClass(category)}`}
+                        >
+                          {getSupplyCategoryIcon(category)}
+                        </span>
+                        <span className="font-medium">{getSupplyCategoryLabel(category)}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>
+                Đơn vị tính <RequiredMark />
+              </Label>
+              <Input
+                value={editSupplyForm.unit}
+                onChange={(e) => setEditSupplyForm((prev) => ({ ...prev, unit: e.target.value }))}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label className="flex items-center gap-2">
+                Đường dẫn biểu tượng
+                <IconGuide />
+              </Label>
+              <Input
+                value={editSupplyForm.iconUrl}
+                onChange={(e) =>
+                  setEditSupplyForm((prev) => ({ ...prev, iconUrl: e.target.value }))
+                }
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Mô tả</Label>
+              <Textarea
+                value={editSupplyForm.description}
+                onChange={(e) =>
+                  setEditSupplyForm((prev) => ({ ...prev, description: e.target.value }))
+                }
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpenEditSupply(false)}>
+              Hủy
+            </Button>
+            <Button
+              onClick={handleSaveEditedSupply}
+              disabled={updateSupplyItemStatus === 'pending'}
+            >
+              {updateSupplyItemStatus === 'pending' ? 'Đang lưu...' : 'Lưu thay đổi'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={openBulkEditSupply} onOpenChange={setOpenBulkEditSupply}>
+        <DialogContent className="!max-w-none w-[94vw] max-w-5xl h-[88vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border">
+            <DialogTitle>Cập nhật nhiều vật phẩm</DialogTitle>
+            <DialogDescription>
+              Đang cập nhật {bulkEditSupplyDrafts.length} vật phẩm đã chọn trong cùng một lần lưu.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
+            {bulkEditSupplyDrafts.map((item, index) => (
+              <Card key={item.id} className="border-border bg-card">
+                <CardContent className="p-5 space-y-4">
+                  <p className="font-semibold text-foreground">Vật phẩm #{index + 1}</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label>
+                        Tên vật phẩm <RequiredMark />
+                      </Label>
+                      <Input
+                        value={item.name}
+                        onChange={(e) => handleBulkEditDraftChange(item.id, 'name', e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>
+                        Danh mục <RequiredMark />
+                      </Label>
+                      <Select
+                        value={item.category}
+                        onValueChange={(value) =>
+                          handleBulkEditDraftChange(item.id, 'category', value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Chọn danh mục" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DANH_MUC_VAT_PHAM.map((category) => (
+                            <SelectItem key={category} value={String(category)}>
+                              {getSupplyCategoryLabel(category)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>
+                        Đơn vị tính <RequiredMark />
+                      </Label>
+                      <Input
+                        value={item.unit}
+                        onChange={(e) => handleBulkEditDraftChange(item.id, 'unit', e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="flex items-center gap-2">
+                        Đường dẫn biểu tượng
+                        <IconGuide />
+                      </Label>
+                      <Input
+                        value={item.iconUrl}
+                        onChange={(e) =>
+                          handleBulkEditDraftChange(item.id, 'iconUrl', e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Mô tả</Label>
+                    <Textarea
+                      value={item.description}
+                      onChange={(e) =>
+                        handleBulkEditDraftChange(item.id, 'description', e.target.value)
+                      }
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
+            <Button variant="outline" onClick={() => setOpenBulkEditSupply(false)}>
+              Hủy
+            </Button>
+            <Button
+              onClick={handleSaveBulkEditedSupply}
+              disabled={updateSupplyItemStatus === 'pending'}
+            >
+              {updateSupplyItemStatus === 'pending' ? 'Đang lưu...' : 'Lưu cập nhật đã chọn'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={openCreateAllocation} onOpenChange={setOpenCreateAllocation}>
         <DialogContent className="!max-w-none w-[94vw] max-w-5xl max-h-[88vh] overflow-hidden p-0">
           <DialogHeader className="px-6 py-4 border-b border-border">
@@ -1344,10 +1608,15 @@ export default function ManagerInventoryCoordinationPage() {
                         Số lượng <RequiredMark />
                       </Label>
                       <Input
-                        type="number"
-                        min={1}
-                        value={item.quantity}
-                        onChange={(e) => updateAllocationItem(item.id, 'quantity', e.target.value)}
+                        inputMode="numeric"
+                        value={formatNumberInputVN(item.quantity)}
+                        onChange={(e) =>
+                          updateAllocationItem(
+                            item.id,
+                            'quantity',
+                            normalizeNumberInput(e.target.value),
+                          )
+                        }
                       />
                     </div>
                   </div>
@@ -1452,11 +1721,14 @@ export default function ManagerInventoryCoordinationPage() {
                       <div className="grid gap-2">
                         <Label>Số lượng nhập thêm</Label>
                         <Input
-                          type="number"
-                          min={0}
-                          value={item.importQuantity}
+                          inputMode="numeric"
+                          value={formatNumberInputVN(item.importQuantity)}
                           onChange={(e) =>
-                            updateStockDraft(item.id, 'importQuantity', e.target.value)
+                            updateStockDraft(
+                              item.id,
+                              'importQuantity',
+                              normalizeNumberInput(e.target.value),
+                            )
                           }
                           placeholder="0"
                         />
@@ -1465,11 +1737,14 @@ export default function ManagerInventoryCoordinationPage() {
                       <div className="grid gap-2">
                         <Label>Mức tồn tối thiểu</Label>
                         <Input
-                          type="number"
-                          min={0}
-                          value={item.minimumStockLevel}
+                          inputMode="numeric"
+                          value={formatNumberInputVN(item.minimumStockLevel)}
                           onChange={(e) =>
-                            updateStockDraft(item.id, 'minimumStockLevel', e.target.value)
+                            updateStockDraft(
+                              item.id,
+                              'minimumStockLevel',
+                              normalizeNumberInput(e.target.value),
+                            )
                           }
                           placeholder="0"
                         />
@@ -1478,11 +1753,14 @@ export default function ManagerInventoryCoordinationPage() {
                       <div className="grid gap-2">
                         <Label>Mức tồn tối đa</Label>
                         <Input
-                          type="number"
-                          min={0}
-                          value={item.maximumStockLevel}
+                          inputMode="numeric"
+                          value={formatNumberInputVN(item.maximumStockLevel)}
                           onChange={(e) =>
-                            updateStockDraft(item.id, 'maximumStockLevel', e.target.value)
+                            updateStockDraft(
+                              item.id,
+                              'maximumStockLevel',
+                              normalizeNumberInput(e.target.value),
+                            )
                           }
                           placeholder="0"
                         />
@@ -1495,8 +1773,9 @@ export default function ManagerInventoryCoordinationPage() {
                         <p>Đơn vị: {selectedSupply.unit}</p>
                         {existingStock && (
                           <p>
-                            Hiện có trong kho: {existingStock.currentQuantity} • Ngưỡng hiện tại:{' '}
-                            {existingStock.minimumStockLevel} - {existingStock.maximumStockLevel}
+                            Hiện có trong kho: {formatNumberVN(existingStock.currentQuantity)} •
+                            Ngưỡng hiện tại: {formatNumberVN(existingStock.minimumStockLevel)} -{' '}
+                            {formatNumberVN(existingStock.maximumStockLevel)}
                           </p>
                         )}
                       </div>
