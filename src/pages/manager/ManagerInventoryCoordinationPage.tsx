@@ -47,6 +47,7 @@ import {
 import { useProvincialStations } from '@/hooks/useReliefStations';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
 import {
+  CampaignStatus,
   EntityStatus,
   InventoryLevel,
   SupplyCategory,
@@ -211,6 +212,33 @@ const getInventoryStatusBadge = (status: number) => {
         variant: 'outline' as const,
         className: 'border border-border bg-muted/50 text-muted-foreground',
       };
+  }
+};
+
+const getCampaignStatusBadge = (status: number) => {
+  const className = getCampaignStatusClass(status);
+
+  switch (status) {
+    case CampaignStatus.Draft:
+      return { icon: 'edit_note', label: 'Bản nháp', className };
+    case CampaignStatus.Active:
+      return { icon: 'campaign', label: 'Đang hoạt động', className };
+    case CampaignStatus.ReadyToExecute:
+      return { icon: 'task_alt', label: 'Sẵn sàng triển khai', className };
+    case CampaignStatus.InProgress:
+      return { icon: 'deployed_code_history', label: 'Đang triển khai', className };
+    case CampaignStatus.Suspended:
+      return { icon: 'pause_circle', label: 'Tạm dừng', className };
+    case CampaignStatus.Closing:
+      return { icon: 'hourglass_top', label: 'Đang kết thúc', className };
+    case CampaignStatus.Completed:
+      return { icon: 'check_circle', label: 'Hoàn thành', className };
+    case CampaignStatus.GoalsMet:
+      return { icon: 'emoji_events', label: 'Đạt mục tiêu', className };
+    case CampaignStatus.Cancelled:
+      return { icon: 'cancel', label: 'Đã hủy', className };
+    default:
+      return { icon: 'help', label: getCampaignStatusLabel(status), className };
   }
 };
 
@@ -1072,14 +1100,23 @@ export default function ManagerInventoryCoordinationPage() {
                               {new Date(campaign.endDate).toLocaleDateString('vi-VN')}
                             </td>
                             <td className="px-5 py-4">
-                              <Badge
-                                variant="outline"
-                                appearance="outline"
-                                size="sm"
-                                className={`border ${getCampaignStatusClass(campaign.status)}`}
-                              >
-                                {getCampaignStatusLabel(campaign.status)}
-                              </Badge>
+                              {(() => {
+                                const statusBadge = getCampaignStatusBadge(campaign.status);
+
+                                return (
+                                  <Badge
+                                    variant="outline"
+                                    appearance="outline"
+                                    size="sm"
+                                    className={`gap-1.5 border ${statusBadge.className}`}
+                                  >
+                                    <span className="material-symbols-outlined text-[15px] shrink-0">
+                                      {statusBadge.icon}
+                                    </span>
+                                    <span className="truncate">{statusBadge.label}</span>
+                                  </Badge>
+                                );
+                              })()}
                             </td>
                             <td className="px-5 py-4 text-right">
                               <Button
@@ -1468,11 +1505,11 @@ export default function ManagerInventoryCoordinationPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
-            <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+            <div className="rounded-xl border border-border bg-yellow-500/10 p-4 text-sm text-yellow-600 font-bold">
               {isLoadingInventoryStocks
                 ? 'Đang tải tồn kho hiện tại của kho...'
-                : `Kho này hiện có ${inventoryStocks.length} vật phẩm trong tồn kho.`}
+                : `Kho này hiện có ${inventoryStocks.length} Hàng Hóa/Vật Phẩm trong tồn kho.`}
             </div>
 
             {stockDrafts.map((item, index) => {
