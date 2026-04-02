@@ -223,9 +223,9 @@ export default function ManagerDashboardPage() {
               <div className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 bg-muted/20">
                 <span className="size-3 rounded-full bg-blue-600" /> Trạm tỉnh / thành
               </div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 bg-muted/20">
+              {/* <div className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 bg-muted/20">
                 <span className="size-3 rounded-full bg-green-600" /> Trạm địa phương / xã
-              </div>
+              </div> */}
             </div>
 
             <div className="h-[560px] rounded-2xl border border-border overflow-hidden bg-muted/20 relative">
@@ -304,24 +304,27 @@ export default function ManagerDashboardPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="text-sm text-muted-foreground">Số lượt đóng góp</p>
-                  <p className="mt-2 text-2xl font-bold text-foreground">
-                    {formatNumberVN(fundSummary?.totalContributionCount || 0)}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="text-sm text-muted-foreground">Số chiến dịch nguồn</p>
-                  <p className="mt-2 text-2xl font-bold text-foreground">
-                    {formatNumberVN(fundSummary?.totalSourceCampaigns || 0)}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/20 p-4">
-                  <p className="text-sm text-muted-foreground">Giao dịch quỹ</p>
-                  <p className="mt-2 text-2xl font-bold text-foreground">
-                    {formatNumberVN(fundTransactions.length)}
-                  </p>
-                </div>
+                <StatCard
+                  label="Số lượt đóng góp"
+                  value={formatNumberVN(fundSummary?.totalContributionCount || 0)}
+                  icon="volunteer_activism"
+                  iconClass="bg-rose-500/10 text-rose-600 dark:text-rose-300 text-[18px]"
+                  note="Tổng số lượt đóng góp vào quỹ trung tâm"
+                />
+                <StatCard
+                  label="Số chiến dịch nguồn"
+                  value={formatNumberVN(fundSummary?.totalSourceCampaigns || 0)}
+                  icon="campaign"
+                  iconClass="bg-indigo-500/10 text-indigo-600 dark:text-indigo-300"
+                  note="Số chiến dịch đóng góp vào quỹ chung"
+                />
+                <StatCard
+                  label="Giao dịch quỹ"
+                  value={formatNumberVN(fundTransactions.length)}
+                  icon="receipt_long"
+                  iconClass="bg-cyan-500/10 text-cyan-600 dark:text-cyan-300"
+                  note="Tổng số giao dịch tài chính gần đây"
+                />
               </div>
 
               <div className="space-y-3">
@@ -330,9 +333,12 @@ export default function ManagerDashboardPage() {
                   fundSummary.sources.map((source, index) => (
                     <div
                       key={`${source.campaignId || index}`}
-                      className="flex items-center justify-between rounded-xl border border-border bg-muted/10 px-4 py-3"
+                      className="flex items-center justify-between rounded-xl border border-border bg-primary/5 px-4 py-3"
                     >
-                      <div>
+                      <div className="flex items-center gap-3">
+                        <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                          <span className="material-symbols-outlined text-[18px]">campaign</span>
+                        </div>
                         <p className="font-medium text-foreground">
                           {source.campaignName || source.campaignId || 'Chiến dịch nguồn'}
                         </p>
@@ -349,8 +355,15 @@ export default function ManagerDashboardPage() {
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                  <div className="rounded-xl border border-border bg-muted/10 p-4">
-                    <p className="font-semibold text-foreground mb-2">Đóng góp gần đây</p>
+                  <div className="rounded-xl border border-border bg-rose-500/5 p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="size-9 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-300 flex items-center justify-center">
+                        <span className="material-symbols-outlined text-[18px]">
+                          volunteer_activism
+                        </span>
+                      </div>
+                      <p className="font-semibold text-foreground">Đóng góp gần đây</p>
+                    </div>
                     {fundContributions.length ? (
                       fundContributions.slice(0, 4).map((item, index) => (
                         <div
@@ -371,8 +384,13 @@ export default function ManagerDashboardPage() {
                     )}
                   </div>
 
-                  <div className="rounded-xl border border-border bg-muted/10 p-4">
-                    <p className="font-semibold text-foreground mb-2">Giao dịch quỹ gần đây</p>
+                  <div className="rounded-xl border border-border bg-cyan-500/5 p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="size-9 rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-300 flex items-center justify-center">
+                        <span className="material-symbols-outlined text-[18px]">receipt_long</span>
+                      </div>
+                      <p className="font-semibold text-foreground">Giao dịch quỹ gần đây</p>
+                    </div>
                     {fundTransactions.length ? (
                       fundTransactions.slice(0, 4).map((item, index) => (
                         <div
@@ -415,30 +433,21 @@ export default function ManagerDashboardPage() {
                 </SelectContent>
               </Select>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="rounded-xl border border-border bg-muted/10 p-4">
-                  <p className="text-sm text-muted-foreground">Tổng số kho</p>
-                  <p className="mt-2 text-2xl font-bold text-foreground">
-                    {formatNumberVN(inventoryOverview.totalInventories)}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/10 p-4">
-                  <p className="text-sm text-muted-foreground">Tổng ô lưu trữ</p>
-                  <p className="mt-2 text-2xl font-bold text-foreground">
-                    {formatNumberVN(inventoryOverview.totalStockSlots)}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-border bg-muted/10 p-4">
-                  <p className="text-sm text-muted-foreground">Trạng thái kho</p>
-                  <Badge
-                    variant="outline"
-                    appearance="outline"
-                    size="sm"
-                    className={`mt-3 border ${getEntityStatusClass(selectedInventory?.status || EntityStatus.Active)}`}
-                  >
-                    {getEntityStatusLabel(selectedInventory?.status || EntityStatus.Active)}
-                  </Badge>
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <StatCard
+                  label="Tổng số kho"
+                  value={formatNumberVN(inventoryOverview.totalInventories)}
+                  icon="warehouse"
+                  iconClass="bg-violet-500/10 text-violet-600 dark:text-violet-300"
+                  note="Tổng số kho đang hiển thị trong hệ thống"
+                />
+                <StatCard
+                  label="Tổng số vật tư lưu trữ"
+                  value={formatNumberVN(inventoryOverview.totalStockSlots)}
+                  icon="inventory"
+                  iconClass="bg-orange-500/10 text-orange-600 dark:text-orange-300"
+                  note="Tổng số ô lưu trữ hoặc vị trí hàng hóa hiện có"
+                />
               </div>
 
               {selectedInventoryId !== 'ALL_INVENTORIES' ? (
