@@ -1,8 +1,10 @@
+import { useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import type { CheckedState } from '@radix-ui/react-checkbox';
 import { SupplyCategoryBadge } from './ManagerInventoryShared';
 
-type SupplyItem = {
+export type SupplyItemRow = {
   id: string;
   name: string;
   description: string;
@@ -10,6 +12,54 @@ type SupplyItem = {
   unit: string;
   category: number;
 };
+
+function SupplyRow({
+  item,
+  isSelected,
+  onToggle,
+  onEdit,
+}: {
+  item: SupplyItemRow;
+  isSelected: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+}) {
+  const handleCheckboxChange = useCallback(
+    (checked: CheckedState) => {
+      if (checked === 'indeterminate') return;
+      onToggle();
+    },
+    [onToggle],
+  );
+
+  return (
+    <tr className="border-b border-border/70 hover:bg-muted/30">
+      <td className="px-5 py-4 w-12">
+        <Checkbox checked={isSelected} onCheckedChange={handleCheckboxChange} />
+      </td>
+      <td className="px-5 py-4">
+        <div>
+          <p className="font-semibold text-foreground">{item.name}</p>
+          <p className="text-xs text-muted-foreground line-clamp-1">
+            {item.description || 'Chưa có mô tả'}
+          </p>
+        </div>
+      </td>
+      <td className="px-5 py-4">
+        <SupplyCategoryBadge category={item.category} />
+      </td>
+      <td className="px-5 py-4 text-muted-foreground">{item.unit}</td>
+      <td className="px-5 py-4">
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" className="gap-2" onClick={onEdit}>
+            <span className="material-symbols-outlined text-sm">edit</span>
+            Sửa
+          </Button>
+        </div>
+      </td>
+    </tr>
+  );
+}
 
 export function ManagerSupplyCatalogTable({
   supplyItems,
@@ -19,15 +69,23 @@ export function ManagerSupplyCatalogTable({
   onToggleSelectAll,
   onEdit,
 }: {
-  supplyItems: SupplyItem[];
+  supplyItems: SupplyItemRow[];
   isLoading: boolean;
-  selectedIds: string[];
-  onToggleSelect: (id: string, checked: boolean) => void;
-  onToggleSelectAll: (checked: boolean) => void;
-  onEdit: (item: SupplyItem) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
+  onToggleSelectAll: () => void;
+  onEdit: (item: SupplyItemRow) => void;
 }) {
-  const isAllSelected =
-    supplyItems.length > 0 && supplyItems.every((item) => selectedIds.includes(item.id));
+  const allPageIds = supplyItems.map((item) => item.id);
+  const isAllSelected = allPageIds.length > 0 && allPageIds.every((id) => selectedIds.has(id));
+
+  const handleHeaderCheckboxChange = useCallback(
+    (checked: CheckedState) => {
+      if (checked === 'indeterminate') return;
+      onToggleSelectAll();
+    },
+    [onToggleSelectAll],
+  );
 
   return (
     <div className="overflow-x-auto">
@@ -52,10 +110,7 @@ export function ManagerSupplyCatalogTable({
           <thead>
             <tr className="border-b border-border text-left">
               <th className="px-5 py-3 font-semibold w-12">
-                <Checkbox
-                  checked={isAllSelected}
-                  onCheckedChange={(checked) => onToggleSelectAll(checked === true)}
-                />
+                <Checkbox checked={isAllSelected} onCheckedChange={handleHeaderCheckboxChange} />
               </th>
               <th className="px-5 py-3 font-semibold">Vật phẩm</th>
               <th className="px-5 py-3 font-semibold">Danh mục</th>
@@ -65,39 +120,13 @@ export function ManagerSupplyCatalogTable({
           </thead>
           <tbody>
             {supplyItems.map((item) => (
-              <tr key={item.id} className="border-b border-border/70 hover:bg-muted/30">
-                <td className="px-5 py-4">
-                  <Checkbox
-                    checked={selectedIds.includes(item.id)}
-                    onCheckedChange={(checked) => onToggleSelect(item.id, checked === true)}
-                  />
-                </td>
-                <td className="px-5 py-4">
-                  <div>
-                    <p className="font-semibold text-foreground">{item.name}</p>
-                    <p className="text-xs text-muted-foreground line-clamp-1">
-                      {item.description || 'Chưa có mô tả'}
-                    </p>
-                  </div>
-                </td>
-                <td className="px-5 py-4">
-                  <SupplyCategoryBadge category={item.category} />
-                </td>
-                <td className="px-5 py-4 text-muted-foreground">{item.unit}</td>
-                <td className="px-5 py-4">
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-2"
-                      onClick={() => onEdit(item)}
-                    >
-                      <span className="material-symbols-outlined text-sm">edit</span>
-                      Sửa
-                    </Button>
-                  </div>
-                </td>
-              </tr>
+              <SupplyRow
+                key={item.id}
+                item={item}
+                isSelected={selectedIds.has(item.id)}
+                onToggle={() => onToggleSelect(item.id)}
+                onEdit={() => onEdit(item)}
+              />
             ))}
           </tbody>
         </table>

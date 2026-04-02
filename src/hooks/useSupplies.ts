@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  normalizeSupplyItem,
+  normalizeSupplyItemPage,
   supplyAllocationService,
   supplyItemService,
   type CreateSupplyAllocationPayload,
@@ -29,7 +31,7 @@ export function useSupplyItems(params?: SearchSupplyItemsParams) {
     queryKey: SUPPLY_QUERY_KEYS.items(params),
     queryFn: async () => {
       const response = await supplyItemService.getAll(params);
-      return response.data;
+      return normalizeSupplyItemPage(response.data as any);
     },
   });
 }
@@ -39,7 +41,7 @@ export function useSupplyItem(id: string) {
     queryKey: SUPPLY_QUERY_KEYS.itemDetail(id),
     queryFn: async () => {
       const response = await supplyItemService.getById(id);
-      return response.data;
+      return normalizeSupplyItem(response.data as any);
     },
     enabled: !!id,
   });
@@ -54,7 +56,8 @@ export function useCreateSupplyItem() {
       queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Tạo hàng hóa thất bại');
+      console.error(error);
+      toast.error('Tạo hàng hóa thất bại');
     },
   });
 }
@@ -141,7 +144,8 @@ export function useCreateSupplyAllocation() {
       queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Tạo điều phối thất bại');
+      console.error(error);
+      toast.error('Tạo điều phối thất bại');
     },
   });
 }
