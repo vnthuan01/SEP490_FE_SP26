@@ -18,65 +18,41 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { useProvinces } from '@/hooks/useLocations';
 import { formatVietnamesePhoneNumber, normalizeVietnamesePhoneNumberInput } from '@/lib/utils';
 import { StationAddressLookup } from './StationAddressLookup';
 
-export interface CreateStationFormData {
+export interface EditStationFormData {
   name: string;
   address: string;
   contactNumber: string;
-  locationId: string;
-  latitude: number;
   longitude: number;
+  latitude: number;
   coverageRadiusKm: number;
 }
 
-interface AddStationModalProps {
+interface EditStationModalProps {
   open: boolean;
   onClose: () => void;
-
-  onSubmit: (formData: CreateStationFormData) => Promise<void> | void;
-  defaultLocationId?: string;
+  onSubmit: (formData: EditStationFormData) => Promise<void> | void;
+  initialData?: Partial<EditStationFormData> | null;
 }
 
-export function AddStationModal({
-  open,
-  onClose,
-  onSubmit,
-  defaultLocationId,
-}: AddStationModalProps) {
-  const { data: provinces, isLoading: isLoadingProvinces } = useProvinces();
-  const availableProvinces = (provinces ?? []).filter(
-    (province) => typeof province.id === 'string' && province.id.trim().length > 0,
-  );
-
+export function EditStationModal({ open, onClose, onSubmit, initialData }: EditStationModalProps) {
   const getDefaultValues = useCallback(
-    (locationId?: string): CreateStationFormData => ({
-      name: '',
-      address: '',
-      contactNumber: '',
-      locationId: locationId || '',
-      latitude: 0,
-      longitude: 0,
-      coverageRadiusKm: 1,
+    (): EditStationFormData => ({
+      name: initialData?.name || '',
+      address: initialData?.address || '',
+      contactNumber: initialData?.contactNumber || '',
+      longitude: Number(initialData?.longitude || 0),
+      latitude: Number(initialData?.latitude || 0),
+      coverageRadiusKm: Number(initialData?.coverageRadiusKm || 1),
     }),
-    [],
+    [initialData],
   );
 
-  const defaultValues = useMemo(
-    () => getDefaultValues(defaultLocationId),
-    [defaultLocationId, getDefaultValues],
-  );
+  const defaultValues = useMemo(() => getDefaultValues(), [getDefaultValues]);
 
-  const form = useForm<CreateStationFormData>({
+  const form = useForm<EditStationFormData>({
     defaultValues,
   });
 
@@ -88,14 +64,13 @@ export function AddStationModal({
     form.reset(defaultValues);
   }
 
-  const handleSubmitForm = async (formData: CreateStationFormData) => {
+  const handleSubmitForm = async (formData: EditStationFormData) => {
     await onSubmit({
       ...formData,
       latitude: Number(formData.latitude),
       longitude: Number(formData.longitude),
       coverageRadiusKm: Number(formData.coverageRadiusKm),
     });
-    form.reset(getDefaultValues(defaultLocationId));
   };
 
   return (
@@ -103,20 +78,20 @@ export function AddStationModal({
       <DialogContent className="w-[98vw] max-w-[1200px] max-h-[92vh] overflow-hidden p-0 flex flex-col">
         <DialogHeader>
           <div className="px-6 pt-6">
-            <DialogTitle>Thêm trạm cứu trợ mới</DialogTitle>
+            <DialogTitle>Chỉnh sửa trạm cứu trợ</DialogTitle>
           </div>
           <DialogDescription className="px-6">
-            Điền thông tin chi tiết để tạo một trạm mới trong khu vực quản lý.
+            Cập nhật thông tin trạm cấp tỉnh/thành phố.
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form
-            id="add-station-form"
+            id="edit-station-form"
             onSubmit={form.handleSubmit(handleSubmitForm)}
-            className="space-y-4 overflow-y-auto px-6 pb-6"
+            className="space-y-6 overflow-y-auto px-6 pb-6"
           >
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 ">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <FormField
                   control={form.control}
@@ -130,42 +105,6 @@ export function AddStationModal({
                       <FormControl>
                         <Input placeholder="Vd: Trạm cứu trợ trung tâm..." {...field} />
                       </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="locationId"
-                  rules={{ required: 'Vui lòng chọn Tỉnh/Thành phố' }}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Tỉnh/Thành phố <span className="text-destructive">*</span>
-                      </FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
-                        disabled={isLoadingProvinces}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue
-                              placeholder={
-                                isLoadingProvinces ? 'Đang tải...' : 'Chọn Tỉnh/Thành phố'
-                              }
-                            />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {availableProvinces.map((province) => (
-                            <SelectItem key={province.id} value={province.id}>
-                              {province.fullName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -197,14 +136,14 @@ export function AddStationModal({
                 <FormField
                   control={form.control}
                   name="coverageRadiusKm"
-                  rules={{ required: true, min: 1 }}
+                  rules={{ required: 'Vui lòng nhập bán kính bao phủ', min: 1 }}
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
                         Bán kính bao phủ (km) <span className="text-destructive">*</span>
                       </FormLabel>
                       <FormControl>
-                        <Input type="number" min={1} step="1" placeholder="Vd: 10" {...field} />
+                        <Input type="number" min={1} step="1" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -231,16 +170,9 @@ export function AddStationModal({
                     rules={{ required: true, min: -90, max: 90 }}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>
-                          Vĩ độ <span className="text-destructive">*</span>
-                        </FormLabel>
+                        <FormLabel>Vĩ độ</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            step="0.000001"
-                            placeholder="Vd: 10.762622"
-                            {...field}
-                          />
+                          <Input type="number" step="0.000001" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -252,16 +184,9 @@ export function AddStationModal({
                     rules={{ required: true, min: -180, max: 180 }}
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>
-                          Kinh độ <span className="text-destructive">*</span>
-                        </FormLabel>
+                        <FormLabel>Kinh độ</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            step="0.000001"
-                            placeholder="Vd: 106.660172"
-                            {...field}
-                          />
+                          <Input type="number" step="0.000001" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -274,19 +199,11 @@ export function AddStationModal({
         </Form>
 
         <DialogFooter className="px-6 pb-6">
-          <Button variant="destructive" onClick={onClose} disabled={form.formState.isSubmitting}>
-            <span className="material-symbols-outlined text-lg">close</span>
+          <Button variant="outline" onClick={onClose} disabled={form.formState.isSubmitting}>
             Hủy
           </Button>
-          <Button
-            variant="primary"
-            className="gap-2"
-            type="submit"
-            form="add-station-form"
-            disabled={form.formState.isSubmitting}
-          >
-            <span className="material-symbols-outlined text-lg">add</span>
-            {form.formState.isSubmitting ? 'Đang tạo...' : 'Tạo trạm'}
+          <Button type="submit" form="edit-station-form" disabled={form.formState.isSubmitting}>
+            {form.formState.isSubmitting ? 'Đang lưu...' : 'Lưu thay đổi'}
           </Button>
         </DialogFooter>
       </DialogContent>

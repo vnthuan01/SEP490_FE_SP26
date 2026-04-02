@@ -12,12 +12,31 @@ export interface PaginatedResponse<T> {
 
 export interface SupplyItem {
   id: string;
+  supplyItemId?: string;
   name: string;
   description: string;
   iconUrl: string;
   category: number;
   unit: string;
 }
+
+export const normalizeSupplyItem = (item: any): SupplyItem => ({
+  ...item,
+  id: item?.id || item?.supplyItemId || '',
+  supplyItemId: item?.supplyItemId || item?.id || '',
+  name: item?.name || '',
+  description: item?.description || '',
+  iconUrl: item?.iconUrl || '',
+  category: Number(item?.category ?? 0),
+  unit: item?.unit || '',
+});
+
+export const normalizeSupplyItemPage = (
+  response: PaginatedResponse<any>,
+): PaginatedResponse<SupplyItem> => ({
+  ...response,
+  items: Array.isArray(response?.items) ? response.items.map(normalizeSupplyItem) : [],
+});
 
 export interface CreateSupplyItemPayload {
   name: string;
@@ -57,9 +76,11 @@ export interface UpdateSupplyAllocationStatusPayload {
 }
 
 export interface SupplyAllocation {
-  id: string;
+  allocationId: string;
   campaignId: string;
   sourceInventoryId: string;
+  sourceInventoryName: string;
+
   status: number;
   items: SupplyAllocationItemPayload[];
 }

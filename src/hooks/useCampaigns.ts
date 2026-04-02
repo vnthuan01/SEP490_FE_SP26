@@ -10,6 +10,7 @@ import type {
   UpdateStatusPayload,
 } from '@/services/campaignService';
 import { toast } from 'sonner';
+import { handleHookError } from './hookErrorUtils';
 
 export const CAMPAIGN_QUERY_KEYS = {
   all: ['campaigns'] as const,
@@ -93,7 +94,7 @@ export function useCreateCampaign() {
       queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi tạo chiến dịch');
+      handleHookError(error, 'Không thể tạo chiến dịch');
     },
   });
 }
@@ -110,7 +111,7 @@ export function useUpdateCampaign() {
       queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi cập nhật chiến dịch');
+      handleHookError(error, 'Không thể cập nhật chiến dịch');
     },
   });
 }
@@ -127,7 +128,7 @@ export function useUpdateCampaignStatus() {
       queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) });
     },
     onError: (error: any) => {
-      console.error(error);
+      handleHookError(error, 'Không thể cập nhật trạng thái chiến dịch');
     },
   });
 }
@@ -143,7 +144,7 @@ export function useAssignStationToCampaign() {
       queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi gán trạm');
+      handleHookError(error, 'Không thể gán trạm vào chiến dịch');
     },
   });
 }
@@ -159,7 +160,7 @@ export function useRemoveStationFromCampaign() {
       queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi gỡ trạm');
+      handleHookError(error, 'Không thể gỡ trạm khỏi chiến dịch');
     },
   });
 }
@@ -175,7 +176,7 @@ export function useAssignTeamToCampaign() {
       queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.teams(variables.id) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi gán đội');
+      handleHookError(error, 'Không thể gán đội vào chiến dịch');
     },
   });
 }
@@ -191,7 +192,7 @@ export function useUpdateCampaignTeamStatus() {
       queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.teams(variables.id) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi cập nhật trạng thái đội');
+      handleHookError(error, 'Không thể cập nhật trạng thái đội');
     },
   });
 }
@@ -207,7 +208,7 @@ export function useRemoveTeamFromCampaign() {
       queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.teams(variables.id) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi gỡ đội');
+      handleHookError(error, 'Không thể gỡ đội khỏi chiến dịch');
     },
   });
 }

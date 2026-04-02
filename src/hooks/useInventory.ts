@@ -11,6 +11,7 @@ import type {
   SearchTransactionByTypeParams,
 } from '@/services/inventoryService';
 import { toast } from 'sonner';
+import { handleHookError } from './hookErrorUtils';
 
 export const INVENTORY_KEYS = {
   all: ['inventories'] as const,
@@ -106,7 +107,7 @@ export function useCreateInventory() {
       queryClient.invalidateQueries({ queryKey: INVENTORY_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi tạo kho');
+      handleHookError(error, 'Không thể tạo kho');
     },
   });
 }
@@ -176,7 +177,7 @@ export function useCreateTransaction() {
       queryClient.invalidateQueries({ queryKey: INVENTORY_KEYS.stocks(variables.inventoryId) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Giao dịch thất bại');
+      handleHookError(error, 'Không thể thực hiện giao dịch kho');
     },
   });
 }

@@ -60,6 +60,20 @@ export const parseFormattedNumber = (value: string | number | null | undefined):
   return normalized ? Number(normalized) : 0;
 };
 
+export const normalizeVietnamesePhoneNumberInput = (value: string): string =>
+  value.replace(/\D/g, '').slice(0, 11);
+
+export const formatVietnamesePhoneNumber = (value: string | null | undefined): string => {
+  if (!value) return '';
+
+  const digits = normalizeVietnamesePhoneNumberInput(value);
+  if (!digits) return '';
+
+  if (digits.length <= 4) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 4)} ${digits.slice(4)}`;
+  return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
+};
+
 //Local time
 export function getDateKey(d: Date): string {
   const year = d.getFullYear();

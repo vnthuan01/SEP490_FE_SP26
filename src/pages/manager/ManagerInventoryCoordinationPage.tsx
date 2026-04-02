@@ -20,13 +20,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
   useAddStock,
   useCreateInventory,
   useCreateTransaction,
   useInventories,
+  useInventoryTransactions,
   useInventoryStocks,
   useUpdateInventory,
   useUpdateStock,
@@ -39,11 +39,30 @@ import {
   useUpdateSupplyItem,
 } from '@/hooks/useSupplies';
 import { useProvincialStations } from '@/hooks/useReliefStations';
+import {
+  useApproveSupplyTransfer,
+  useCancelSupplyTransfer,
+  useCreateSupplyTransfer,
+  useReceiveSupplyTransfer,
+  useShipSupplyTransfer,
+  useSupplyTransfersBySourceStation,
+} from '@/hooks/useSupplyTransfers';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
+import {
+  ManagerCreateTransferDialog,
+  ManagerTransactionHistoryDialog,
+  ManagerTransferHistoryDialog,
+  type TransferItemDraft,
+} from './components/ManagerTransferDialogs';
+import { TransferPdfWorkflowDialog } from '@/components/pdf/TransferPdfWorkflowDialog';
 import { ManagerInventoryTable } from './components/ManagerInventoryTable';
 import { ManagerPaginationControls } from './components/ManagerPaginationControls';
 import { ManagerSupplyCatalogTable } from './components/ManagerSupplyCatalogTable';
-import { IconGuide, RequiredMark, StatCard } from './components/ManagerInventoryShared';
+import {
+  ManagerBulkEditSupplyDialog,
+  ManagerCreateSupplyDialog,
+} from './components/ManagerSupplyDialogs';
+import { RequiredMark, StatCard } from './components/ManagerInventoryShared';
 import {
   EntityStatus,
   InventoryLevel,
@@ -55,8 +74,6 @@ import {
   getCampaignStatusShortLabel,
   getInventoryLevelIcon,
   getInventoryLevelLabel,
-  getSupplyCategoryClass,
-  getSupplyCategoryIcon,
   getSupplyCategoryLabel,
 } from '@/enums/beEnums';
 import {
@@ -79,7 +96,8 @@ type DongVatPham = {
 };
 
 type DongVatPhamCapNhat = {
-  id: string;
+  draftId: string;
+  supplyItemId: string;
   name: string;
   description: string;
   iconUrl: string;
@@ -103,6 +121,16 @@ type DongCapNhatTonKho = {
   isExisting?: boolean;
 };
 
+type TransferDialogState = {
+  sourceInventoryId: string;
+  sourceStationId: string;
+  sourceInventoryName: string;
+  destinationStationId: string;
+  reason: string;
+  notes: string;
+  items: TransferItemDraft[];
+};
+
 const DANH_MUC_VAT_PHAM = [
   SupplyCategory.LuongThuc,
   SupplyCategory.YTeVaThuoc,
@@ -120,6 +148,23 @@ const taoDongVatPham = (): DongVatPham => ({
   unit: '',
 });
 
+const taoDongVatPhamCapNhat = (item: {
+  id: string;
+  name: string;
+  description?: string;
+  iconUrl?: string;
+  category: number;
+  unit: string;
+}): DongVatPhamCapNhat => ({
+  draftId: crypto.randomUUID(),
+  supplyItemId: item.id,
+  name: item.name,
+  description: item.description || '',
+  iconUrl: item.iconUrl || '',
+  category: String(item.category),
+  unit: item.unit,
+});
+
 const taoDongDieuPhoi = (): DongDieuPhoi => ({
   id: crypto.randomUUID(),
   supplyItemId: '',
@@ -134,6 +179,14 @@ const taoDongCapNhatTonKho = (): DongCapNhatTonKho => ({
   maximumStockLevel: '0',
 });
 
+const taoDongTransfer = (): TransferItemDraft => ({
+  id: crypto.randomUUID(),
+  supplyItemId: '',
+  quantity: '1',
+  notes: '',
+  iconUrl: '',
+});
+
 export default function ManagerInventoryCoordinationPage() {
   const [selectedTab, setSelectedTab] = useState<QuanLyTab>('hang-hoa');
   const [pageIndex, setPageIndex] = useState(1);
@@ -142,11 +195,18 @@ export default function ManagerInventoryCoordinationPage() {
   const [supplyJumpPage, setSupplyJumpPage] = useState('1');
   const [openCreateInventory, setOpenCreateInventory] = useState(false);
   const [openCreateSupply, setOpenCreateSupply] = useState(false);
-  const [openEditSupply, setOpenEditSupply] = useState(false);
   const [openBulkEditSupply, setOpenBulkEditSupply] = useState(false);
   const [openCreateAllocation, setOpenCreateAllocation] = useState(false);
+  const [openCreateTransfer, setOpenCreateTransfer] = useState(false);
+  const [openTransferHistory, setOpenTransferHistory] = useState(false);
+  const [openTransactionHistory, setOpenTransactionHistory] = useState(false);
+  const [openTransferPdfWorkflow, setOpenTransferPdfWorkflow] = useState(false);
   const [openStockDialog, setOpenStockDialog] = useState(false);
   const [selectedInventoryForStock, setSelectedInventoryForStock] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [selectedInventoryForHistory, setSelectedInventoryForHistory] = useState<{
     id: string;
     name: string;
   } | null>(null);
@@ -155,8 +215,9 @@ export default function ManagerInventoryCoordinationPage() {
     level: String(InventoryLevel.Provincial),
   });
   const [supplyDrafts, setSupplyDrafts] = useState<DongVatPham[]>([taoDongVatPham()]);
-  const [selectedSupplyIds, setSelectedSupplyIds] = useState<string[]>([]);
-  const [keywordFilter, setKeywordFilter] = useState('');
+  const [selectedSupplyIds, setSelectedSupplyIds] = useState<Set<string>>(new Set());
+  const [inventoryKeywordFilter, setInventoryKeywordFilter] = useState('');
+  const [supplyKeywordFilter, setSupplyKeywordFilter] = useState('');
   const [supplyCategoryFilter, setSupplyCategoryFilter] = useState('all');
   const [supplyInventoryFilter, setSupplyInventoryFilter] = useState('all');
   const [inventoryLevelFilter, setInventoryLevelFilter] = useState('all');
@@ -164,14 +225,6 @@ export default function ManagerInventoryCoordinationPage() {
   const [supplySort, setSupplySort] = useState<'default' | 'category-asc' | 'category-desc'>(
     'default',
   );
-  const [editSupplyForm, setEditSupplyForm] = useState({
-    id: '',
-    name: '',
-    description: '',
-    iconUrl: '',
-    category: String(SupplyCategory.LuongThuc),
-    unit: '',
-  });
   const [bulkEditSupplyDrafts, setBulkEditSupplyDrafts] = useState<DongVatPhamCapNhat[]>([]);
   const [stockDrafts, setStockDrafts] = useState<DongCapNhatTonKho[]>([taoDongCapNhatTonKho()]);
   const [allocationForm, setAllocationForm] = useState({
@@ -179,6 +232,16 @@ export default function ManagerInventoryCoordinationPage() {
     sourceInventoryId: '',
     items: [taoDongDieuPhoi()],
   });
+  const [transferForm, setTransferForm] = useState<TransferDialogState>({
+    sourceInventoryId: '',
+    sourceStationId: '',
+    sourceInventoryName: '',
+    destinationStationId: '',
+    reason: '',
+    notes: '',
+    items: [taoDongTransfer()],
+  });
+  const [lastCreatedTransferId, setLastCreatedTransferId] = useState('');
 
   const { data: inventoriesResponse, isLoading: isLoadingInventories } = useInventories({
     pageIndex,
@@ -201,10 +264,29 @@ export default function ManagerInventoryCoordinationPage() {
     selectedInventoryForStock?.id || '',
     { pageIndex: 1, pageSize: 200 },
   );
+  const { data: transferInventoryStocksResponse } = useInventoryStocks(
+    transferForm.sourceInventoryId || '',
+    {
+      pageIndex: 1,
+      pageSize: 500,
+    },
+  );
+  const { data: allocationInventoryStocksResponse, isLoading: isLoadingAllocationInventoryStocks } =
+    useInventoryStocks(allocationForm.sourceInventoryId || '', {
+      pageIndex: 1,
+      pageSize: 500,
+    });
   const { data: inventoryStocksFilterResponse } = useInventoryStocks(
     supplyInventoryFilter === 'all' ? '' : supplyInventoryFilter,
     { pageIndex: 1, pageSize: 500 },
   );
+  const { data: transferHistoryResponse, isLoading: isLoadingTransferHistory } =
+    useSupplyTransfersBySourceStation(selectedInventoryForHistory?.id || '');
+  const { data: transactionHistoryResponse, isLoading: isLoadingTransactionHistory } =
+    useInventoryTransactions(selectedInventoryForHistory?.id || '', {
+      pageIndex: 1,
+      pageSize: 200,
+    });
 
   const { mutateAsync: createInventory, status: createInventoryStatus } = useCreateInventory();
   const { mutateAsync: updateInventory, status: updateInventoryStatus } = useUpdateInventory();
@@ -212,18 +294,39 @@ export default function ManagerInventoryCoordinationPage() {
   const { mutateAsync: updateStock, status: updateStockStatus } = useUpdateStock();
   const { mutateAsync: createTransaction, status: createTransactionStatus } =
     useCreateTransaction();
+  const { mutateAsync: createSupplyTransfer, status: createSupplyTransferStatus } =
+    useCreateSupplyTransfer();
+  const { mutateAsync: approveSupplyTransfer } = useApproveSupplyTransfer();
+  const { mutateAsync: shipSupplyTransfer } = useShipSupplyTransfer();
+  const { mutateAsync: receiveSupplyTransfer } = useReceiveSupplyTransfer();
+  const { mutateAsync: cancelSupplyTransfer } = useCancelSupplyTransfer();
   const { mutateAsync: createSupplyItem, status: createSupplyItemStatus } = useCreateSupplyItem();
   const { mutateAsync: updateSupplyItem, status: updateSupplyItemStatus } = useUpdateSupplyItem();
   const { mutateAsync: createSupplyAllocation, status: createSupplyAllocationStatus } =
     useCreateSupplyAllocation();
 
-  const inventories = inventoriesResponse?.items || [];
+  const inventories = useMemo(() => inventoriesResponse?.items || [], [inventoriesResponse]);
   const inventoryPagination = inventoriesResponse;
-  const supplyItems = supplyItemsResponse?.items || [];
+  const supplyItems = useMemo(() => supplyItemsResponse?.items || [], [supplyItemsResponse]);
   const supplyPagination = supplyItemsResponse;
   const stations = stationsResponse?.items || [];
-  const inventoryStocks = inventoryStocksResponse?.items || [];
-  const inventoryStockFilters = inventoryStocksFilterResponse?.items || [];
+  const inventoryStocks = useMemo(
+    () => inventoryStocksResponse?.items || [],
+    [inventoryStocksResponse],
+  );
+  const transferInventoryStocks = transferInventoryStocksResponse?.items || [];
+  const allocationInventoryStocks = useMemo(
+    () => allocationInventoryStocksResponse?.items || [],
+    [allocationInventoryStocksResponse],
+  );
+  const inventoryStockFilters = useMemo(
+    () => inventoryStocksFilterResponse?.items || [],
+    [inventoryStocksFilterResponse],
+  );
+  const transferHistory = Array.isArray(transferHistoryResponse)
+    ? transferHistoryResponse
+    : (transferHistoryResponse as any)?.items || [];
+  const transactionHistory = (transactionHistoryResponse as any)?.items || [];
 
   const activeInventories = useMemo(
     () => inventories.filter((inv) => inv.status === EntityStatus.Active),
@@ -233,27 +336,31 @@ export default function ManagerInventoryCoordinationPage() {
     () => new Map(inventoryStocks.map((stock) => [stock.supplyItemId, stock])),
     [inventoryStocks],
   );
+  const allocationStockMapBySupplyItemId = useMemo(
+    () => new Map(allocationInventoryStocks.map((stock) => [stock.supplyItemId, stock])),
+    [allocationInventoryStocks],
+  );
   const filteredInventories = useMemo(() => {
     return inventories.filter((inv) => {
       const matchesLevel =
         inventoryLevelFilter === 'all' || String(inv.level) === inventoryLevelFilter;
       const matchesStatus =
         inventoryStatusFilter === 'all' || String(inv.status) === inventoryStatusFilter;
-      const normalizedKeyword = keywordFilter.trim().toLowerCase();
+      const normalizedKeyword = inventoryKeywordFilter.trim().toLowerCase();
       const matchesKeyword =
         !normalizedKeyword ||
         inv.inventoryId.toLowerCase().includes(normalizedKeyword) ||
         inv.reliefStationName.toLowerCase().includes(normalizedKeyword);
       return matchesLevel && matchesStatus && matchesKeyword;
     });
-  }, [inventories, inventoryLevelFilter, inventoryStatusFilter, keywordFilter]);
+  }, [inventories, inventoryLevelFilter, inventoryStatusFilter, inventoryKeywordFilter]);
 
   const sortedSupplyItems = useMemo(() => {
     const inventorySupplyIds =
       supplyInventoryFilter === 'all'
         ? null
         : new Set(inventoryStockFilters.map((stock) => stock.supplyItemId));
-    const normalizedKeyword = keywordFilter.trim().toLowerCase();
+    const normalizedKeyword = supplyKeywordFilter.trim().toLowerCase();
     const items = supplyItems.filter((item) => {
       const matchesInventory = !inventorySupplyIds || inventorySupplyIds.has(item.id);
       const matchesKeyword =
@@ -268,8 +375,13 @@ export default function ManagerInventoryCoordinationPage() {
     } else if (supplySort === 'category-desc') {
       items.sort((a, b) => b.category - a.category || a.name.localeCompare(b.name, 'vi'));
     }
-    return items;
-  }, [supplyItems, supplySort, supplyInventoryFilter, inventoryStockFilters, keywordFilter]);
+
+    return Array.from(new Map(items.map((item) => [item.id, item])).values());
+  }, [supplyItems, supplySort, supplyInventoryFilter, inventoryStockFilters, supplyKeywordFilter]);
+  const selectedSupplyIdsOnPage = useMemo(() => {
+    const currentIds = new Set(sortedSupplyItems.map((item) => item.id));
+    return new Set(Array.from(selectedSupplyIds).filter((id) => currentIds.has(id)));
+  }, [selectedSupplyIds, sortedSupplyItems]);
 
   const thongKe = useMemo(() => {
     const tongKho = inventories.length;
@@ -384,14 +496,24 @@ export default function ManagerInventoryCoordinationPage() {
     setOpenCreateSupply(false);
   };
 
-  const handleToggleSupplySelect = (id: string, checked: boolean) => {
-    setSelectedSupplyIds((prev) =>
-      checked ? [...new Set([...prev, id])] : prev.filter((itemId) => itemId !== id),
-    );
+  const handleToggleSupplySelect = (id: string) => {
+    setSelectedSupplyIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
-  const handleToggleSelectAllSupplies = (checked: boolean) => {
-    setSelectedSupplyIds(checked ? sortedSupplyItems.map((item) => item.id) : []);
+  const handleToggleSelectAllSupplies = () => {
+    setSelectedSupplyIds((prev) => {
+      const pageIds = sortedSupplyItems.map((item) => item.id);
+      const allSelected = pageIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) pageIds.forEach((id) => next.delete(id));
+      else pageIds.forEach((id) => next.add(id));
+      return next;
+    });
   };
 
   const openEditSupplyDialog = (item: {
@@ -402,70 +524,49 @@ export default function ManagerInventoryCoordinationPage() {
     category: number;
     unit: string;
   }) => {
-    setEditSupplyForm({
-      id: item.id,
-      name: item.name,
-      description: item.description || '',
-      iconUrl: item.iconUrl || '',
-      category: String(item.category),
-      unit: item.unit,
-    });
-    setOpenEditSupply(true);
+    setBulkEditSupplyDrafts([taoDongVatPhamCapNhat(item)]);
+    setOpenBulkEditSupply(true);
   };
 
   const handleBulkEditSupply = () => {
-    if (selectedSupplyIds.length === 0) {
+    if (selectedSupplyIdsOnPage.size === 0) {
       toast.error('Vui lòng chọn ít nhất một vật phẩm để cập nhật.');
       return;
     }
 
-    const selectedItems = sortedSupplyItems.filter((item) => selectedSupplyIds.includes(item.id));
+    const seen = new Map<string, (typeof sortedSupplyItems)[number]>();
+    for (const id of selectedSupplyIdsOnPage) {
+      const item = sortedSupplyItems.find((s) => s.id === id);
+      if (item && !seen.has(item.id)) {
+        seen.set(item.id, item);
+      }
+    }
+
+    const selectedItems = [...seen.values()];
+
     if (selectedItems.length === 0) {
       toast.error('Không tìm thấy vật phẩm đã chọn.');
       return;
     }
 
-    setBulkEditSupplyDrafts(
-      selectedItems.map((item) => ({
-        id: item.id,
-        name: item.name,
-        description: item.description || '',
-        iconUrl: item.iconUrl || '',
-        category: String(item.category),
-        unit: item.unit,
-      })),
-    );
+    setBulkEditSupplyDrafts(selectedItems.map((item) => taoDongVatPhamCapNhat(item)));
     setOpenBulkEditSupply(true);
   };
 
-  const handleSaveEditedSupply = async () => {
-    if (!editSupplyForm.id || !editSupplyForm.name.trim() || !editSupplyForm.unit.trim()) {
-      toast.error('Vui lòng nhập đầy đủ tên vật phẩm và đơn vị tính.');
-      return;
-    }
-
-    await updateSupplyItem({
-      id: editSupplyForm.id,
-      data: {
-        name: editSupplyForm.name.trim(),
-        description: editSupplyForm.description.trim(),
-        iconUrl: editSupplyForm.iconUrl.trim(),
-        category: Number(editSupplyForm.category),
-        unit: editSupplyForm.unit.trim(),
-      },
-    });
-
-    setOpenEditSupply(false);
-  };
-
-  const handleBulkEditDraftChange = (id: string, key: keyof DongVatPhamCapNhat, value: string) => {
+  const handleBulkEditDraftChange = (
+    draftId: string,
+    key: keyof Omit<DongVatPhamCapNhat, 'draftId' | 'supplyItemId'>,
+    value: string,
+  ) => {
     setBulkEditSupplyDrafts((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)),
+      prev.map((item) => (item.draftId === draftId ? { ...item, [key]: value } : item)),
     );
   };
 
   const handleSaveBulkEditedSupply = async () => {
-    const validItems = bulkEditSupplyDrafts.filter((item) => item.name.trim() && item.unit.trim());
+    const validItems = bulkEditSupplyDrafts.filter(
+      (item) => item.supplyItemId && item.name.trim() && item.unit.trim(),
+    );
     if (validItems.length === 0) {
       toast.error('Vui lòng nhập tên vật phẩm và đơn vị tính cho ít nhất một dòng hợp lệ.');
       return;
@@ -474,7 +575,7 @@ export default function ManagerInventoryCoordinationPage() {
     await Promise.all(
       validItems.map((item) =>
         updateSupplyItem({
-          id: item.id,
+          id: item.supplyItemId,
           data: {
             name: item.name.trim(),
             description: item.description.trim(),
@@ -487,7 +588,7 @@ export default function ManagerInventoryCoordinationPage() {
     );
 
     setOpenBulkEditSupply(false);
-    setSelectedSupplyIds([]);
+    setSelectedSupplyIds(new Set());
     setBulkEditSupplyDrafts([]);
   };
 
@@ -657,6 +758,104 @@ export default function ManagerInventoryCoordinationPage() {
     setOpenStockDialog(false);
   };
 
+  const openTransferDialog = (
+    inventoryId: string,
+    reliefStationId: string,
+    inventoryName: string,
+  ) => {
+    setTransferForm({
+      sourceInventoryId: inventoryId,
+      sourceStationId: reliefStationId,
+      sourceInventoryName: inventoryName,
+      destinationStationId: '',
+      reason: '',
+      notes: '',
+      items: [taoDongTransfer()],
+    });
+    setOpenCreateTransfer(true);
+  };
+
+  const updateTransferForm = (key: 'destinationStationId' | 'reason' | 'notes', value: string) => {
+    setTransferForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const updateTransferItem = (
+    id: string,
+    key: 'supplyItemId' | 'quantity' | 'notes',
+    value: string,
+  ) => {
+    setTransferForm((prev) => ({
+      ...prev,
+      items: prev.items.map((item) => (item.id === id ? { ...item, [key]: value } : item)),
+    }));
+  };
+
+  const addTransferItem = () => {
+    setTransferForm((prev) => ({
+      ...prev,
+      items: [...prev.items, taoDongTransfer()],
+    }));
+  };
+
+  const removeTransferItem = (id: string) => {
+    setTransferForm((prev) => ({
+      ...prev,
+      items: prev.items.length === 1 ? prev.items : prev.items.filter((item) => item.id !== id),
+    }));
+  };
+
+  const handleCreateTransfer = async () => {
+    if (!transferForm.sourceStationId || !transferForm.destinationStationId) {
+      toast.error('Vui lòng chọn đầy đủ kho nguồn và trạm đích.');
+      return;
+    }
+
+    if (!transferForm.reason.trim()) {
+      toast.error('Vui lòng nhập lý do chuyển kho.');
+      return;
+    }
+
+    const validItems = transferForm.items
+      .map((item) => ({
+        supplyItemId: item.supplyItemId,
+        quantity: parseFormattedNumber(item.quantity),
+        notes: item.notes?.trim() || undefined,
+      }))
+      .filter((item) => item.supplyItemId && item.quantity > 0);
+
+    if (validItems.length === 0) {
+      toast.error('Vui lòng thêm ít nhất một vật phẩm chuyển kho hợp lệ.');
+      return;
+    }
+
+    const createdTransfer = await createSupplyTransfer({
+      sourceStationId: transferForm.sourceStationId,
+      destinationStationId: transferForm.destinationStationId,
+      reason: transferForm.reason.trim(),
+      notes: transferForm.notes,
+      items: validItems,
+    });
+
+    const createdTransferId =
+      (createdTransfer as any)?.data?.id ||
+      (createdTransfer as any)?.data?.transferId ||
+      transferForm.sourceInventoryId ||
+      'TRANSFER_MOI';
+    setLastCreatedTransferId(createdTransferId);
+    setOpenCreateTransfer(false);
+    setOpenTransferPdfWorkflow(true);
+  };
+
+  const openTransferHistoryDialog = (inventoryId: string, inventoryName: string) => {
+    setSelectedInventoryForHistory({ id: inventoryId, name: inventoryName });
+    setOpenTransferHistory(true);
+  };
+
+  const openTransactionHistoryDialog = (inventoryId: string, inventoryName: string) => {
+    setSelectedInventoryForHistory({ id: inventoryId, name: inventoryName });
+    setOpenTransactionHistory(true);
+  };
+
   return (
     <DashboardLayout projects={managerProjects} navItems={managerNavItems}>
       <div className="flex flex-col gap-6">
@@ -708,50 +907,50 @@ export default function ManagerInventoryCoordinationPage() {
           <TabsContent value="hang-hoa" className="mt-6 space-y-6">
             <Card className="border-border bg-card">
               <CardContent className="p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                <div className="relative w-full lg:max-w-md">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-muted-foreground">
-                    search
-                  </span>
-                  <Input
-                    className="pl-10"
-                    placeholder="Tìm kiếm kho hoặc vật phẩm..."
-                    value={keywordFilter}
-                    onChange={(e) => setKeywordFilter(e.target.value)}
-                  />
-                </div>
-
                 <div className="flex flex-wrap gap-3">
                   <div className="flex items-center gap-2">
-                    <label htmlFor="">
-                      {' '}
+                    <label htmlFor="inventory-level" className="cursor-pointer mt-3 ">
                       <span className="material-symbols-outlined text-[18px] text-green-500">
                         warehouse
                       </span>
                     </label>
-                    <Select value={inventoryLevelFilter} onValueChange={setInventoryLevelFilter}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Lọc cấp kho" />
+                    <div>
+                      <Select value={inventoryLevelFilter} onValueChange={setInventoryLevelFilter}>
+                        <SelectTrigger id="inventory-level" className="w-[180px]">
+                          <SelectValue placeholder="Lọc cấp kho" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Tất cả cấp kho</SelectItem>
+                          <SelectItem value={String(InventoryLevel.Regional)}>
+                            Kho khu vực
+                          </SelectItem>
+                          <SelectItem value={String(InventoryLevel.Provincial)}>
+                            Kho tỉnh/thành
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="inventory-status" className="cursor-pointer mt-3 ">
+                      <span className="material-symbols-outlined text-[18px] text-primary">
+                        filter_list
+                      </span>
+                    </label>
+                    <Select value={inventoryStatusFilter} onValueChange={setInventoryStatusFilter}>
+                      <SelectTrigger id="inventory-status" className="w-[180px]">
+                        <SelectValue placeholder="Lọc trạng thái kho" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Tất cả cấp kho</SelectItem>
-                        <SelectItem value={String(InventoryLevel.Regional)}>Kho khu vực</SelectItem>
-                        <SelectItem value={String(InventoryLevel.Provincial)}>
-                          Kho tỉnh/thành
+                        <SelectItem value="all">Tất cả trạng thái kho</SelectItem>
+                        <SelectItem value={String(EntityStatus.Active)}>Đang hoạt động</SelectItem>
+                        <SelectItem value={String(EntityStatus.Inactive)}>
+                          Ngừng hoạt động
                         </SelectItem>
+                        <SelectItem value={String(EntityStatus.Deleted)}>Đã xóa</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <Select value={inventoryStatusFilter} onValueChange={setInventoryStatusFilter}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Lọc trạng thái kho" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Tất cả trạng thái kho</SelectItem>
-                      <SelectItem value={String(EntityStatus.Active)}>Đang hoạt động</SelectItem>
-                      <SelectItem value={String(EntityStatus.Inactive)}>Ngừng hoạt động</SelectItem>
-                      <SelectItem value={String(EntityStatus.Deleted)}>Đã xóa</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
               </CardContent>
             </Card>
@@ -764,6 +963,17 @@ export default function ManagerInventoryCoordinationPage() {
                     <p className="text-sm text-muted-foreground">
                       Quản lý trạng thái kho theo trải nghiệm tương tự trang kho của điều phối viên.
                     </p>
+                    <div className="relative mt-4 w-full max-w-md">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-muted-foreground">
+                        search
+                      </span>
+                      <Input
+                        className="pl-10"
+                        placeholder="Tìm kiếm kho..."
+                        value={inventoryKeywordFilter}
+                        onChange={(e) => setInventoryKeywordFilter(e.target.value)}
+                      />
+                    </div>
                   </div>
 
                   <ManagerInventoryTable
@@ -771,6 +981,9 @@ export default function ManagerInventoryCoordinationPage() {
                     isLoading={isLoadingInventories}
                     isUpdating={updateInventoryStatus === 'pending'}
                     onManageStock={openStockManagement}
+                    onCreateTransfer={openTransferDialog}
+                    onViewTransfers={openTransferHistoryDialog}
+                    onViewTransactions={openTransactionHistoryDialog}
                     onToggleStatus={handleInventoryStatusChange}
                   />
 
@@ -804,6 +1017,17 @@ export default function ManagerInventoryCoordinationPage() {
                           Tạo Vật phẩm/Hàng hóa trước, sau đó nhập hoặc cập nhật tồn kho theo Vật
                           phẩm/Hàng hóa đã có.
                         </p>
+                        <div className="relative mt-4 w-full max-w-md">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-muted-foreground">
+                            search
+                          </span>
+                          <Input
+                            className="pl-10"
+                            placeholder="Tìm kiếm vật phẩm..."
+                            value={supplyKeywordFilter}
+                            onChange={(e) => setSupplyKeywordFilter(e.target.value)}
+                          />
+                        </div>
                       </div>
                       <Button
                         variant="primary"
@@ -820,7 +1044,7 @@ export default function ManagerInventoryCoordinationPage() {
                           variant="outline"
                           size="sm"
                           className="gap-2"
-                          disabled={selectedSupplyIds.length === 0}
+                          disabled={selectedSupplyIdsOnPage.size === 0}
                           onClick={handleBulkEditSupply}
                         >
                           <span className="material-symbols-outlined text-sm">edit</span>
@@ -831,7 +1055,7 @@ export default function ManagerInventoryCoordinationPage() {
                           size="sm"
                           disabled={sortedSupplyItems.length === 0}
                           onClick={() =>
-                            setSelectedSupplyIds(sortedSupplyItems.map((item) => item.id))
+                            setSelectedSupplyIds(new Set(sortedSupplyItems.map((item) => item.id)))
                           }
                         >
                           Chọn tất cả trang
@@ -839,7 +1063,7 @@ export default function ManagerInventoryCoordinationPage() {
                         <Button
                           variant="destructive"
                           size="sm"
-                          onClick={() => setSelectedSupplyIds([])}
+                          onClick={() => setSelectedSupplyIds(new Set())}
                         >
                           Bỏ chọn
                         </Button>
@@ -1161,340 +1385,44 @@ export default function ManagerInventoryCoordinationPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpenCreateInventory(false)}>
+            <Button variant="destructive" onClick={() => setOpenCreateInventory(false)}>
+              <span className="material-symbols-outlined text-lg">close</span>
               Hủy
             </Button>
-            <Button onClick={handleCreateInventory} disabled={createInventoryStatus === 'pending'}>
+            <Button
+              variant="primary"
+              onClick={handleCreateInventory}
+              disabled={createInventoryStatus === 'pending'}
+            >
+              <span className="material-symbols-outlined text-lg">add</span>
               {createInventoryStatus === 'pending' ? 'Đang tạo...' : 'Tạo kho'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={openCreateSupply} onOpenChange={setOpenCreateSupply}>
-        <DialogContent className="!max-w-none w-[94vw] max-w-5xl h-[88vh] overflow-hidden p-0 flex flex-col">
-          <DialogHeader className="px-6 py-4 border-b border-border">
-            <DialogTitle>Tạo nhiều vật phẩm cứu trợ</DialogTitle>
-            <DialogDescription>
-              Có thể nhập nhiều vật phẩm trong một lần lưu. Hệ thống sẽ gửi nhiều yêu cầu tạo tương
-              ứng.
-            </DialogDescription>
-          </DialogHeader>
+      <ManagerCreateSupplyDialog
+        open={openCreateSupply}
+        onOpenChange={setOpenCreateSupply}
+        drafts={supplyDrafts}
+        onDraftChange={updateSupplyDraft}
+        onAddDraft={addSupplyDraft}
+        onRemoveDraft={removeSupplyDraft}
+        onSubmit={handleCreateSupplyItems}
+        isPending={createSupplyItemStatus === 'pending'}
+      />
 
-          <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
-            {supplyDrafts.map((item, index) => (
-              <Card key={item.id} className="border-border bg-card">
-                <CardContent className="p-5 space-y-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-foreground">Vật phẩm #{index + 1}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Điền đủ thông tin để thêm vào danh mục Vật phẩm/Hàng hóa.
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive"
-                      disabled={supplyDrafts.length === 1}
-                      onClick={() => removeSupplyDraft(item.id)}
-                    >
-                      <span className="material-symbols-outlined text-lg">delete</span>
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label>
-                        Tên vật phẩm <RequiredMark />
-                      </Label>
-                      <Input
-                        value={item.name}
-                        onChange={(e) => updateSupplyDraft(item.id, 'name', e.target.value)}
-                        placeholder="Ví dụ: Gạo 10kg"
-                      />
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label>
-                        Danh mục <RequiredMark />
-                      </Label>
-                      <Select
-                        value={item.category}
-                        onValueChange={(value) => updateSupplyDraft(item.id, 'category', value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn danh mục" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {DANH_MUC_VAT_PHAM.map((category) => (
-                            <SelectItem key={category} value={String(category)}>
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`material-symbols-outlined text-[18px] border rounded-full p-1 leading-none ${getSupplyCategoryClass(category)}`}
-                                >
-                                  {getSupplyCategoryIcon(category)}
-                                </span>
-                                <span className="font-medium">
-                                  {getSupplyCategoryLabel(category)}
-                                </span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label>
-                        Đơn vị tính <RequiredMark />
-                      </Label>
-                      <Input
-                        value={item.unit}
-                        onChange={(e) => updateSupplyDraft(item.id, 'unit', e.target.value)}
-                        placeholder="Bao, thùng, chai..."
-                      />
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label className="flex items-center gap-2">
-                        Đường dẫn biểu tượng
-                        <IconGuide />
-                      </Label>
-                      <Input
-                        value={item.iconUrl}
-                        onChange={(e) => updateSupplyDraft(item.id, 'iconUrl', e.target.value)}
-                        placeholder="https://..."
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label>Mô tả</Label>
-                    <Textarea
-                      value={item.description}
-                      onChange={(e) => updateSupplyDraft(item.id, 'description', e.target.value)}
-                      placeholder="Mô tả ngắn về vật phẩm"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-
-            <Button variant="outline" className="gap-2" onClick={addSupplyDraft}>
-              <span className="material-symbols-outlined text-lg">add</span>
-              Thêm một vật phẩm nữa
-            </Button>
-          </div>
-
-          <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
-            <Button variant="outline" onClick={() => setOpenCreateSupply(false)}>
-              Hủy
-            </Button>
-            <Button
-              onClick={handleCreateSupplyItems}
-              disabled={createSupplyItemStatus === 'pending'}
-            >
-              {createSupplyItemStatus === 'pending' ? 'Đang tạo...' : 'Tạo danh mục vật phẩm'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={openEditSupply} onOpenChange={setOpenEditSupply}>
-        <DialogContent className="sm:max-w-[560px]">
-          <DialogHeader>
-            <DialogTitle>Sửa vật phẩm</DialogTitle>
-            <DialogDescription>Cập nhật thông tin cho vật phẩm đã chọn.</DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-2">
-              <Label>
-                Tên vật phẩm <RequiredMark />
-              </Label>
-              <Input
-                value={editSupplyForm.name}
-                onChange={(e) => setEditSupplyForm((prev) => ({ ...prev, name: e.target.value }))}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label>
-                Danh mục <RequiredMark />
-              </Label>
-              <Select
-                value={editSupplyForm.category}
-                onValueChange={(value) =>
-                  setEditSupplyForm((prev) => ({ ...prev, category: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn danh mục" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DANH_MUC_VAT_PHAM.map((category) => (
-                    <SelectItem key={category} value={String(category)}>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`material-symbols-outlined text-[18px] border rounded-full p-1 leading-none ${getSupplyCategoryClass(category)}`}
-                        >
-                          {getSupplyCategoryIcon(category)}
-                        </span>
-                        <span className="font-medium">{getSupplyCategoryLabel(category)}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label>
-                Đơn vị tính <RequiredMark />
-              </Label>
-              <Input
-                value={editSupplyForm.unit}
-                onChange={(e) => setEditSupplyForm((prev) => ({ ...prev, unit: e.target.value }))}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label className="flex items-center gap-2">
-                Đường dẫn biểu tượng
-                <IconGuide />
-              </Label>
-              <Input
-                value={editSupplyForm.iconUrl}
-                onChange={(e) =>
-                  setEditSupplyForm((prev) => ({ ...prev, iconUrl: e.target.value }))
-                }
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Mô tả</Label>
-              <Textarea
-                value={editSupplyForm.description}
-                onChange={(e) =>
-                  setEditSupplyForm((prev) => ({ ...prev, description: e.target.value }))
-                }
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpenEditSupply(false)}>
-              Hủy
-            </Button>
-            <Button
-              onClick={handleSaveEditedSupply}
-              disabled={updateSupplyItemStatus === 'pending'}
-            >
-              {updateSupplyItemStatus === 'pending' ? 'Đang lưu...' : 'Lưu thay đổi'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={openBulkEditSupply} onOpenChange={setOpenBulkEditSupply}>
-        <DialogContent className="!max-w-none w-[94vw] max-w-5xl h-[88vh] overflow-hidden p-0 flex flex-col">
-          <DialogHeader className="px-6 py-4 border-b border-border">
-            <DialogTitle>Cập nhật nhiều vật phẩm</DialogTitle>
-            <DialogDescription>
-              Đang cập nhật {bulkEditSupplyDrafts.length} vật phẩm đã chọn trong cùng một lần lưu.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
-            {bulkEditSupplyDrafts.map((item, index) => (
-              <Card key={item.id} className="border-border bg-card">
-                <CardContent className="p-5 space-y-4">
-                  <p className="font-semibold text-foreground">Vật phẩm #{index + 1}</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label>
-                        Tên vật phẩm <RequiredMark />
-                      </Label>
-                      <Input
-                        value={item.name}
-                        onChange={(e) => handleBulkEditDraftChange(item.id, 'name', e.target.value)}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>
-                        Danh mục <RequiredMark />
-                      </Label>
-                      <Select
-                        value={item.category}
-                        onValueChange={(value) =>
-                          handleBulkEditDraftChange(item.id, 'category', value)
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn danh mục" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {DANH_MUC_VAT_PHAM.map((category) => (
-                            <SelectItem key={category} value={String(category)}>
-                              {getSupplyCategoryLabel(category)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>
-                        Đơn vị tính <RequiredMark />
-                      </Label>
-                      <Input
-                        value={item.unit}
-                        onChange={(e) => handleBulkEditDraftChange(item.id, 'unit', e.target.value)}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label className="flex items-center gap-2">
-                        Đường dẫn biểu tượng
-                        <IconGuide />
-                      </Label>
-                      <Input
-                        value={item.iconUrl}
-                        onChange={(e) =>
-                          handleBulkEditDraftChange(item.id, 'iconUrl', e.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Mô tả</Label>
-                    <Textarea
-                      value={item.description}
-                      onChange={(e) =>
-                        handleBulkEditDraftChange(item.id, 'description', e.target.value)
-                      }
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
-            <Button variant="outline" onClick={() => setOpenBulkEditSupply(false)}>
-              Hủy
-            </Button>
-            <Button
-              onClick={handleSaveBulkEditedSupply}
-              disabled={updateSupplyItemStatus === 'pending'}
-            >
-              {updateSupplyItemStatus === 'pending' ? 'Đang lưu...' : 'Lưu cập nhật đã chọn'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ManagerBulkEditSupplyDialog
+        open={openBulkEditSupply}
+        onOpenChange={setOpenBulkEditSupply}
+        drafts={bulkEditSupplyDrafts}
+        onDraftChange={handleBulkEditDraftChange}
+        onSubmit={handleSaveBulkEditedSupply}
+        isPending={updateSupplyItemStatus === 'pending'}
+      />
 
       <Dialog open={openCreateAllocation} onOpenChange={setOpenCreateAllocation}>
-        <DialogContent className="!max-w-none w-[94vw] max-w-5xl max-h-[88vh] overflow-hidden p-0">
+        <DialogContent className="!max-w-none w-[94vw] max-w-5xl h-[88vh] overflow-hidden p-0 flex flex-col">
           <DialogHeader className="px-6 py-4 border-b border-border">
             <DialogTitle>Tạo phiếu điều phối hàng hóa</DialogTitle>
             <DialogDescription>
@@ -1503,7 +1431,7 @@ export default function ManagerInventoryCoordinationPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="p-6 space-y-5 overflow-y-auto max-h-[70vh]">
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label>
@@ -1585,6 +1513,7 @@ export default function ManagerInventoryCoordinationPage() {
                         Vật phẩm <RequiredMark />
                       </Label>
                       <Select
+                        key={item.id}
                         value={item.supplyItemId}
                         onValueChange={(value) =>
                           updateAllocationItem(item.id, 'supplyItemId', value)
@@ -1596,7 +1525,26 @@ export default function ManagerInventoryCoordinationPage() {
                         <SelectContent>
                           {supplyItems.map((supplyItem) => (
                             <SelectItem key={supplyItem.id} value={supplyItem.id}>
-                              {supplyItem.name} - {getSupplyCategoryLabel(supplyItem.category)}
+                              <div className="flex items-center justify-between gap-3 min-w-0 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                  {supplyItem.iconUrl && (
+                                    <span className="material-symbols-outlined text-[18px] text-green-500">
+                                      {supplyItem.iconUrl}
+                                    </span>
+                                  )}
+                                  <span className="truncate">
+                                    {supplyItem.name} -{' '}
+                                    {getSupplyCategoryLabel(supplyItem.category)}
+                                  </span>
+                                </div>
+                                <div className="text-xs text-muted-foreground shrink-0">
+                                  Tồn:{' '}
+                                  {formatNumberVN(
+                                    allocationStockMapBySupplyItemId.get(supplyItem.id)
+                                      ?.currentQuantity || 0,
+                                  )}
+                                </div>
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1620,6 +1568,31 @@ export default function ManagerInventoryCoordinationPage() {
                       />
                     </div>
                   </div>
+
+                  {item.supplyItemId && (
+                    <div className="rounded-xl border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
+                      <p>
+                        Tồn kho trung tâm hiện có:{' '}
+                        <span className="font-semibold text-foreground">
+                          {formatNumberVN(
+                            allocationStockMapBySupplyItemId.get(item.supplyItemId)
+                              ?.currentQuantity || 0,
+                          )}
+                        </span>
+                        /
+                        {supplyItems.find((supply) => supply.id === item.supplyItemId)?.unit && (
+                          <span className="text-[12px] text-muted-foreground font-normal">
+                            {supplyItems.find((supply) => supply.id === item.supplyItemId)?.unit}
+                          </span>
+                        )}
+                      </p>
+                      <p>
+                        {isLoadingAllocationInventoryStocks
+                          ? 'Đang tải tồn kho theo kho nguồn đã chọn...'
+                          : 'Hãy nhập số lượng điều phối không vượt quá lượng tồn khả dụng.'}
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -1630,8 +1603,9 @@ export default function ManagerInventoryCoordinationPage() {
             </Button>
           </div>
 
-          <DialogFooter className="px-6 py-4 border-t border-border">
-            <Button variant="outline" onClick={() => setOpenCreateAllocation(false)}>
+          <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
+            <Button variant="destructive" onClick={() => setOpenCreateAllocation(false)}>
+              <span className="material-symbols-outlined text-lg">close</span>
               Hủy
             </Button>
             <Button
@@ -1711,6 +1685,11 @@ export default function ManagerInventoryCoordinationPage() {
                           <SelectContent>
                             {supplyItems.map((supplyItem) => (
                               <SelectItem key={supplyItem.id} value={supplyItem.id}>
+                                {supplyItem.iconUrl && (
+                                  <span className="material-symbols-outlined text-[18px] text-green-500">
+                                    {supplyItem.iconUrl}
+                                  </span>
+                                )}
                                 {supplyItem.name} - {getSupplyCategoryLabel(supplyItem.category)}
                               </SelectItem>
                             ))}
@@ -1792,7 +1771,8 @@ export default function ManagerInventoryCoordinationPage() {
           </div>
 
           <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
-            <Button variant="outline" onClick={() => setOpenStockDialog(false)}>
+            <Button variant="destructive" onClick={() => setOpenStockDialog(false)}>
+              <span className="material-symbols-outlined text-lg">close</span>
               Hủy
             </Button>
             <Button
@@ -1811,6 +1791,77 @@ export default function ManagerInventoryCoordinationPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ManagerCreateTransferDialog
+        open={openCreateTransfer}
+        onOpenChange={setOpenCreateTransfer}
+        sourceInventoryName={transferForm.sourceInventoryName}
+        destinationStations={stations.map((station) => ({
+          id: station.reliefStationId ?? station.stationId ?? station.id,
+          name: station.name,
+        }))}
+        supplyItems={supplyItems}
+        sourceStocks={transferInventoryStocks}
+        transferForm={{
+          destinationStationId: transferForm.destinationStationId,
+          reason: transferForm.reason,
+          notes: transferForm.notes,
+          items: transferForm.items,
+        }}
+        onFormChange={updateTransferForm}
+        onItemChange={updateTransferItem}
+        onAddItem={addTransferItem}
+        onRemoveItem={removeTransferItem}
+        onSubmit={handleCreateTransfer}
+        isPending={createSupplyTransferStatus === 'pending'}
+      />
+
+      <ManagerTransferHistoryDialog
+        open={openTransferHistory}
+        onOpenChange={setOpenTransferHistory}
+        transfers={transferHistory}
+        isLoading={isLoadingTransferHistory}
+        onApprove={(id) => approveSupplyTransfer(id)}
+        onShip={(id) => shipSupplyTransfer(id)}
+        onReceive={(id) => receiveSupplyTransfer(id)}
+        onCancel={(id) => cancelSupplyTransfer(id)}
+      />
+
+      <ManagerTransactionHistoryDialog
+        open={openTransactionHistory}
+        onOpenChange={setOpenTransactionHistory}
+        inventoryName={selectedInventoryForHistory?.name || ''}
+        transactions={transactionHistory}
+        isLoading={isLoadingTransactionHistory}
+      />
+
+      <TransferPdfWorkflowDialog
+        open={openTransferPdfWorkflow}
+        onOpenChange={setOpenTransferPdfWorkflow}
+        data={{
+          transferCode: lastCreatedTransferId || 'TRANSFER_MOI',
+          sourceName: transferForm.sourceInventoryName || 'Kho nguồn',
+          destinationName:
+            stations.find(
+              (station) =>
+                (station.reliefStationId ?? station.stationId ?? station.id) ===
+                transferForm.destinationStationId,
+            )?.name || 'Trạm nhận hàng',
+          createdAt: new Date().toLocaleString('vi-VN'),
+          decidedBy: 'Quản lý kho tổng',
+          notes: transferForm.notes,
+          items: transferForm.items
+            .map((item) => {
+              const matchedSupply = supplyItems.find((supply) => supply.id === item.supplyItemId);
+              return {
+                name: matchedSupply?.name || item.supplyItemId,
+                quantity: parseFormattedNumber(item.quantity),
+                unit: matchedSupply?.unit,
+              };
+            })
+            .filter((item) => item.name && item.quantity > 0),
+        }}
+      />
     </DashboardLayout>
   );
 }

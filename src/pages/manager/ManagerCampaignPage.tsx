@@ -27,6 +27,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import {
   Form,
   FormControl,
   FormField,
@@ -45,6 +53,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useForm } from 'react-hook-form';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCampaigns, useCreateCampaign, useUpdateCampaignStatus } from '@/hooks/useCampaigns';
+import { useSupplyAllocationsByCampaign } from '@/hooks/useSupplies';
 import { useProvinces } from '@/hooks/useLocations';
 import {
   useProvincialStations,
@@ -55,6 +64,7 @@ import { AddStationModal, type CreateStationFormData } from './components/AddSta
 import type { CampaignSummary, CreateCampaignPayload } from '@/services/campaignService';
 import { toast } from 'sonner';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
+import { formatNumberVN } from '@/lib/utils';
 import {
   CampaignStatus,
   CampaignStatusLabel,
@@ -62,6 +72,8 @@ import {
   CampaignTypeLabel,
   getCampaignStatusClass,
   getCampaignStatusLabel,
+  getSupplyAllocationStatusClass,
+  getSupplyAllocationStatusLabel,
   getCampaignTypeLabel,
 } from '@/enums/beEnums';
 
@@ -138,6 +150,11 @@ export default function ManagerCampaignPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<number | undefined>(undefined);
   const [openCreateModal, setOpenCreateModal] = useState(false);
+  const [openAllocationModal, setOpenAllocationModal] = useState(false);
+  const [selectedCampaignForAllocations, setSelectedCampaignForAllocations] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [openAddStationModal, setOpenAddStationModal] = useState(false);
   const queryClient = useQueryClient();
 
@@ -150,6 +167,8 @@ export default function ManagerCampaignPage() {
 
   const { mutateAsync: createCampaign, status: createStatus } = useCreateCampaign();
   const { mutateAsync: updateStatus } = useUpdateCampaignStatus();
+  const { data: allocationsByCampaign = [], isLoading: isLoadingAllocations } =
+    useSupplyAllocationsByCampaign(selectedCampaignForAllocations?.id || '');
 
   const { data: provinces } = useProvinces();
   const { data: stationsData, isLoading: isLoadingStations } = useProvincialStations({
@@ -238,6 +257,24 @@ export default function ManagerCampaignPage() {
       toast.error('Không thể cập nhật trạng thái chiến dịch');
     }
   };
+
+  const openCampaignAllocations = (campaignId: string, campaignName: string) => {
+    setSelectedCampaignForAllocations({ id: campaignId, name: campaignName });
+    setOpenAllocationModal(true);
+  };
+
+  const allocationSummary = allocationsByCampaign.reduce(
+    (acc, allocation) => {
+      acc.totalAllocations += 1;
+      acc.totalItems += allocation.items?.length || 0;
+      acc.totalQuantity += (allocation.items || []).reduce(
+        (sum, item) => sum + (item.quantity || 0),
+        0,
+      );
+      return acc;
+    },
+    { totalAllocations: 0, totalItems: 0, totalQuantity: 0 },
+  );
 
   return (
     <DashboardLayout projects={managerProjects} navItems={managerNavItems}>
@@ -462,6 +499,19 @@ export default function ManagerCampaignPage() {
                                     Kết thúc chiến dịch
                                   </DropdownMenuItem>
                                 )}
+                                <DropdownMenuItem
+                                  className="gap-2 text-primary"
+                                  onClick={() =>
+                                    campaignId
+                                      ? openCampaignAllocations(campaignId, c.name)
+                                      : toast.error('Không tìm thấy mã chiến dịch để xem điều phối')
+                                  }
+                                >
+                                  <span className="material-symbols-outlined text-lg">
+                                    inventory_2
+                                  </span>
+                                  Xem hàng đã điều phối
+                                </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -818,6 +868,159 @@ export default function ManagerCampaignPage() {
         onSubmit={handleCreateStation}
         defaultLocationId={form.getValues('locationId')}
       />
+
+      <Sheet open={openAllocationModal} onOpenChange={setOpenAllocationModal}>
+        <SheetContent side="right" className="w-full sm:max-w-[1100px] p-0">
+          <SheetHeader className="px-6 pt-6 pb-4 border-b border-border">
+            <SheetTitle>Hàng hóa đã điều phối cho chiến dịch</SheetTitle>
+            <SheetDescription>
+              {selectedCampaignForAllocations
+                ? `Chiến dịch: ${selectedCampaignForAllocations.name}`
+                : 'Xem lịch sử điều phối hàng hóa theo chiến dịch'}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="border-border bg-card">
+                <CardContent className="p-5 bg-sky-500/10 rounded-xl">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Số đợt điều phối</p>
+                      <p className="mt-2 text-3xl font-black text-foreground">
+                        {formatNumberVN(allocationSummary.totalAllocations)}
+                      </p>
+                    </div>
+                    <div className="size-11 rounded-2xl bg-sky-500/15 text-sky-600 dark:text-sky-300 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-[22px]">local_shipping</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-border bg-card">
+                <CardContent className="p-5 bg-emerald-500/10 rounded-xl">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Tổng dòng vật phẩm</p>
+                      <p className="mt-2 text-3xl font-black text-foreground">
+                        {formatNumberVN(allocationSummary.totalItems)}
+                      </p>
+                    </div>
+                    <div className="size-11 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-[22px]">inventory_2</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-border bg-card">
+                <CardContent className="p-5 bg-amber-500/10 rounded-xl">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Tổng số lượng đã cấp</p>
+                      <p className="mt-2 text-3xl font-black text-foreground">
+                        {formatNumberVN(allocationSummary.totalQuantity)}
+                      </p>
+                    </div>
+                    <div className="size-11 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-300 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-[22px]">deployed_code</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {isLoadingAllocations ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="flex flex-col items-center gap-3">
+                  <span className="material-symbols-outlined text-4xl text-primary animate-spin">
+                    progress_activity
+                  </span>
+                  <p className="text-muted-foreground text-sm">Đang tải lịch sử điều phối...</p>
+                </div>
+              </div>
+            ) : allocationsByCampaign.length === 0 ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="flex flex-col items-center gap-3">
+                  <span className="material-symbols-outlined text-4xl text-muted-foreground">
+                    inventory_2
+                  </span>
+                  <p className="text-muted-foreground text-sm">
+                    Chiến dịch này chưa có đợt điều phối nào
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {allocationsByCampaign.map((allocation, index) => (
+                  <Card
+                    className="relative cursor-pointer"
+                    key={allocation.allocationId || `${allocation.campaignId}-${index}`}
+                  >
+                    <CardHeader className="pb-3">
+                      <div>
+                        <Badge
+                          variant="outline"
+                          appearance="outline"
+                          size="sm"
+                          className={`absolute top-4 right-10 border ${getSupplyAllocationStatusClass(allocation.status)}`}
+                        >
+                          {getSupplyAllocationStatusLabel(allocation.status)}
+                        </Badge>
+                        <div>
+                          <CardTitle className="text-base py-2">
+                            Phiếu điều phối #{index + 1}
+                          </CardTitle>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Mã phiếu: {allocation.allocationId || '—'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Kho nguồn:{' '}
+                            {(allocation.sourceInventoryId && allocation?.sourceInventoryName && (
+                              <span className="text-xs text-muted-foreground font-normal">
+                                {allocation.sourceInventoryName}
+                              </span>
+                            )) ||
+                              '—'}
+                          </p>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Vật phẩm</TableHead>
+                            <TableHead>Số lượng</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {(allocation.items || []).map((item, itemIndex) => (
+                            <TableRow
+                              key={`${allocation.allocationId || index}-${item.supplyItemId}-${itemIndex}`}
+                            >
+                              <TableCell className="font-mono text-xs text-muted-foreground">
+                                {item.supplyItemId}
+                              </TableCell>
+                              <TableCell>{formatNumberVN(item.quantity)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <SheetFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
+            <Button variant="destructive" onClick={() => setOpenAllocationModal(false)}>
+              <span className="material-symbols-outlined text-lg">close</span>
+              Đóng
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </DashboardLayout>
   );
 }

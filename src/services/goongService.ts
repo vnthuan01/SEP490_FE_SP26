@@ -57,6 +57,89 @@ export interface GeocodeResult {
     district?: string;
     province?: string;
   };
+  deprecated_description?: string;
+  deprecated_compound?: {
+    commune?: string;
+    district?: string;
+    province?: string;
+  };
+  plus_code?: {
+    compound_code?: string;
+    global_code?: string;
+  };
+  name?: string;
+  address?: string;
+  reference?: string;
+  types?: string[];
+}
+
+export interface GeocodeV2Response {
+  results: GeocodeResult[];
+  status: string;
+}
+
+export interface GoongAutocompletePrediction {
+  description: string;
+  place_id: string;
+  reference: string;
+  structured_formatting?: {
+    main_text: string;
+    secondary_text: string;
+  };
+  plus_code?: {
+    compound_code?: string;
+    global_code?: string;
+  };
+  compound?: {
+    commune?: string;
+    district?: string;
+    province?: string;
+  };
+  deprecated_description?: string;
+  deprecated_compound?: {
+    commune?: string;
+    district?: string;
+    province?: string;
+  };
+  types?: string[];
+  distance_meters?: number | null;
+}
+
+export interface GoongAutocompleteResponse {
+  predictions: GoongAutocompletePrediction[];
+  status: string;
+}
+
+export interface GoongGeocodeParams {
+  address?: string;
+  latlng?: string;
+  placeId?: string;
+  hasDeprecatedAdministrativeUnit?: boolean;
+  hasVnid?: boolean;
+  limit?: number;
+}
+
+export interface GoongAutocompleteParams {
+  input: string;
+  location?: string;
+  origin?: string;
+  limit?: number;
+  radius?: number;
+  moreCompound?: boolean;
+  hasDeprecatedAdministrativeUnit?: boolean;
+}
+
+const GOONG_RSAPI_BASE_URL = 'https://rsapi.goong.io/v2';
+const GOONG_API_KEY =
+  import.meta.env.VITE_GOONG_API_KEY || import.meta.env.VITE_GOONG_MAP_KEY || '';
+
+function buildQuery(params: Record<string, string | number | boolean | undefined>) {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    searchParams.set(key, String(value));
+  });
+  return searchParams.toString();
 }
 
 export interface PlaceDetailResponse {
@@ -162,6 +245,88 @@ export async function reverseGeocode(
     console.error('Error fetching geocode:', error);
     return null;
   }
+}
+
+export async function geocodeV2(params: GoongGeocodeParams, apiKey = GOONG_API_KEY) {
+  const query = buildQuery({
+    address: params.address,
+    latlng: params.latlng,
+    place_id: params.placeId,
+    has_deprecated_administrative_unit: params.hasDeprecatedAdministrativeUnit,
+    has_vnid: params.hasVnid,
+    limit: params.limit,
+    api_key: apiKey,
+  });
+
+  const response = await fetch(`${GOONG_RSAPI_BASE_URL}/geocode?${query}`);
+  if (!response.ok) {
+    throw new Error(`Goong geocode V2 error: ${response.status}`);
+  }
+
+  return (await response.json()) as GeocodeV2Response;
+}
+
+export async function forwardGeocodeV2(
+  address: string,
+  options?: Omit<GoongGeocodeParams, 'address' | 'latlng' | 'placeId'>,
+  apiKey = GOONG_API_KEY,
+) {
+  return geocodeV2(
+    {
+      address,
+      ...options,
+    },
+    apiKey,
+  );
+}
+
+export async function reverseGeocodeV2(
+  lat: number,
+  lng: number,
+  options?: Omit<GoongGeocodeParams, 'address' | 'latlng' | 'placeId'>,
+  apiKey = GOONG_API_KEY,
+) {
+  return geocodeV2(
+    {
+      latlng: `${lat},${lng}`,
+      ...options,
+    },
+    apiKey,
+  );
+}
+
+export async function geocodeByPlaceIdV2(
+  placeId: string,
+  options?: Omit<GoongGeocodeParams, 'address' | 'latlng' | 'placeId'>,
+  apiKey = GOONG_API_KEY,
+) {
+  return geocodeV2(
+    {
+      placeId,
+      ...options,
+    },
+    apiKey,
+  );
+}
+
+export async function autocompleteV2(params: GoongAutocompleteParams, apiKey = GOONG_API_KEY) {
+  const query = buildQuery({
+    input: params.input,
+    location: params.location,
+    origin: params.origin,
+    limit: params.limit,
+    radius: params.radius,
+    more_compound: params.moreCompound,
+    has_deprecated_administrative_unit: params.hasDeprecatedAdministrativeUnit,
+    api_key: apiKey,
+  });
+
+  const response = await fetch(`${GOONG_RSAPI_BASE_URL}/place/autocomplete?${query}`);
+  if (!response.ok) {
+    throw new Error(`Goong autocomplete V2 error: ${response.status}`);
+  }
+
+  return (await response.json()) as GoongAutocompleteResponse;
 }
 
 /**

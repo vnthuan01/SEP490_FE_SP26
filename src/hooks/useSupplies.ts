@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  normalizeSupplyItem,
+  normalizeSupplyItemPage,
   supplyAllocationService,
   supplyItemService,
   type CreateSupplyAllocationPayload,
@@ -10,6 +12,7 @@ import {
   type UpdateSupplyItemPayload,
 } from '@/services/supplyService';
 import { toast } from 'sonner';
+import { handleHookError } from './hookErrorUtils';
 
 export const SUPPLY_QUERY_KEYS = {
   all: ['supplies'] as const,
@@ -29,7 +32,7 @@ export function useSupplyItems(params?: SearchSupplyItemsParams) {
     queryKey: SUPPLY_QUERY_KEYS.items(params),
     queryFn: async () => {
       const response = await supplyItemService.getAll(params);
-      return response.data;
+      return normalizeSupplyItemPage(response.data as any);
     },
   });
 }
@@ -39,7 +42,7 @@ export function useSupplyItem(id: string) {
     queryKey: SUPPLY_QUERY_KEYS.itemDetail(id),
     queryFn: async () => {
       const response = await supplyItemService.getById(id);
-      return response.data;
+      return normalizeSupplyItem(response.data as any);
     },
     enabled: !!id,
   });
@@ -54,7 +57,7 @@ export function useCreateSupplyItem() {
       queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Tạo hàng hóa thất bại');
+      handleHookError(error, 'Không thể tạo hàng hóa cứu trợ');
     },
   });
 }
@@ -70,7 +73,7 @@ export function useUpdateSupplyItem() {
       queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.itemDetail(variables.id) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Cập nhật hàng hóa thất bại');
+      handleHookError(error, 'Không thể cập nhật hàng hóa cứu trợ');
     },
   });
 }
@@ -84,7 +87,7 @@ export function useDeleteSupplyItem() {
       queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Xóa hàng hóa thất bại');
+      handleHookError(error, 'Không thể xóa hàng hóa cứu trợ');
     },
   });
 }
@@ -141,7 +144,7 @@ export function useCreateSupplyAllocation() {
       queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Tạo điều phối thất bại');
+      handleHookError(error, 'Không thể tạo điều phối hàng hóa');
     },
   });
 }
@@ -157,7 +160,7 @@ export function useUpdateSupplyAllocationStatus() {
       queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.allocationDetail(variables.id) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Cập nhật trạng thái điều phối thất bại');
+      handleHookError(error, 'Không thể cập nhật trạng thái điều phối');
     },
   });
 }

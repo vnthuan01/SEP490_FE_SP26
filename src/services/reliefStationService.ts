@@ -10,7 +10,9 @@ export interface ReliefStation {
   contactNumber: string;
   longitude: number;
   latitude: number;
+  coverageRadiusKm?: number;
   status: number;
+  level?: number;
 }
 
 export interface CreateProvincialStationPayload {
@@ -20,6 +22,7 @@ export interface CreateProvincialStationPayload {
   contactNumber: string;
   longitude: number;
   latitude: number;
+  coverageRadiusKm: number;
 }
 
 export interface UpdateProvincialStationPayload {
@@ -28,6 +31,7 @@ export interface UpdateProvincialStationPayload {
   contactNumber: string;
   longitude: number;
   latitude: number;
+  coverageRadiusKm: number;
 }
 
 export interface SearchProvincialStationParams {
@@ -91,6 +95,7 @@ export interface ReliefStationResponse {
   contactNumber: string | null;
   longitude: number;
   latitude: number;
+  coverageRadiusKm?: number;
   status: number;
   level: number;
   locationId: string;
