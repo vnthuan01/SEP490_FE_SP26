@@ -1,873 +1,564 @@
-import { useMemo, useState, useRef, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-// import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useRescueRequestManagement } from '@/hooks/useRescueRequestManagement';
+import type { RescueRequestItem } from '@/services/rescueRequestService';
+import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { toast } from 'sonner';
+import {
+  getDisasterTypeLabel,
+  getRescueRequestTypeLabel,
+  getVerificationStatusLabel,
+  getVerificationStatusClass,
+  VerificationMethod,
+  VerificationMethodLabel,
+} from '@/enums/beEnums';
 
-type RequestStatus = 'urgent' | 'high' | 'normal';
-type ProcessStatus = 'submitted' | 'approved' | 'in_progress' | 'completed' | 'rejected';
-type SupportType = 'food' | 'medicine' | 'evacuation' | 'rescue' | 'other';
+const verificationStatusText = (status?: number | string | null) =>
+  getVerificationStatusLabel(status);
 
-interface RequestMedia {
-  type: 'image' | 'video';
-  url: string;
-}
+const verificationStatusClass = (status?: number | string | null) =>
+  getVerificationStatusClass(status);
 
-interface Request {
-  id: string;
-  name: string;
-  phone: string;
-  address: string;
-  location: string;
-  supportType: SupportType[];
-  status: RequestStatus;
-  processStatus: ProcessStatus;
-  time: string;
-  aiScore?: number;
-  description: string;
-  media?: RequestMedia[];
-  submittedAt: string;
-}
+const verificationMethodLabel = (method: number) =>
+  VerificationMethodLabel[method as VerificationMethod] ?? `Phương thức #${method}`;
 
-const statusConfig: Record<RequestStatus, { label: string; className: string }> = {
-  urgent: {
-    label: 'NGUY CẤP',
-    className: 'bg-red-500/10 text-red-500 border border-red-500/20',
-  },
-  high: {
-    label: 'CAO',
-    className: 'bg-orange-500/10 text-orange-500 border border-orange-500/20',
-  },
-  normal: {
-    label: 'BÌNH THƯỜNG',
-    className: 'bg-primary/10 text-primary border border-primary/20',
-  },
+const formatDate = (value?: string | null) => {
+  if (!value) return '--';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '--';
+  return d.toLocaleString('vi-VN');
 };
 
-const getAiBadgeClass = (score: number) => {
-  if (score >= 85) {
-    return 'bg-red-500/15 text-red-600 border border-red-500/30';
-  }
-  if (score >= 70) {
-    return 'bg-amber-500/20 text-amber-700 border border-amber-500/30';
-  }
-  if (score >= 50) {
-    return 'bg-blue-500/15 text-blue-600 border border-blue-500/30';
-  }
-  return 'bg-surface-dark-highlight text-muted-foreground border border-border';
-};
+const getRequestId = (req: RescueRequestItem) =>
+  String(req.requestId ?? req.rescueRequestId ?? req.id ?? '');
 
-const getAiColor = (score: number) => {
-  if (score >= 85) return { text: 'text-red-500', bar: 'bg-red-500' };
-  if (score >= 70) return { text: 'text-orange-500', bar: 'bg-orange-500' };
-  if (score >= 50) return { text: 'text-blue-500', bar: 'bg-blue-500' };
-  return { text: 'text-muted-foreground', bar: 'bg-text-sub-dark' };
-};
+const getVerification = (req?: RescueRequestItem) => req?.verifications?.[0];
 
-const processConfig: Record<ProcessStatus, { label: string; icon: string; className: string }> = {
-  submitted: { label: 'Đã gửi', icon: 'upload', className: 'text-muted-foreground' },
-  approved: { label: 'Đã chấp thuận', icon: 'check_circle', className: 'text-blue-500' },
-  in_progress: {
-    label: 'Đang xử lý',
-    icon: 'sync',
-    className: 'text-orange-500',
-  },
-  completed: { label: 'Hoàn thành', icon: 'verified', className: 'text-green-500' },
-  rejected: { label: 'Bị hủy', icon: 'cancel', className: 'text-red-500' },
-};
-
-const supportTypeConfig: Record<SupportType, { label: string; icon: string }> = {
-  food: { label: 'Lương thực', icon: 'restaurant' },
-  medicine: { label: 'Thuốc men', icon: 'medical_services' },
-  evacuation: { label: 'Sơ tán', icon: 'directions_run' },
-  rescue: { label: 'Cứu hộ', icon: 'emergency' },
-  other: { label: 'Khác', icon: 'more_horiz' },
-};
-
-const actionConfig: Record<
-  ProcessStatus,
-  { primary?: string; icon?: string; className?: string; secondary?: string }
-> = {
-  submitted: {
-    primary: 'Chấp thuận',
-    icon: 'check_circle',
-    className: 'bg-emerald-600 hover:bg-emerald-700 text-white border-transparent',
-    secondary: 'Từ chối',
-  },
-  approved: {
-    primary: 'Bắt đầu xử lý',
-    icon: 'play_circle',
-    className: 'bg-blue-600 hover:bg-blue-700 text-white border-transparent',
-  },
-  in_progress: {
-    primary: 'Hoàn thành',
-    icon: 'verified',
-    className: 'bg-green-600 hover:bg-green-700 text-white border-transparent',
-  },
-  completed: {
-    primary: 'Đã hoàn thành',
-    icon: 'verified',
-    className:
-      'bg-green-500/10 text-green-500 cursor-default hover:bg-green-500/10 border-green-500/20',
-  },
-  rejected: {
-    primary: 'Đã hủy',
-    icon: 'cancel',
-    className: 'bg-red-500/10 text-red-500 cursor-default hover:bg-red-500/10 border-red-500/20',
-  },
-};
-
-const mockRequests: Request[] = [
-  {
-    id: '8291',
-    name: 'Nguyễn Văn An',
-    phone: '0987 123 456',
-    address: 'Thôn Đông, Xã Cẩm Duệ, Huyện Cẩm Xuyên',
-    location: 'Hà Tĩnh',
-    supportType: ['food', 'medicine', 'evacuation'],
-    status: 'urgent',
-    processStatus: 'in_progress',
-    time: '15 phút trước',
-    aiScore: 98,
-    description:
-      'Do ảnh hưởng của mưa lớn kéo dài nhiều ngày, khu vực sinh sống của gia đình đã bị ngập sâu gần tới mái nhà. Trong nhà hiện có một cụ ông 80 tuổi bị liệt không thể di chuyển và hai trẻ nhỏ. Nguồn điện đã bị cắt hoàn toàn, nước sinh hoạt không còn sử dụng được, lương thực dự trữ đã cạn kiệt. Đường vào khu vực bị ngập sâu và chia cắt, các phương tiện không thể tiếp cận. Gia đình cần được hỗ trợ khẩn cấp về sơ tán, lương thực và thuốc men.',
-    media: [
-      {
-        type: 'image',
-        url: 'https://tse2.mm.bing.net/th/id/OIP.bZvrW9XD1hLYdmNz7kS1PAHaE-?rs=1&pid=ImgDetMain&o=7&rm=3',
-      },
-      {
-        type: 'image',
-        url: 'https://tse2.mm.bing.net/th/id/OIP.bZvrW9XD1hLYdmNz7kS1PAHaE-?rs=1&pid=ImgDetMain&o=7&rm=3',
-      },
-      {
-        type: 'image',
-        url: 'https://tse2.mm.bing.net/th/id/OIP.bZvrW9XD1hLYdmNz7kS1PAHaE-?rs=1&pid=ImgDetMain&o=7&rm=3',
-      },
-      {
-        type: 'image',
-        url: 'https://tse2.mm.bing.net/th/id/OIP.bZvrW9XD1hLYdmNz7kS1PAHaE-?rs=1&pid=ImgDetMain&o=7&rm=3',
-      },
-      {
-        type: 'video',
-        url: 'https://www.w3schools.com/html/mov_bbb.mp4',
-      },
-    ],
-    submittedAt: '2023-10-25T08:15:00', // 15 phút trước giả định
-  },
-  {
-    id: '8292',
-    name: 'Trần Thị Bích',
-    phone: '0912 456 789',
-    address: 'Phường Thạch Đài, TP Hà Tĩnh',
-    location: 'Hà Tĩnh',
-    supportType: ['medicine'],
-    status: 'high',
-    processStatus: 'approved',
-    time: '42 phút trước',
-    aiScore: 75,
-    description:
-      'Khu vực phường Thạch Đài đang bị ngập cục bộ sau mưa lớn, việc di chuyển gặp nhiều khó khăn. Gia đình có trẻ nhỏ đang bị sốt cao và ho kéo dài nhưng không thể ra ngoài mua thuốc do đường ngập và thiếu phương tiện. Hiện trong nhà chỉ còn một ít thuốc hạ sốt thông thường, không đủ dùng trong trường hợp bệnh nặng hơn. Gia đình đề nghị được hỗ trợ thuốc men thiết yếu cho trẻ em trong thời gian sớm nhất.',
-    media: [
-      {
-        type: 'image',
-        url: 'https://tse2.mm.bing.net/th/id/OIP.bZvrW9XD1hLYdmNz7kS1PAHaE-?rs=1&pid=ImgDetMain&o=7&rm=3',
-      },
-      {
-        type: 'image',
-        url: 'https://tse2.mm.bing.net/th/id/OIP.bZvrW9XD1hLYdmNz7kS1PAHaE-?rs=1&pid=ImgDetMain&o=7&rm=3',
-      },
-      {
-        type: 'image',
-        url: 'https://tse2.mm.bing.net/th/id/OIP.bZvrW9XD1hLYdmNz7kS1PAHaE-?rs=1&pid=ImgDetMain&o=7&rm=3',
-      },
-      {
-        type: 'image',
-        url: 'https://tse2.mm.bing.net/th/id/OIP.bZvrW9XD1hLYdmNz7kS1PAHaE-?rs=1&pid=ImgDetMain&o=7&rm=3',
-      },
-      {
-        type: 'image',
-        url: 'https://tse2.mm.bing.net/th/id/OIP.bZvrW9XD1hLYdmNz7kS1PAHaE-?rs=1&pid=ImgDetMain&o=7&rm=3',
-      },
-    ],
-    submittedAt: '2023-10-25T07:48:00', // 42 phút trước giả định
-  },
-  {
-    id: '8293',
-    name: 'Lê Văn Cường',
-    phone: '0905 333 111',
-    address: 'Xã Kỳ Anh',
-    location: 'Hà Tĩnh',
-    supportType: ['other'],
-    status: 'normal',
-    processStatus: 'submitted',
-    time: '1 giờ trước',
-    description:
-      'Sau đợt mưa lớn, mực nước tại khu vực xã Kỳ Anh đang rút chậm nhưng chưa gây thiệt hại nghiêm trọng đến nhà cửa hay con người. Người dân vẫn có thể sinh hoạt tạm thời, tuy nhiên cần được theo dõi tình hình vì nước rút không đều và có nguy cơ mưa tiếp diễn. Yêu cầu này chủ yếu mang tính thông báo để chính quyền và lực lượng chức năng nắm tình hình và sẵn sàng hỗ trợ nếu cần.',
-    media: [
-      {
-        type: 'image',
-        url: 'https://tse2.mm.bing.net/th/id/OIP.bZvrW9XD1hLYdmNz7kS1PAHaE-?rs=1&pid=ImgDetMain&o=7&rm=3',
-      },
-      {
-        type: 'image',
-        url: 'https://tse2.mm.bing.net/th/id/OIP.bZvrW9XD1hLYdmNz7kS1PAHaE-?rs=1&pid=ImgDetMain&o=7&rm=3',
-      },
-      {
-        type: 'image',
-        url: 'https://tse2.mm.bing.net/th/id/OIP.bZvrW9XD1hLYdmNz7kS1PAHaE-?rs=1&pid=ImgDetMain&o=7&rm=3',
-      },
-      {
-        type: 'image',
-        url: 'https://tse2.mm.bing.net/th/id/OIP.bZvrW9XD1hLYdmNz7kS1PAHaE-?rs=1&pid=ImgDetMain&o=7&rm=3',
-      },
-      {
-        type: 'image',
-        url: 'https://tse2.mm.bing.net/th/id/OIP.bZvrW9XD1hLYdmNz7kS1PAHaE-?rs=1&pid=ImgDetMain&o=7&rm=3',
-      },
-    ],
-    submittedAt: '2023-10-25T07:30:00', // 1 giờ trước giả định
-  },
-
-  {
-    id: '8294',
-    name: 'Hoàng Thị Mai',
-    phone: '0977 888 999',
-    address: 'Quảng Bình',
-    location: 'Quảng Bình',
-    supportType: ['rescue'],
-    status: 'high',
-    processStatus: 'completed',
-    time: '2 giờ trước',
-    description: 'Sạt lở đất, đã được cứu hộ an toàn.',
-    submittedAt: '2023-10-25T06:30:00', // 2 giờ trước giả định
-  },
-];
-
-const statusCount = {
-  all: mockRequests.length,
-  urgent: mockRequests.filter((r) => r.status === 'urgent').length,
-  high: mockRequests.filter((r) => r.status === 'high').length,
-  normal: mockRequests.filter((r) => r.status === 'normal').length,
-};
-
-const badgeClass =
-  'ml-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-medium';
+const formatKm = (value?: number | null) => (value == null ? '-- km' : `${value.toFixed(2)} km`);
+const formatMin = (value?: number | null) => (value == null ? '-- phút' : `${value} phút`);
+const formatMeters = (value?: number | null) =>
+  value == null ? '-- m' : `${value.toLocaleString('vi-VN')} m`;
+const formatSeconds = (value?: number | null) =>
+  value == null ? '-- giây' : `${value.toLocaleString('vi-VN')} giây`;
 
 export default function CoordinatorRequestManagementPage() {
-  const [selectedRequest, setSelectedRequest] = useState<Request>(mockRequests[0]);
-  const [filterStatus, setFilterStatus] = useState<RequestStatus | 'all'>('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const scrollRef = useRef<HTMLElement>(null);
+  const {
+    requests,
+    paging,
+    isLoading,
+    isError,
+    refetch,
+    verifyRequest,
+    verifyStatus,
+    rejectRequest,
+    rejectStatus,
+  } = useRescueRequestManagement(1, 10);
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }, [selectedRequest.id]);
+  const [search, setSearch] = useState('');
+  const [verificationFilter, setVerificationFilter] = useState<
+    'all' | 'pending' | 'approved' | 'rejected'
+  >('all');
+  const [selectedId, setSelectedId] = useState('');
 
-  const filteredRequests = useMemo(() => {
-    let res = mockRequests;
-    if (filterStatus !== 'all') {
-      res = res.filter((r) => r.status === filterStatus);
-    }
-    if (searchTerm) {
-      res = res.filter(
-        (r) =>
-          r.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          r.phone.includes(searchTerm) ||
-          r.address.toLowerCase().includes(searchTerm.toLowerCase()),
-      );
-    }
-    return res;
-  }, [filterStatus, searchTerm]);
+  const [verifyMethod, setVerifyMethod] = useState(1);
+  const [verifyNote, setVerifyNote] = useState('');
 
-  const actions = actionConfig[selectedRequest.processStatus];
+  const [isRejectOpen, setIsRejectOpen] = useState(false);
+  const [rejectMethod, setRejectMethod] = useState(1);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectNote, setRejectNote] = useState('');
+
+  const [actionError, setActionError] = useState('');
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return requests.filter((r) => {
+      const status = getVerification(r)?.status;
+      const matchStatus =
+        verificationFilter === 'all'
+          ? true
+          : verificationFilter === 'pending'
+            ? status === 0 || status === '0' || status === 'Pending' || status == null
+            : verificationFilter === 'approved'
+              ? status === 1 || status === '1' || status === 'Approved'
+              : status === 2 || status === '2' || status === 'Rejected';
+
+      const matchSearch =
+        !term ||
+        (r.reporterFullName || '').toLowerCase().includes(term) ||
+        (r.reporterPhone || '').toLowerCase().includes(term) ||
+        (r.address || '').toLowerCase().includes(term) ||
+        (r.description || '').toLowerCase().includes(term) ||
+        (r.disasterType || '').toLowerCase().includes(term);
+
+      return matchStatus && matchSearch;
+    });
+  }, [requests, search, verificationFilter]);
+
+  const effectiveSelectedId = useMemo(() => {
+    if (!filtered.length) return '';
+    const found = filtered.some((r) => getRequestId(r) === selectedId);
+    return found ? selectedId : getRequestId(filtered[0]);
+  }, [filtered, selectedId]);
+
+  const selected = useMemo(
+    () => filtered.find((r) => getRequestId(r) === effectiveSelectedId),
+    [filtered, effectiveSelectedId],
+  );
+  const verification = getVerification(selected);
+  const currentStatus = verification?.status;
+  const isPending =
+    currentStatus === 0 ||
+    currentStatus === '0' ||
+    currentStatus === 'Pending' ||
+    currentStatus == null;
+
+  const handleVerify = async () => {
+    if (!selected) return;
+    setActionError('');
+    try {
+      await verifyRequest({
+        requestId: getRequestId(selected),
+        payload: {
+          status: 1,
+          method: verifyMethod,
+          note: verifyNote.trim() || undefined,
+          reason: undefined,
+        },
+      });
+      setVerifyNote('');
+      await refetch();
+      toast.success('Đã xác minh yêu cầu cứu hộ thành công!');
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || 'Không thể xác minh yêu cầu.';
+      setActionError(msg);
+      toast.error(msg);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!selected) return;
+    const reason = rejectReason.trim();
+    if (!reason) {
+      setActionError('Vui lòng nhập lý do từ chối.');
+      return;
+    }
+    setActionError('');
+    try {
+      await rejectRequest({
+        requestId: getRequestId(selected),
+        payload: { method: rejectMethod, reason, note: rejectNote.trim() || undefined },
+      });
+      setRejectReason('');
+      setRejectNote('');
+      setIsRejectOpen(false);
+      await refetch();
+      toast.success('Đã từ chối yêu cầu cứu hộ.');
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || 'Không thể từ chối yêu cầu.';
+      setActionError(msg);
+      toast.error(msg);
+    }
+  };
 
   return (
-    <DashboardLayout
-      projects={[
-        { label: 'Tổng quan', path: '/portal/coordinator/data-management', icon: 'dashboard' },
-        { label: 'Điều phối & Bản đồ', path: '/portal/coordinator/maps', icon: 'map' },
-        { label: 'Đội tình nguyện', path: '/portal/coordinator/teams', icon: 'groups' },
-        {
-          label: 'Yêu cầu tình nguyện',
-          path: '/portal/coordinator/volunteer-requests',
-          icon: 'how_to_reg',
-        },
-        {
-          label: 'Yêu cầu cứu trợ',
-          path: '/portal/coordinator/requests',
-          icon: 'person_raised_hand',
-        },
-        {
-          label: 'Kho vận & Nhu yếu phẩm',
-          path: '/portal/coordinator/inventory',
-          icon: 'inventory_2',
-        },
-      ]}
-      navItems={[
-        { label: 'Báo cáo & Thống kê', path: '/portal/coordinator/dashboard', icon: 'description' },
-      ]}
-    >
-      <div className="flex h-[calc(100vh-6rem)] overflow-hidden -m-4">
-        {/* ================= LEFT ================= */}
-        <aside className="w-[420px] flex flex-col border-r border-surface-dark-highlight bg-card overflow-hidden shrink-0">
-          {/* HEADER */}
-          <div className="p-4 border-b border-surface-dark-highlight flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <h1 className="text-2xl font-bold leading-tight text-primary">Yêu cầu cứu trợ</h1>
-              <p className="text-sm text-muted-foreground">
-                Tổng {filteredRequests.length} yêu cầu cần xử lý
-              </p>
-            </div>
+    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+      <div className="mb-6 flex flex-wrap justify-between items-end gap-4">
+        <div>
+          <h1 className="text-3xl md:text-4xl font-black text-primary">Quản lý yêu cầu cứu hộ</h1>
+          <p className="text-muted-foreground mt-1">
+            Liệt kê yêu cầu cứu hộ bình thường (Normal) và xác minh thủ công.
+          </p>
+        </div>
+        <Button variant="outline" className="gap-2" onClick={() => refetch()}>
+          <span className="material-symbols-outlined">refresh</span>
+          Tải lại
+        </Button>
+      </div>
 
-            {/* SEARCH */}
-            <div className="flex w-full items-center rounded-lg border border-border bg-background-dark px-3 py-2">
-              <span className="material-symbols-outlined text-muted-foreground mr-2">search</span>
-              <input
-                className="w-full bg-transparent text-foreground placeholder:text-muted-foreground outline-none text-sm"
-                placeholder="Tìm tên, SĐT, địa chỉ..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <Card className="xl:col-span-1">
+          <CardContent className="p-4 space-y-4">
+            <input
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              placeholder="Tìm tên/SĐT/địa chỉ/mô tả..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
 
-            {/* FILTER */}
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+            <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
-                variant={filterStatus === 'all' ? 'primary' : 'outline'}
-                onClick={() => setFilterStatus('all')}
-                className="rounded-full h-8 text-xs dark:text-white"
+                variant={verificationFilter === 'all' ? 'primary' : 'outline'}
+                onClick={() => setVerificationFilter('all')}
               >
                 Tất cả
-                <span
-                  className={`${badgeClass} ${
-                    filterStatus === 'all' ? 'bg-white/20 text-white' : 'bg-muted text-foreground'
-                  }`}
-                >
-                  {statusCount.all}
-                </span>
               </Button>
-
               <Button
                 size="sm"
-                variant={filterStatus === 'urgent' ? 'destructive' : 'outline'}
-                onClick={() => setFilterStatus('urgent')}
-                className="rounded-full h-8 text-xs dark:text-white"
+                variant={verificationFilter === 'pending' ? 'primary' : 'outline'}
+                onClick={() => setVerificationFilter('pending')}
               >
-                Nguy cấp
-                <span
-                  className={`${badgeClass} ${
-                    filterStatus === 'urgent'
-                      ? 'bg-white/20 text-white'
-                      : 'bg-muted text-foreground'
-                  }`}
-                >
-                  {statusCount.urgent}
-                </span>
+                Chờ xác minh
               </Button>
-
               <Button
                 size="sm"
-                variant={filterStatus === 'high' ? 'warning' : 'outline'}
-                onClick={() => setFilterStatus('high')}
-                className="rounded-full h-8 text-xs dark:text-white"
+                variant={verificationFilter === 'approved' ? 'primary' : 'outline'}
+                onClick={() => setVerificationFilter('approved')}
               >
-                Cao
-                <span
-                  className={`${badgeClass} ${
-                    filterStatus === 'high' ? 'bg-white/20 text-white' : 'bg-muted text-foreground'
-                  }`}
-                >
-                  {statusCount.high}
-                </span>
+                Đã xác minh
               </Button>
-
               <Button
                 size="sm"
-                variant={filterStatus === 'normal' ? 'primary' : 'outline'}
-                onClick={() => setFilterStatus('normal')}
-                className="rounded-full h-8 text-xs dark:text-white"
+                variant={verificationFilter === 'rejected' ? 'primary' : 'outline'}
+                onClick={() => setVerificationFilter('rejected')}
               >
-                Bình thường
-                <span
-                  className={`${badgeClass} ${
-                    filterStatus === 'normal'
-                      ? 'bg-white/20 text-white'
-                      : 'bg-muted text-foreground'
-                  }`}
-                >
-                  {statusCount.normal}
-                </span>
+                Từ chối
               </Button>
             </div>
-          </div>
 
-          {/* LIST */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-2">
-            {filteredRequests.map((r) => (
-              <div
-                key={r.id}
-                onClick={() => {
-                  setSelectedRequest(r);
-                  setCurrentMediaIndex(0);
-                }}
-                className={cn(
-                  'group flex cursor-pointer flex-col gap-2 rounded-lg p-3 transition-all',
-                  'border border-transparent bg-background-dark',
-                  selectedRequest.id === r.id
-                    ? 'bg-surface-dark-highlight border-primary/50 shadow-md'
-                    : 'hover:bg-surface-dark-highlight hover:border-border hover:shadow-sm',
-                )}
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3
+            {isLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((k) => (
+                  <Skeleton key={k} className="h-12" />
+                ))}
+              </div>
+            ) : isError ? (
+              <p className="text-sm text-red-500">Không tải được danh sách yêu cầu.</p>
+            ) : filtered.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Không có yêu cầu phù hợp.</p>
+            ) : (
+              <div className="space-y-2 max-h-[620px] overflow-auto pr-1">
+                {filtered.map((req) => {
+                  const id = getRequestId(req);
+                  const verificationItem = getVerification(req);
+                  const isActive = id === selectedId;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => setSelectedId(id)}
                       className={cn(
-                        'text-base font-bold truncate',
-                        selectedRequest.id === r.id
-                          ? 'text-foreground'
-                          : 'text-muted-foreground group-hover:text-foreground',
+                        'w-full text-left rounded-lg border p-3 transition-colors',
+                        isActive
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:bg-accent/40',
                       )}
                     >
-                      {r.name}
-                    </h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">{r.location}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-semibold text-sm truncate">
+                          {req.reporterFullName || '--'}
+                        </p>
+                        <span
+                          className={cn(
+                            'text-[11px] px-2 py-0.5 rounded-full border font-medium',
+                            verificationStatusClass(verificationItem?.status),
+                          )}
+                        >
+                          {verificationStatusText(verificationItem?.status)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 truncate">
+                        {req.disasterType || '--'}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1 truncate">
+                        {req.address || 'Chưa cập nhật'}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {formatKm(req.stationToRequestDistanceKm)} •{' '}
+                        {formatMin(req.stationToRequestDurationMinutes)}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {formatDate(req.createdAt)}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              Tổng: {paging?.totalCount ?? filtered.length} request bình thường
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="xl:col-span-2">
+          <CardContent className="p-6">
+            {!selected ? (
+              <p className="text-muted-foreground">Chọn một yêu cầu để xem chi tiết.</p>
+            ) : (
+              <div className="space-y-6">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <h2 className="text-2xl font-black">{selected.reporterFullName || '--'}</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Mã yêu cầu: {getRequestId(selected)}
+                    </p>
                   </div>
                   <span
                     className={cn(
-                      'px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded border',
-                      statusConfig[r.status].className,
+                      'text-xs px-3 py-1 rounded-full border font-semibold',
+                      verificationStatusClass(verification?.status),
                     )}
                   >
-                    {statusConfig[r.status].label}
+                    {verificationStatusText(verification?.status)}
                   </span>
                 </div>
 
-                <p className="text-sm text-muted-foreground line-clamp-2">{r.description}</p>
-
-                <div className="flex justify-between items-center mt-1 border-t border-border/50 pt-2">
-                  <span className="text-xs text-muted-foreground flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[14px]">schedule</span>
-                    {r.time}
-                  </span>
-
-                  {typeof r.aiScore === 'number' && (
-                    <span
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getAiBadgeClass(
-                        r.aiScore,
-                      )}`}
-                    >
-                      <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
-                      AI Score: {r.aiScore}
-                    </span>
-                  )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Loại thiên tai</p>
+                    <p className="font-medium">
+                      {selected.disasterType != null
+                        ? getDisasterTypeLabel(selected.disasterType)
+                        : '--'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Loại yêu cầu cứu hộ</p>
+                    <p className="font-medium">
+                      {selected.rescueRequestType != null
+                        ? getRescueRequestTypeLabel(selected.rescueRequestType)
+                        : '--'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">
+                      Số điện thoại người báo tin
+                    </p>
+                    <p className="font-medium">{selected.reporterPhone || '--'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Mức ưu tiên</p>
+                    <p className="font-medium">{selected.priority ?? '--'}</p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <p className="text-xs uppercase text-muted-foreground">Địa chỉ</p>
+                    <p className="font-medium">{selected.address || 'Chưa cập nhật'}</p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <p className="text-xs uppercase text-muted-foreground">Mô tả</p>
+                    <p className="font-medium">{selected.description || 'Không có mô tả'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Vĩ độ</p>
+                    <p className="font-medium">{selected.latitude ?? '--'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Kinh độ</p>
+                    <p className="font-medium">{selected.longitude ?? '--'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Thời gian tạo</p>
+                    <p className="font-medium">{formatDate(selected.createdAt)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Khoảng cách (km)</p>
+                    <p className="font-medium">{formatKm(selected.stationToRequestDistanceKm)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">
+                      Thời gian di chuyển (phút)
+                    </p>
+                    <p className="font-medium">
+                      {formatMin(selected.stationToRequestDurationMinutes)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Khoảng cách (m)</p>
+                    <p className="font-medium">
+                      {formatMeters(selected.stationToRequestDistanceMeters)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">
+                      Thời gian di chuyển (giây)
+                    </p>
+                    <p className="font-medium">
+                      {formatSeconds(selected.stationToRequestDurationSeconds)}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </aside>
 
-        {/* ================= RIGHT ================= */}
-        <section
-          ref={scrollRef}
-          className="flex-1 flex flex-col h-full bg-card relative overflow-y-auto custom-scrollbar"
-        >
-          {selectedRequest ? (
-            <>
-              {/* Header */}
-              <div className="p-8 pb-6 border-b border-surface-dark-highlight">
-                <div className="flex items-start justify-between gap-6">
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-3">
-                      <h1 className="text-3xl font-black tracking-tight text-foreground">
-                        Yêu cầu #{selectedRequest.id}
-                      </h1>
-                      <span
-                        className={cn(
-                          'px-3 py-1 rounded-full text-sm font-bold border flex items-center gap-2 uppercase tracking-wider',
-                          statusConfig[selectedRequest.status].className,
-                        )}
-                      >
-                        <span className="w-2 h-2 rounded-full bg-current animate-pulse"></span>
-                        {statusConfig[selectedRequest.status].label}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-6 text-muted-foreground text-base mt-1">
-                      <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[20px]">person</span>
-                        <span className="font-semibold text-foreground">
-                          {selectedRequest.name}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[20px]">call</span>
-                        <span className="font-mono">{selectedRequest.phone}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[20px]">location_on</span>
-                        <span>{selectedRequest.address}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col items-start gap-2 text-muted-foreground">
-                    <span className="text-sm">
-                      Gửi lúc: {new Date(selectedRequest.submittedAt).toLocaleString('vi-VN')}
-                    </span>
-                    <span className="text-sm">ID: #{selectedRequest.id}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Content Grid */}
-              <div className="p-8 grid grid-cols-12 gap-8 max-w-[1200px]">
-                {/* Left Column */}
-                <div className="col-span-8 space-y-8">
-                  {/* Description */}
-                  <div className="space-y-4">
-                    <h3 className="text-xl font-bold flex items-center gap-2 text-foreground">
-                      <span className="material-symbols-outlined text-primary">description</span>
-                      Nội dung yêu cầu
-                    </h3>
-                    <div className="p-6 rounded-xl bg-background-dark border border-border">
-                      <p className="text-foreground leading-relaxed text-base">
-                        {selectedRequest.description}
-                      </p>
-
-                      <div className="mt-6">
-                        <p className="text-muted-foreground text-sm mb-3 uppercase font-semibold tracking-wider">
-                          Cần hỗ trợ về:
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {selectedRequest.supportType.map((t) => (
-                            <span
-                              key={t}
-                              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-dark-highlight text-foreground border border-border text-sm font-medium"
-                            >
-                              <span className="material-symbols-outlined text-[18px]">
-                                {supportTypeConfig[t].icon}
-                              </span>
-                              {supportTypeConfig[t].label}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Media */}
-                  {selectedRequest.media && selectedRequest.media.length > 0 && (
-                    <div className="space-y-4">
-                      <h3 className="text-xl font-bold flex items-center gap-2 text-foreground">
-                        <span className="material-symbols-outlined text-primary">perm_media</span>
-                        Hình ảnh/Video đính kèm ({selectedRequest.media.length})
-                      </h3>
-
-                      {/* Main Main View */}
-                      <div className="relative w-full aspect-video bg-black/20 rounded-xl overflow-hidden border border-border group">
-                        {selectedRequest.media[currentMediaIndex].type === 'image' ? (
-                          <div
-                            className="w-full h-full bg-contain bg-center bg-no-repeat cursor-zoom-in"
-                            style={{
-                              backgroundImage: `url("${selectedRequest.media[currentMediaIndex].url}")`,
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground mb-2">Tệp đính kèm</p>
+                  {selected.attachments?.length ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {selected.attachments.map((att) => (
+                        <a
+                          key={att.attachmentId}
+                          href={att.fileUrl || '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-lg overflow-hidden border border-border bg-accent/30"
+                        >
+                          <img
+                            src={att.fileUrl || ''}
+                            alt="attachment"
+                            className="w-full h-28 object-cover"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).style.display = 'none';
                             }}
-                            onClick={() => setIsFullscreen(true)}
                           />
-                        ) : (
-                          <video
-                            src={selectedRequest.media[currentMediaIndex].url}
-                            controls
-                            className="w-full h-full"
-                          />
-                        )}
-
-                        {isFullscreen && (
-                          <div
-                            onClick={() => setIsFullscreen(false)}
-                            className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center animate-in fade-in duration-200"
-                          >
-                            <div className="relative w-full h-full max-w-[90vw] max-h-[90vh] flex items-center justify-center">
-                              {selectedRequest.media[currentMediaIndex].type === 'image' ? (
-                                <img
-                                  src={selectedRequest.media[currentMediaIndex].url}
-                                  className="max-h-full max-w-full rounded-lg object-contain"
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                              ) : (
-                                <video
-                                  src={selectedRequest.media[currentMediaIndex].url}
-                                  controls
-                                  className="max-h-full max-w-full rounded-lg"
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                              )}
-
-                              {/* Navigation Buttons in Fullscreen */}
-                              {selectedRequest.media.length > 1 && (
-                                <>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setCurrentMediaIndex((prev) =>
-                                        prev === 0 ? selectedRequest.media!.length - 1 : prev - 1,
-                                      );
-                                    }}
-                                    className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-all backdrop-blur-sm"
-                                  >
-                                    <span className="material-symbols-outlined text-3xl">
-                                      chevron_left
-                                    </span>
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setCurrentMediaIndex((prev) =>
-                                        prev === selectedRequest.media!.length - 1 ? 0 : prev + 1,
-                                      );
-                                    }}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-all backdrop-blur-sm"
-                                  >
-                                    <span className="material-symbols-outlined text-3xl">
-                                      chevron_right
-                                    </span>
-                                  </button>
-                                </>
-                              )}
-
-                              <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-black/50 text-white text-sm font-medium backdrop-blur-sm">
-                                {currentMediaIndex + 1} / {selectedRequest.media.length}
-                              </div>
-                            </div>
-
-                            <button
-                              onClick={() => setIsFullscreen(false)}
-                              className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-4xl">close</span>
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Navigation Buttons */}
-                        {selectedRequest.media.length > 1 && (
-                          <>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCurrentMediaIndex((prev) =>
-                                  prev === 0 ? selectedRequest.media!.length - 1 : prev - 1,
-                                );
-                              }}
-                              className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-primary transition-all opacity-0 group-hover:opacity-100 backdrop-blur-sm"
-                            >
-                              <span className="material-symbols-outlined text-[20px]">
-                                chevron_left
-                              </span>
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCurrentMediaIndex((prev) =>
-                                  prev === selectedRequest.media!.length - 1 ? 0 : prev + 1,
-                                );
-                              }}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-primary transition-all opacity-0 group-hover:opacity-100 backdrop-blur-sm"
-                            >
-                              <span className="material-symbols-outlined text-[20px]">
-                                chevron_right
-                              </span>
-                            </button>
-                          </>
-                        )}
-
-                        {/* Counter Badge */}
-                        <div className="absolute top-3 right-3 px-2 py-1 rounded-md bg-black/60 text-white text-xs font-medium backdrop-blur-sm">
-                          {currentMediaIndex + 1} / {selectedRequest.media.length}
-                        </div>
-                      </div>
-
-                      {/* Thumbnails */}
-                      {selectedRequest.media.length > 1 && (
-                        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-border-dark scrollbar-track-transparent">
-                          {selectedRequest.media.map((m, i) => (
-                            <div
-                              key={i}
-                              onClick={() => setCurrentMediaIndex(i)}
-                              className={cn(
-                                'relative w-20 h-14 shrink-0 rounded-lg overflow-hidden cursor-pointer border-2 transition-all',
-                                i === currentMediaIndex
-                                  ? 'border-primary opacity-100 ring-2 ring-primary/20'
-                                  : 'border-transparent opacity-60 hover:opacity-100 hover:border-border',
-                              )}
-                            >
-                              {m.type === 'image' ? (
-                                <div
-                                  className="w-full h-full bg-cover bg-center"
-                                  style={{ backgroundImage: `url("${m.url}")` }}
-                                />
-                              ) : (
-                                <div className="w-full h-full bg-black/80 flex items-center justify-center">
-                                  <span className="material-symbols-outlined text-white/80 text-[20px]">
-                                    play_circle
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                        </a>
+                      ))}
                     </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Không có ảnh đính kèm.</p>
                   )}
                 </div>
 
-                {/* Right Column */}
-                <div className="col-span-4 space-y-6">
-                  {/* Process Status */}
-                  <div className="p-5 rounded-xl bg-background-dark border border-border">
-                    <h3 className="text-lg font-bold mb-4 text-foreground">Tiến trình xử lý</h3>
-                    <div className="space-y-4 relative">
-                      {/* Timeline line */}
-                      <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-border-dark z-0"></div>
+                <div className="rounded-lg border border-border p-4 space-y-3">
+                  <p className="text-sm font-semibold">Xác minh yêu cầu</p>
 
-                      {Object.entries(processConfig).map(([key, cfg]) => {
-                        const active = key === selectedRequest.processStatus;
-                        // const past = ... logic if needed, simplify for now
-                        return (
-                          <div
-                            key={key}
-                            className={cn('flex gap-3 relative z-10', active ? '' : 'opacity-40')}
-                          >
-                            <div
-                              className={cn(
-                                'w-6 h-6 rounded-full bg-background-dark border-2 flex items-center justify-center shrink-0',
-                                active ? 'border-primary' : 'border-border',
-                              )}
-                            >
-                              <span
-                                className={cn(
-                                  'material-symbols-outlined text-[14px]',
-                                  active ? 'text-primary' : 'text-muted-foreground',
-                                )}
-                              >
-                                {cfg.icon}
-                              </span>
-                            </div>
-                            <div>
-                              <p
-                                className={cn(
-                                  'text-sm font-bold',
-                                  active ? 'text-foreground' : 'text-muted-foreground',
-                                )}
-                              >
-                                {cfg.label}
-                              </p>
-                              {active && (
-                                <p className="text-xs text-primary font-medium mt-0.5">
-                                  Trạng thái hiện tại
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs uppercase text-muted-foreground mb-1">
+                        Phương thức xác minh
+                      </p>
+                      <select
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                        value={verifyMethod}
+                        onChange={(e) => setVerifyMethod(Number(e.target.value))}
+                      >
+                        {[0, 1, 2, 3, 4, 5].map((m) => (
+                          <option key={m} value={m}>
+                            {verificationMethodLabel(m)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase text-muted-foreground mb-1">
+                        Ghi chú xác minh
+                      </p>
+                      <Textarea
+                        value={verifyNote}
+                        onChange={(e) => setVerifyNote(e.target.value)}
+                        placeholder="Ghi chú xác minh (không bắt buộc)"
+                        rows={2}
+                      />
                     </div>
                   </div>
 
-                  {/* AI Analysis */}
-                  {typeof selectedRequest.aiScore === 'number' && (
-                    <div className="p-5 rounded-xl bg-surface-dark-highlight/30 border border-border">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
-                          AI Đánh giá
-                        </h3>
-                        <span
-                          className={cn(
-                            'material-symbols-outlined',
-                            getAiColor(selectedRequest.aiScore).text,
-                          )}
-                        >
-                          auto_awesome
-                        </span>
-                      </div>
-                      <div className="flex items-end gap-2 mb-2">
-                        <span
-                          className={cn(
-                            'text-4xl font-black',
-                            getAiColor(selectedRequest.aiScore).text,
-                          )}
-                        >
-                          {selectedRequest.aiScore}
-                        </span>
-                        <span className="text-sm text-muted-foreground mb-1.5">/ 100 điểm</span>
-                      </div>
-                      <div className="w-full bg-background-dark h-2 rounded-full overflow-hidden">
-                        <div
-                          className={cn(
-                            'h-full transition-all duration-500',
-                            getAiColor(selectedRequest.aiScore).bar,
-                          )}
-                          style={{ width: `${selectedRequest.aiScore}%` }}
-                        ></div>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
-                        Hệ thống đánh giá mức độ khẩn cấp dựa trên từ khóa và hình ảnh được cung
-                        cấp.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Sticky Footer */}
-              <div
-                className="sticky bottom-0 left-0 right-0 p-6 bg-card/90
-                backdrop-blur-md border-t border-border flex justify-between items-center z-20 shadow-2xl mt-auto"
-              >
-                <Button variant="outline" className="gap-2">
-                  <span className="material-symbols-outlined">history</span>
-                  Xem lịch sử
-                </Button>
-                <div className="flex gap-4">
-                  {actions?.secondary && (
-                    <Button
-                      variant="outline"
-                      className="gap-2 text-red-500 border-red-500/30 hover:bg-red-500/10 dark:text-red-500 dark:border-red-500/30 dark:hover:bg-red-500/10"
-                    >
-                      <span className="material-symbols-outlined">close</span>
-                      {actions.secondary}
-                    </Button>
-                  )}
-                  {actions?.primary && (
+                  <div className="flex gap-3">
                     <Button
                       variant="primary"
-                      className={cn(
-                        'dark:text-white flex items-center gap-2 text-lg px-8',
-                        actions.className,
-                      )}
+                      onClick={handleVerify}
+                      disabled={!isPending || verifyStatus === 'pending'}
                     >
-                      {actions.icon && (
-                        <span className="material-symbols-outlined text-[20px]">
-                          {actions.icon}
-                        </span>
-                      )}
-                      {actions.primary}
+                      {verifyStatus === 'pending' ? 'Đang xác minh...' : 'Xác minh'}
                     </Button>
-                  )}
+                    <Button
+                      variant="outline"
+                      className="text-red-600 border-red-500/30 hover:bg-red-500/10"
+                      onClick={() => {
+                        setActionError('');
+                        setIsRejectOpen(true);
+                      }}
+                      disabled={!isPending || rejectStatus === 'pending'}
+                    >
+                      Từ chối
+                    </Button>
+                  </div>
                 </div>
+
+                {verification?.status === 2 && (
+                  <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
+                    <p className="text-xs uppercase font-semibold text-red-600">Lý do từ chối</p>
+                    <p className="text-sm text-red-700 mt-1">
+                      {verification.reason || 'Không có lý do'}
+                    </p>
+                  </div>
+                )}
+
+                {actionError ? <p className="text-sm text-red-500">{actionError}</p> : null}
               </div>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              Chọn một yêu cầu để xem chi tiết
-            </div>
-          )}
-        </section>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      <Dialog open={isRejectOpen} onOpenChange={setIsRejectOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Từ chối yêu cầu cứu hộ</DialogTitle>
+            <DialogDescription>
+              Chọn method và nhập lý do từ chối. Lý do là bắt buộc.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium">Phương thức xác minh</label>
+              <select
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                value={rejectMethod}
+                onChange={(e) => setRejectMethod(Number(e.target.value))}
+              >
+                {[0, 1, 2, 3, 4, 5].map((m) => (
+                  <option key={m} value={m}>
+                    {verificationMethodLabel(m)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Lý do từ chối *</label>
+              <Textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Nhập lý do từ chối"
+                rows={3}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Ghi chú</label>
+              <Textarea
+                value={rejectNote}
+                onChange={(e) => setRejectNote(e.target.value)}
+                placeholder="Ghi chú thêm (không bắt buộc)"
+                rows={2}
+              />
+            </div>
+          </div>
+
+          {actionError ? <p className="text-sm text-red-500">{actionError}</p> : null}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsRejectOpen(false);
+                setRejectReason('');
+                setRejectNote('');
+                setActionError('');
+              }}
+              disabled={rejectStatus === 'pending'}
+            >
+              Hủy
+            </Button>
+            <Button variant="primary" onClick={handleReject} disabled={rejectStatus === 'pending'}>
+              {rejectStatus === 'pending' ? 'Đang xử lý...' : 'Xác nhận từ chối'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

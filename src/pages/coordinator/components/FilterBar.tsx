@@ -13,13 +13,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 
 interface FilterBarProps {
   search: string;
-  onSearchChange: (value: string) => void;
+  onSearchChange: (_value: string) => void;
   urgencyFilter: string;
-  onUrgencyFilterChange: (value: string) => void;
+  onUrgencyFilterChange: (_value: string) => void;
   statusFilter: string;
-  onStatusFilterChange: (value: string) => void;
+  onStatusFilterChange: (_value: string) => void;
   needsFilter: string;
-  onNeedsFilterChange: (value: string) => void;
+  onNeedsFilterChange: (_value: string) => void;
   onFitBounds: () => void;
   onToggleFullscreen: () => void;
   isFullscreen: boolean;

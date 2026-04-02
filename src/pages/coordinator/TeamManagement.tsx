@@ -1,94 +1,190 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { teamsData } from './components/mockData';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import type { Team } from './components/types';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useNavigate } from 'react-router-dom';
+import { useTeams, useTeamsInStation } from '@/hooks/useTeams';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { useMyReliefStation } from '@/hooks/useReliefStation';
+import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { toast } from 'sonner';
+import type { TeamStatus } from '@/enums/beEnums';
+import { TeamStatusLabel, getTeamStatusClass, parseEnumValue } from '@/enums/beEnums';
+
+type LegacyStatus = 'available' | 'moving' | 'rescuing' | 'lost-contact';
+
+type TeamItem = {
+  id: string;
+  name: string;
+  description?: string | null;
+  status: number | LegacyStatus;
+  leader: string | null;
+  members: number;
+  area?: string | null;
+  contactPhone?: string | null;
+  memberDetails?: Array<{ id: string; name: string; role: string; avatar?: string }>;
+};
+
+const toDisplayText = (value: unknown, fallback = ''): string => {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const candidate = obj.displayName ?? obj.name ?? obj.email ?? obj.userId;
+    if (typeof candidate === 'string' || typeof candidate === 'number') {
+      return String(candidate);
+    }
+  }
+  return fallback;
+};
 
 export default function CoordinatorTeamManagementPage() {
-  const [selectedTeamId, setSelectedTeamId] = useState<string>(teamsData[0]?.id);
+  const { station, isLoading: isLoadingStation } = useMyReliefStation();
+  const reliefStationId = station?.reliefStationId;
+
+  // ── If moderator has a station → load teams in that station
+  // ── If no station → fallback to all teams (read-only, create disabled)
+  const {
+    teams: inStationTeams,
+    isLoading: isLoadingInStationTeams,
+    refetch: refetchInStation,
+  } = useTeamsInStation(reliefStationId);
+
+  const { teams: allTeamsRaw, isLoadingTeams, refetchTeams, createTeam } = useTeams();
+
+  // Unified refetch
+  const refetch = reliefStationId ? refetchInStation : refetchTeams;
+
+  // Unified raw list depending on station presence
+  const rawTeamList = reliefStationId ? inStationTeams : allTeamsRaw;
+  const isLoadingTeamList = reliefStationId ? isLoadingInStationTeams : isLoadingTeams;
+
+  const [selectedTeamId, setSelectedTeamId] = useState<string>();
   const [searchTerm, setSearchTerm] = useState('');
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [createError, setCreateError] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
   const navigate = useNavigate();
+
+  const isLoading = isLoadingStation || isLoadingTeamList;
+
+  const teams: TeamItem[] = useMemo(() => {
+    if (!Array.isArray(rawTeamList)) return [];
+
+    return rawTeamList.map((team: any) => ({
+      id: String(team.teamId ?? team.id ?? ''),
+      name: toDisplayText(team.name, 'Chưa đặt tên'),
+      description: team.description,
+      status: (team.status ?? 0) as number | LegacyStatus,
+      leader: toDisplayText(team.leaderName ?? team.leader, ''),
+      members: Number(team.totalMembers ?? team.members ?? 0),
+      area: toDisplayText(team.area ?? team.currentArea, ''),
+      contactPhone: toDisplayText(team.contactPhone, ''),
+      memberDetails: Array.isArray(team.memberDetails) ? team.memberDetails : [],
+    }));
+  }, [rawTeamList]);
+
+  useEffect(() => {
+    if (!teams.length) {
+      setSelectedTeamId(undefined);
+      return;
+    }
+
+    const exists = teams.some((team) => team.id === selectedTeamId);
+    if (!selectedTeamId || !exists) {
+      setSelectedTeamId(teams[0].id);
+    }
+  }, [teams, selectedTeamId]);
+
   const selectedTeam = useMemo(
-    () => teamsData.find((t) => t.id === selectedTeamId) || teamsData[0],
-    [selectedTeamId],
+    () => teams.find((t) => t.id === selectedTeamId),
+    [selectedTeamId, teams],
   );
 
   const filteredTeams = useMemo(() => {
-    return teamsData.filter(
+    return teams.filter(
       (t) =>
         t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.leader.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (t.leader || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (t.area || '').toLowerCase().includes(searchTerm.toLowerCase()),
     );
-  }, [searchTerm]);
+  }, [searchTerm, teams]);
 
   const stats = {
-    total: teamsData.length,
-    active: teamsData.filter((t) => t.status !== 'available' && t.status !== 'lost-contact').length, // moving or rescuing
-    members: teamsData.reduce((acc, t) => acc + t.members, 0),
-    areas: new Set(teamsData.map((t) => t.area).filter(Boolean)).size,
+    total: teams.length,
+    active: teams.filter((t) => Number(t.status) === 1).length,
+    members: teams.reduce((acc, t) => acc + (t.members || 0), 0),
+    areas: new Set(teams.map((t) => t.area).filter(Boolean)).size,
   };
 
-  const getStatusBadge = (status: Team['status']) => {
-    switch (status) {
-      case 'available':
-        return 'bg-green-500/20 text-green-500';
-      case 'moving':
-        return 'bg-blue-500/20 text-blue-500';
-      case 'rescuing':
-        return 'bg-red-500/20 text-red-500';
-      case 'lost-contact':
-        return 'bg-gray-500/20 text-gray-400';
-      default:
-        return 'bg-gray-500/20 text-gray-400';
+  const getStatusBadge = (status: number | LegacyStatus) =>
+    getTeamStatusClass(parseEnumValue(status));
+
+  const getStatusLabel = (status: number | LegacyStatus) =>
+    TeamStatusLabel[parseEnumValue(status) as TeamStatus] ?? 'Không xác định';
+
+  const resetCreateForm = () => {
+    setName('');
+    setDescription('');
+    setContactPhone('');
+    setCreateError('');
+  };
+
+  const handleCreateTeam = async () => {
+    if (!reliefStationId) {
+      toast.error('Bạn chưa được phân vào trạm cứu trợ nào. Không thể tạo đội ngũ.');
+      return;
     }
-  };
 
-  const getStatusLabel = (status: Team['status']) => {
-    switch (status) {
-      case 'available':
-        return 'Sẵn sàng';
-      case 'moving':
-        return 'Đang di chuyển';
-      case 'rescuing':
-        return 'Đang cứu hộ';
-      case 'lost-contact':
-        return 'Mất liên lạc';
-      default:
-        return status;
+    const trimmedName = name.trim();
+    const trimmedDescription = description.trim();
+    const trimmedContactPhone = contactPhone.trim();
+
+    if (!trimmedName) {
+      setCreateError('Tên đội ngũ là bắt buộc.');
+      return;
+    }
+
+    try {
+      setIsCreating(true);
+      setCreateError('');
+
+      await createTeam({
+        name: trimmedName,
+        description: trimmedDescription || undefined,
+        contactPhone: trimmedContactPhone || undefined,
+      });
+
+      setIsCreateOpen(false);
+      resetCreateForm();
+      await refetch();
+      toast.success('Tạo đội ngũ mới thành công!');
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || 'Không thể tạo đội ngũ. Vui lòng thử lại.';
+      setCreateError(msg);
+      toast.error(msg);
+    } finally {
+      setIsCreating(false);
     }
   };
 
   return (
-    <DashboardLayout
-      projects={[
-        { label: 'Tổng quan', path: '/portal/coordinator/data-management', icon: 'dashboard' },
-        { label: 'Điều phối & Bản đồ', path: '/portal/coordinator/maps', icon: 'map' },
-        { label: 'Đội tình nguyện', path: '/portal/coordinator/teams', icon: 'groups' },
-        {
-          label: 'Yêu cầu tình nguyện',
-          path: '/portal/coordinator/volunteer-requests',
-          icon: 'how_to_reg',
-        },
-        {
-          label: 'Yêu cầu cứu trợ',
-          path: '/portal/coordinator/requests',
-          icon: 'person_raised_hand',
-        },
-        {
-          label: 'Kho vận & Nhu yếu phẩm',
-          path: '/portal/coordinator/inventory',
-          icon: 'inventory_2',
-        },
-      ]}
-      navItems={[
-        { label: 'Báo cáo & Thống kê', path: '/portal/coordinator/dashboard', icon: 'description' },
-      ]}
-    >
+    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
       {/* PAGE HEADER */}
       <div className="flex flex-wrap justify-between items-end gap-4 mb-8">
         <div className="flex flex-col gap-2">
@@ -111,12 +207,27 @@ export default function CoordinatorTeamManagementPage() {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="primary" className="gap-2 text-base px-6 h-12">
-                  <span className="material-symbols-outlined">add</span>
-                </Button>
+                <span>
+                  <Button
+                    variant="primary"
+                    className="gap-2 text-base px-6 h-12"
+                    onClick={() => {
+                      if (!reliefStationId) {
+                        toast.error('Bạn chưa được phân vào trạm nào. Không thể tạo đội ngũ.');
+                        return;
+                      }
+                      setIsCreateOpen(true);
+                    }}
+                    disabled={isLoadingStation}
+                  >
+                    <span className="material-symbols-outlined">add</span>
+                  </Button>
+                </span>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-white dark:text-black">Tạo đội ngũ mới</p>
+                <p className="text-white dark:text-black">
+                  {reliefStationId ? 'Tạo đội ngũ mới' : 'Cần được phân vào trạm trước khi tạo đội'}
+                </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -215,87 +326,136 @@ export default function CoordinatorTeamManagementPage() {
             </Button>
           </div>
 
+          {!isLoading && !reliefStationId && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 text-amber-800 dark:text-amber-300 px-4 py-3 text-sm flex items-start gap-2">
+              <span className="material-symbols-outlined text-amber-500 shrink-0 mt-0.5">
+                warning
+              </span>
+              <div>
+                <p className="font-semibold">Bạn chưa được phân vào trạm cứu trợ nào.</p>
+                <p className="text-amber-700 dark:text-amber-400 mt-0.5">
+                  Chức năng tạo đội ngũ bị vô hiệu. Đang hiển thị tất cả đội ngũ trong hệ thống (chỉ
+                  đọc).
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Table */}
           <div className="flex-1 overflow-auto rounded-xl border border-border bg-card dark:bg-card custom-scrollbar">
-            <table className="w-full text-left border-collapse">
-              <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900 z-10">
-                <tr className="border-b border-slate-200 dark:border-border">
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Tên nhóm
-                  </th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Khu vực
-                  </th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Trưởng nhóm
-                  </th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Thành viên
-                  </th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Trạng thái
-                  </th>
-                  <th className="px-6 py-4"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-border-dark">
-                {filteredTeams.map((team) => (
-                  <tr
-                    key={team.id}
-                    onClick={() => setSelectedTeamId(team.id)}
-                    className={cn(
-                      'cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-muted',
-                      selectedTeamId === team.id ? 'bg-primary/10' : '',
-                    )}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div
-                          className={cn(
-                            'size-2 rounded-full mr-3',
-                            selectedTeamId === team.id ? 'bg-primary' : 'bg-transparent',
-                          )}
-                        ></div>
+            {isLoading ? (
+              <div className="p-4 space-y-3">
+                {[1, 2, 3, 4, 5].map((k) => (
+                  <Skeleton key={k} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : filteredTeams.length === 0 ? (
+              <div className="h-full min-h-[320px] flex flex-col items-center justify-center gap-3 text-center p-6">
+                <span className="material-symbols-outlined text-5xl text-muted-foreground">
+                  {searchTerm ? 'search_off' : 'groups'}
+                </span>
+                <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
+                  {searchTerm
+                    ? 'Không tìm thấy đội ngũ phù hợp'
+                    : teams.length === 0
+                      ? 'Chưa có đội ngũ nào'
+                      : 'Không có kết quả'}
+                </p>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  {searchTerm
+                    ? 'Thử thay đổi từ khóa tìm kiếm.'
+                    : reliefStationId
+                      ? 'Hãy tạo đội ngũ đầu tiên để bắt đầu quản lý và phân công tình nguyện viên.'
+                      : 'Liên hệ quản lý để được phân vào trạm, sau đó có thể tạo đội ngũ.'}
+                </p>
+                {!searchTerm && reliefStationId && (
+                  <Button className="gap-2" onClick={() => setIsCreateOpen(true)}>
+                    <span className="material-symbols-outlined">add</span>
+                    Tạo đội ngũ mới
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <table className="w-full text-left border-collapse">
+                <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900 z-10">
+                  <tr className="border-b border-slate-200 dark:border-border">
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Tên nhóm
+                    </th>
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Khu vực
+                    </th>
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Trưởng nhóm
+                    </th>
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Thành viên
+                    </th>
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Trạng thái
+                    </th>
+                    <th className="px-6 py-4"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-border-dark">
+                  {filteredTeams.map((team) => (
+                    <tr
+                      key={team.id}
+                      onClick={() => setSelectedTeamId(team.id)}
+                      className={cn(
+                        'cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-muted',
+                        selectedTeamId === team.id ? 'bg-primary/10' : '',
+                      )}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div
+                            className={cn(
+                              'size-2 rounded-full mr-3',
+                              selectedTeamId === team.id ? 'bg-primary' : 'bg-transparent',
+                            )}
+                          ></div>
+                          <span
+                            className={cn(
+                              'text-sm font-bold',
+                              selectedTeamId === team.id
+                                ? 'text-primary'
+                                : 'text-slate-900 dark:text-foreground',
+                            )}
+                          >
+                            {team.name || 'Chưa đặt tên'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                        {team.area || 'Chưa cập nhật'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-foreground">
+                        {team.leader || 'Chưa phân công'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                        {team.members || 0} người
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <span
                           className={cn(
-                            'text-sm font-bold',
-                            selectedTeamId === team.id
-                              ? 'text-primary'
-                              : 'text-slate-900 dark:text-foreground',
+                            'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+                            getStatusBadge(team.status),
                           )}
                         >
-                          {team.name}
+                          {getStatusLabel(team.status)}
                         </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                      {team.area || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-foreground">
-                      {team.leader}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                      {team.members} người
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={cn(
-                          'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-                          getStatusBadge(team.status),
-                        )}
-                      >
-                        {getStatusLabel(team.status)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button className="text-muted-foreground hover:text-primary transition-colors">
-                        <span className="material-symbols-outlined">edit</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <button className="text-muted-foreground hover:text-primary transition-colors">
+                          <span className="material-symbols-outlined">edit</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 
@@ -335,14 +495,17 @@ export default function CoordinatorTeamManagementPage() {
                     <span className="material-symbols-outlined text-lg mr-2">person</span>
                     Trưởng nhóm:{' '}
                     <span className="text-slate-900 dark:text-foreground font-medium ml-1">
-                      {selectedTeam.leader}
+                      {selectedTeam.leader || 'Chưa phân công'}
                     </span>
                   </div>
                   <div className="flex items-center text-muted-foreground text-sm">
                     <span className="material-symbols-outlined text-lg mr-2">call</span>
-                    Liên hệ: {selectedTeam.contactPhone}
+                    Liên hệ: {selectedTeam.contactPhone || 'Chưa cập nhật'}
                   </div>
                 </div>
+                <p className="mt-4 text-sm text-muted-foreground">
+                  {selectedTeam.description?.trim() || 'Chưa có mô tả cho đội ngũ này.'}
+                </p>
                 {/* Mini Map Preview Placeholder */}
                 <div className="mt-4 w-full h-32 rounded-lg bg-slate-100 dark:bg-background relative flex items-center justify-center border border-slate-200 dark:border-border group cursor-pointer">
                   <div
@@ -375,10 +538,14 @@ export default function CoordinatorTeamManagementPage() {
                         key={member.id}
                         className="flex items-center p-3 rounded-lg bg-slate-50 dark:bg-background border border-transparent hover:border-slate-300 dark:hover:border-border transition-colors group/member"
                       >
-                        <div
-                          className="size-10 rounded-full bg-cover bg-center mr-3"
-                          style={{ backgroundImage: `url('${member.avatar}')` }}
-                        />
+                        {member.avatar ? (
+                          <div
+                            className="size-10 rounded-full bg-cover bg-center mr-3"
+                            style={{ backgroundImage: `url('${member.avatar}')` }}
+                          />
+                        ) : (
+                          <div className="size-10 rounded-full bg-slate-200 dark:bg-slate-700 mr-3" />
+                        )}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-slate-900 dark:text-foreground truncate">
                             {member.name}
@@ -418,6 +585,66 @@ export default function CoordinatorTeamManagementPage() {
           )}
         </div>
       </div>
+
+      <Dialog
+        open={isCreateOpen}
+        onOpenChange={(open) => {
+          setIsCreateOpen(open);
+          if (!open) {
+            resetCreateForm();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Tạo đội ngũ mới</DialogTitle>
+            <DialogDescription>
+              Nhập thông tin cơ bản để tạo đội ngũ. Mô tả và số điện thoại là tùy chọn.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Tên đội ngũ *</label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="VD: Đội hỗ trợ Quảng Bình"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Mô tả</label>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Mô tả vai trò hoặc khu vực phụ trách"
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Số điện thoại liên hệ</label>
+              <Input
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                placeholder="VD: 0901234567"
+              />
+            </div>
+
+            {createError ? <p className="text-sm text-red-500">{createError}</p> : null}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)} disabled={isCreating}>
+              Hủy
+            </Button>
+            <Button onClick={handleCreateTeam} disabled={isCreating}>
+              {isCreating ? 'Đang tạo...' : 'Tạo đội ngũ'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

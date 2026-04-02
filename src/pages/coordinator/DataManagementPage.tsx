@@ -16,6 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { ReliefMap } from './components/ReliefMap';
 import { HEADQUARTERS, reliefLocationsData, teamsData } from './components/mockData';
+import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
 
 const GOONG_API_KEY = import.meta.env.VITE_GOONG_MAP_KEY || 'YOUR_GOONG_MAP_KEY';
 
@@ -133,31 +134,7 @@ export default function CoordinatorDataManagementPage() {
   };
 
   return (
-    <DashboardLayout
-      projects={[
-        { label: 'Tổng quan', path: '/portal/coordinator/data-management', icon: 'dashboard' },
-        { label: 'Điều phối & Bản đồ', path: '/portal/coordinator/maps', icon: 'map' },
-        { label: 'Đội tình nguyện', path: '/portal/coordinator/teams', icon: 'groups' },
-        {
-          label: 'Yêu cầu tình nguyện',
-          path: '/portal/coordinator/volunteer-requests',
-          icon: 'how_to_reg',
-        },
-        {
-          label: 'Yêu cầu cứu trợ',
-          path: '/portal/coordinator/requests',
-          icon: 'person_raised_hand',
-        },
-        {
-          label: 'Kho vận & Nhu yếu phẩm',
-          path: '/portal/coordinator/inventory',
-          icon: 'inventory_2',
-        },
-      ]}
-      navItems={[
-        { label: 'Báo cáo & Thống kê', path: '/portal/coordinator/dashboard', icon: 'description' },
-      ]}
-    >
+    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
       {/* Page Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-5 mb-8">
         <div className="flex flex-col gap-2 max-w-2xl">

@@ -43,6 +43,11 @@ export default tseslint.config([
 
       /* Relax */
       '@typescript-eslint/no-explicit-any': 'off',
+
+      /* Disable base no-redeclare — replaced by TS-aware version */
+      /* Base rule doesn't understand TS enums (type + value same name) */
+      'no-redeclare': 'off',
+      '@typescript-eslint/no-redeclare': 'off',
     },
   },
 ]);

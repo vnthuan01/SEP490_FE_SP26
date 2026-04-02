@@ -7,6 +7,7 @@ import type {
   UpdateVolunteerProfileSkillsPayload,
 } from '@/services/volunteerProfileService';
 import { toast } from 'sonner';
+import { handleHookError } from './hookErrorUtils';
 
 export const VOLUNTEER_PROFILE_QUERY_KEYS = {
   all: ['volunteerProfiles'] as const,
@@ -143,7 +144,7 @@ export function useCreateVolunteerProfile() {
       queryClient.invalidateQueries({ queryKey: ['user', 'volunteerProfile'] });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi tạo hồ sơ');
+      handleHookError(error, 'Không thể tạo hồ sơ tình nguyện viên');
     },
   });
 }
@@ -158,7 +159,7 @@ export function useApproveVolunteerProfile() {
       queryClient.invalidateQueries({ queryKey: VOLUNTEER_PROFILE_QUERY_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi duyệt hồ sơ');
+      handleHookError(error, 'Không thể duyệt hồ sơ tình nguyện viên');
     },
   });
 }
@@ -174,7 +175,7 @@ export function useRejectVolunteerProfile() {
       queryClient.invalidateQueries({ queryKey: VOLUNTEER_PROFILE_QUERY_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi từ chối hồ sơ');
+      handleHookError(error, 'Không thể từ chối hồ sơ tình nguyện viên');
     },
   });
 }
@@ -191,7 +192,7 @@ export function useAddVolunteerSkills() {
       queryClient.invalidateQueries({ queryKey: VOLUNTEER_PROFILE_QUERY_KEYS.myProfile });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi thêm kỹ năng');
+      handleHookError(error, 'Không thể thêm kỹ năng');
     },
   });
 }
@@ -208,7 +209,7 @@ export function useRemoveVolunteerSkills() {
       queryClient.invalidateQueries({ queryKey: VOLUNTEER_PROFILE_QUERY_KEYS.myProfile });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi xóa kỹ năng');
+      handleHookError(error, 'Không thể xóa kỹ năng');
     },
   });
 }

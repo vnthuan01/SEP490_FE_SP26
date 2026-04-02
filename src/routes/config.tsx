@@ -11,10 +11,12 @@ import CoordinatorTeamsPage from '@/pages/coordinator/TeamManagement';
 import CoordinatorInventoryPage from '@/pages/coordinator/InventoryPage';
 import CoordinatorVolunteerAllocationPage from '@/pages/coordinator/VolunteerAllocationPage';
 import CoordinatorDataManagementPage from '@/pages/coordinator/DataManagementPage';
+import ReliefStationPage from '@/pages/coordinator/ReliefStationPage';
 import SettingsPage from '@/pages/user/settings';
 
 // Manager pages
 import ManagerStationPage from '@/pages/manager/ManagerStationPage';
+import ManagerDashboardPage from '@/pages/manager/ManagerDashboardPage';
 import ManagerVehicleManagementPage from '@/pages/manager/ManagerVehicleManagementPage';
 import ManagerInventoryCoordinationPage from '@/pages/manager/ManagerInventoryCoordinationPage';
 import ManagerCampaignPage from '@/pages/manager/ManagerCampaignPage';
@@ -82,6 +84,7 @@ export const routes: AppRoute[] = [
     roles: [UserRole.Coordinator],
     isProtected: true,
   },
+
   {
     path: '/portal/coordinator/volunteer-requests',
     element: <CoordinatorVolunteerRequestPage />,
@@ -100,8 +103,20 @@ export const routes: AppRoute[] = [
     roles: [UserRole.Coordinator],
     isProtected: true,
   },
+  {
+    path: '/portal/coordinator/relief-station',
+    element: <ReliefStationPage />,
+    roles: [UserRole.Coordinator],
+    isProtected: true,
+  },
 
   // Manager routes
+  {
+    path: '/portal/manager/dashboard',
+    element: <ManagerDashboardPage />,
+    roles: [UserRole.Manager],
+    isProtected: true,
+  },
   {
     path: '/portal/manager/stations',
     element: <ManagerStationPage />,

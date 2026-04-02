@@ -51,10 +51,13 @@ export interface UpdateVehiclePayload {
 
 // === Vehicle Type Models ===
 export interface VehicleType {
-  id: string; // adjust if it uses a different primary key name
+  id: string;
+  vehicleTypeId?: string;
   typeName: string;
   defaultCapacity: number;
   description: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CreateVehicleTypePayload {
@@ -64,6 +67,24 @@ export interface CreateVehicleTypePayload {
 }
 
 export type UpdateVehicleTypePayload = CreateVehicleTypePayload;
+
+export const normalizeVehicleType = (item: any): VehicleType => ({
+  ...item,
+  id: item?.id || item?.vehicleTypeId || '',
+  vehicleTypeId: item?.vehicleTypeId || item?.id || '',
+  typeName: item?.typeName || '',
+  defaultCapacity: Number(item?.defaultCapacity || 0),
+  description: item?.description || '',
+  createdAt: item?.createdAt,
+  updatedAt: item?.updatedAt,
+});
+
+export const normalizeVehicleTypePage = (
+  response: PaginatedResponse<any>,
+): PaginatedResponse<VehicleType> => ({
+  ...response,
+  items: Array.isArray(response?.items) ? response.items.map(normalizeVehicleType) : [],
+});
 
 export const vehicleService = {
   // Get all vehicles

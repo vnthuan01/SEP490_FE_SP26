@@ -2,15 +2,17 @@ import { apiClient } from '@/lib/apiClients';
 
 export interface ReliefStation {
   id: string;
-  stationId?: string; // API may return stationId instead of id
+  stationId?: string;
+  reliefStationId?: string;
   locationId: string;
   name: string;
   address: string;
   contactNumber: string;
   longitude: number;
   latitude: number;
+  coverageRadiusKm?: number;
   status: number;
-  // Khai báo thêm nếu cần
+  level?: number;
 }
 
 export interface CreateProvincialStationPayload {
@@ -20,6 +22,7 @@ export interface CreateProvincialStationPayload {
   contactNumber: string;
   longitude: number;
   latitude: number;
+  coverageRadiusKm: number;
 }
 
 export interface UpdateProvincialStationPayload {
@@ -28,6 +31,7 @@ export interface UpdateProvincialStationPayload {
   contactNumber: string;
   longitude: number;
   latitude: number;
+  coverageRadiusKm: number;
 }
 
 export interface SearchProvincialStationParams {
@@ -83,8 +87,24 @@ export interface GetPendingStationJoinRequestsParams {
   pageSize?: number;
 }
 
+export interface ReliefStationResponse {
+  reliefStationId: string;
+  name: string;
+  address: string | null;
+  moderatorName: string | null;
+  contactNumber: string | null;
+  longitude: number;
+  latitude: number;
+  coverageRadiusKm?: number;
+  status: number;
+  level: number;
+  locationId: string;
+  locationName: string;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
 export const reliefStationService = {
-  // Provincial endpoints
   getProvincialStations: (params: SearchProvincialStationParams) =>
     apiClient.get<PaginatedResponse<ReliefStation>>('/relief-stations/provincial', { params }),
 
@@ -100,9 +120,11 @@ export const reliefStationService = {
   activateProvincialStation: (stationId: string) =>
     apiClient.put(`/relief-stations/provincial/${stationId}/activate`),
 
-  getMyStation: () => apiClient.get<ReliefStation>('/relief-stations/my-station'),
+  getMyStation: () => apiClient.get<ReliefStationResponse>('/relief-stations/my-station'),
 
-  // Station endpoints
+  getCurrentModeratorStation: () =>
+    apiClient.get<ReliefStationResponse>('/relief-stations/my-station'),
+
   assignModerator: (stationId: string, data: AssignModeratorPayload) =>
     apiClient.put(`/relief-stations/${stationId}/assign-moderator`, data),
 

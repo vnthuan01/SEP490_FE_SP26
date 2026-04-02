@@ -1,602 +1,618 @@
-// ... keep imports
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { volunteerRequestsData } from './components/mockData';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-// import type { VolunteerRequest } from './components/types';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useVolunteerReviewApplications } from '@/hooks/useVolunteerReviewApplications';
+import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import {
+  VerificationStatus,
+  VerificationStatusLabel,
+  VolunteerStatus,
+  VolunteerStatusLabel,
+  TeamRolePreference,
+  TeamRolePreferenceLabel,
+} from '@/enums/beEnums';
+
+type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
+
+const getVerificationStatusText = (status: number) =>
+  VerificationStatusLabel[status as VerificationStatus] ?? 'Không rõ';
+
+const getVerificationStatusStyle = (status: number) => {
+  switch (status) {
+    case 1:
+      return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
+    case 2:
+      return 'bg-green-500/10 text-green-600 border-green-500/20';
+    case 3:
+      return 'bg-red-500/10 text-red-600 border-red-500/20';
+    default:
+      return 'bg-slate-500/10 text-slate-600 border-slate-500/20';
+  }
+};
+
+const getVolunteerStatusText = (status: number) =>
+  VolunteerStatusLabel[status as VolunteerStatus] ?? 'Không rõ';
+
+const getPreferredTeamRoleText = (role: number) =>
+  TeamRolePreferenceLabel[role as TeamRolePreference] ?? `Vai trò #${role}`;
+
+const formatDateTimeVN = (value?: string | null) => {
+  if (!value) return '--';
+  return new Date(value).toLocaleString('vi-VN');
+};
+
+const formatDateVN = (value?: string | null) => {
+  if (!value) return '--';
+  return new Date(value).toLocaleDateString('vi-VN');
+};
+
+const getAgeTextFromDob = (value?: string | null) => {
+  if (!value) return '--';
+  const dob = new Date(value);
+  if (Number.isNaN(dob.getTime())) return '--';
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const m = now.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age -= 1;
+  return `${age}`;
+};
 
 export default function CoordinatorVolunteerRequestPage() {
-  const [selectedId, setSelectedId] = useState<string>(volunteerRequestsData[0]?.id);
+  const {
+    applications,
+    paging,
+    isLoading,
+    isError,
+    refetch,
+    approveApplication,
+    approveStatus,
+    rejectApplication,
+    rejectStatus,
+  } = useVolunteerReviewApplications();
+
   const [searchTerm, setSearchTerm] = useState('');
-  const [filter, setFilter] = useState<'all' | 'health' | 'rescue' | 'transport'>('all');
-  const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const scrollRef = useRef<HTMLElement>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [selectedId, setSelectedId] = useState<string>('');
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [actionError, setActionError] = useState('');
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }, [selectedId]);
+  const sortedApplications = useMemo(() => {
+    const list = [...applications];
+    // Pending lên đầu, sau đó mới tới Approved/Rejected
+    return list.sort((a, b) => {
+      const score = (v: number) => (v === 1 ? 0 : v === 2 ? 1 : v === 3 ? 2 : 3);
+      return score(a.verificationStatus) - score(b.verificationStatus);
+    });
+  }, [applications]);
 
-  const selectedRequest = useMemo(
-    () => volunteerRequestsData.find((r) => r.id === selectedId) || volunteerRequestsData[0],
-    [selectedId],
+  const filteredApplications = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+
+    return sortedApplications.filter((app) => {
+      const matchesSearch =
+        !term ||
+        app.fullName.toLowerCase().includes(term) ||
+        app.email.toLowerCase().includes(term) ||
+        app.phoneNumber.toLowerCase().includes(term);
+
+      const matchesStatus =
+        statusFilter === 'all'
+          ? true
+          : statusFilter === 'pending'
+            ? app.verificationStatus === 1
+            : statusFilter === 'approved'
+              ? app.verificationStatus === 2
+              : app.verificationStatus === 3;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [sortedApplications, searchTerm, statusFilter]);
+
+  const effectiveSelectedId = useMemo(() => {
+    if (!filteredApplications.length) return '';
+    const found = filteredApplications.some((x) => x.volunteerProfileId === selectedId);
+    return found ? selectedId : filteredApplications[0].volunteerProfileId;
+  }, [filteredApplications, selectedId]);
+
+  const selectedApplication = useMemo(
+    () => filteredApplications.find((x) => x.volunteerProfileId === effectiveSelectedId),
+    [filteredApplications, effectiveSelectedId],
   );
 
-  const filteredRequests = useMemo(() => {
-    return volunteerRequestsData.filter((req) => {
-      const matchesSearch =
-        req.name.toLowerCase().includes(searchTerm.toLowerCase()) || req.phone.includes(searchTerm);
+  const stats = useMemo(() => {
+    const pending = applications.filter((x) => x.verificationStatus === 1).length;
+    const approved = applications.filter((x) => x.verificationStatus === 2).length;
+    const rejected = applications.filter((x) => x.verificationStatus === 3).length;
+    return { pending, approved, rejected };
+  }, [applications]);
 
-      // Simple mock filter logic based on skills/role
-      let matchesFilter = true;
-      if (filter === 'health')
-        matchesFilter = req.skills.some(
-          (s) =>
-            s.toLowerCase().includes('y tế') ||
-            s.toLowerCase().includes('sơ cứu') ||
-            s.toLowerCase().includes('thuốc'),
-        );
-      if (filter === 'rescue')
-        matchesFilter = req.skills.some(
-          (s) => s.toLowerCase().includes('cứu hộ') || s.toLowerCase().includes('bơi'),
-        );
-      if (filter === 'transport')
-        matchesFilter = req.skills.some(
-          (s) => s.toLowerCase().includes('lái xe') || s.toLowerCase().includes('vận chuyển'),
-        );
+  const isPendingSelected = selectedApplication?.verificationStatus === 1;
 
-      return matchesSearch && matchesFilter;
-    });
-  }, [searchTerm, filter]);
+  const handleApprove = async () => {
+    if (!selectedApplication || !isPendingSelected) return;
+    setActionError('');
+    try {
+      await approveApplication(selectedApplication.volunteerProfileId);
+      await refetch();
+      toast.success('Đã chấp nhận hồ sơ tình nguyện viên!');
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || 'Không thể chấp nhận request.';
+      setActionError(msg);
+      toast.error(msg);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!selectedApplication || !isPendingSelected) return;
+    const reason = rejectReason.trim();
+    if (!reason) {
+      setActionError('Vui lòng nhập lý do từ chối.');
+      return;
+    }
+
+    setActionError('');
+    try {
+      await rejectApplication({ id: selectedApplication.volunteerProfileId, reason });
+      setIsRejectDialogOpen(false);
+      setRejectReason('');
+      await refetch();
+      toast.success('Đã từ chối hồ sơ tình nguyện viên.');
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || 'Không thể từ chối request.';
+      setActionError(msg);
+      toast.error(msg);
+    }
+  };
 
   return (
-    <DashboardLayout
-      projects={[
-        { label: 'Tổng quan', path: '/portal/coordinator/data-management', icon: 'dashboard' },
-        { label: 'Điều phối & Bản đồ', path: '/portal/coordinator/maps', icon: 'map' },
-        { label: 'Đội tình nguyện', path: '/portal/coordinator/teams', icon: 'groups' },
-        {
-          label: 'Yêu cầu tình nguyện',
-          path: '/portal/coordinator/volunteer-requests',
-          icon: 'how_to_reg',
-        },
-        {
-          label: 'Yêu cầu cứu trợ',
-          path: '/portal/coordinator/requests',
-          icon: 'person_raised_hand',
-        },
-        {
-          label: 'Kho vận & Nhu yếu phẩm',
-          path: '/portal/coordinator/inventory',
-          icon: 'inventory_2',
-        },
-      ]}
-      navItems={[
-        { label: 'Báo cáo & Thống kê', path: '/portal/coordinator/dashboard', icon: 'description' },
-      ]}
-    >
-      <div className="flex h-[calc(100vh-6rem)] overflow-hidden -m-4">
-        {/* LEFT SIDEBAR: LIST */}
-        <aside className="w-[420px] flex flex-col border-r border-surface-dark-highlight bg-card overflow-hidden shrink-0">
-          {/* Header & Search */}
-          <div className="p-4 border-b border-surface-dark-highlight flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <h1 className="text-2xl font-bold leading-tight text-primary">Duyệt đơn đăng ký</h1>
-              <p className="text-muted-foreground text-sm">
-                {filteredRequests.length} đơn mới đang chờ xử lý
-              </p>
-            </div>
-            {/* Search */}
-            <div className="flex w-full items-center rounded-lg border border-border bg-background-dark px-3 py-2">
-              <span className="material-symbols-outlined text-muted-foreground mr-2">search</span>
-              <input
-                className="w-full bg-transparent text-foreground placeholder:text-muted-foreground outline-none text-sm"
-                placeholder="Tìm tên hoặc số điện thoại..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            {/* Filters */}
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-              <Button
-                size="sm"
-                variant={filter === 'all' ? 'primary' : 'outline'}
-                onClick={() => setFilter('all')}
-                className="rounded-full h-8 text-xs"
-              >
-                Tất cả
-              </Button>
-              <Button
-                size="sm"
-                variant={filter === 'health' ? 'primary' : 'outline'}
-                onClick={() => setFilter('health')}
-                className="rounded-full h-8 text-xs"
-              >
-                Y tế
-              </Button>
-              <Button
-                size="sm"
-                variant={filter === 'rescue' ? 'primary' : 'outline'}
-                onClick={() => setFilter('rescue')}
-                className="rounded-full h-8 text-xs"
-              >
-                Cứu hộ
-              </Button>
-              <Button
-                size="sm"
-                variant={filter === 'transport' ? 'primary' : 'outline'}
-                onClick={() => setFilter('transport')}
-                className="rounded-full h-8 text-xs"
-              >
-                Vận chuyển
-              </Button>
-            </div>
-          </div>
-
-          {/* List Content */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-2">
-            {filteredRequests.map((req) => (
-              <div
-                key={req.id}
-                onClick={() => {
-                  setSelectedId(req.id);
-                  setCurrentMediaIndex(0);
-                }}
-                className={cn(
-                  'group flex cursor-pointer items-start gap-3 rounded-lg p-3 transition-all border',
-                  selectedId === req.id
-                    ? 'bg-surface-dark-highlight border-primary/50'
-                    : 'hover:bg-surface-dark-highlight border-transparent hover:border-border',
-                )}
-              >
-                <div
-                  className="bg-center bg-no-repeat bg-cover rounded-full h-12 w-12 shrink-0 border border-border"
-                  style={{ backgroundImage: `url("${req.avatar}")` }}
-                />
-                <div className="flex flex-col flex-1 min-w-0">
-                  <div className="flex justify-between items-start mb-1">
-                    <h3
-                      className={cn(
-                        'text-base font-bold truncate',
-                        selectedId === req.id
-                          ? 'text-foreground'
-                          : 'text-muted-foreground group-hover:text-foreground',
-                      )}
-                    >
-                      {req.name}
-                    </h3>
-                    {req.status === 'new' && (
-                      <span className="text-primary text-xs font-medium bg-primary/10 px-2 py-0.5 rounded">
-                        Mới
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="material-symbols-outlined text-yellow-500 text-[16px]">
-                      {req.skills[0]?.includes('Y tế')
-                        ? 'medical_services'
-                        : req.skills[0]?.includes('Vận chuyển')
-                          ? 'local_shipping'
-                          : 'engineering'}
-                    </span>
-                    <span
-                      className={cn(
-                        'text-sm truncate',
-                        selectedId === req.id
-                          ? 'text-foreground'
-                          : 'text-muted-foreground group-hover:text-foreground',
-                      )}
-                    >
-                      {req.skills.join(', ')}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-end">
-                    <span className="text-muted-foreground text-xs">
-                      {req.location} • 15 phút trước
-                    </span>
-                  </div>
+    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+      <div className="grid grid-cols-1 xl:grid-cols-[400px_minmax(0,1fr)] gap-6 min-h-[calc(100vh-11rem)]">
+        <Card className="xl:h-full overflow-hidden">
+          <CardContent className="p-0 h-full flex flex-col">
+            <div className="px-5 pt-5 pb-4 border-b border-border/70 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h1 className="text-2xl md:text-3xl font-black tracking-tight text-primary">
+                    Yêu cầu tình nguyện viên
+                  </h1>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Ưu tiên hiển thị hồ sơ đang chờ duyệt
+                  </p>
                 </div>
-              </div>
-            ))}
-          </div>
-        </aside>
-
-        {/* RIGHT CONTENT: DETAIL VIEW */}
-        <section
-          ref={scrollRef}
-          className="flex-1 flex flex-col h-full bg-card relative overflow-y-auto custom-scrollbar"
-        >
-          {selectedRequest ? (
-            <>
-              {/* Header */}
-              <div className="p-8 pb-6 border-b border-surface-dark-highlight">
-                <div className="flex items-start justify-between gap-6">
-                  <div className="flex gap-6">
-                    <div
-                      className="bg-center bg-no-repeat bg-cover rounded-xl h-24 w-24 shrink-0 border-2 border-border shadow-lg"
-                      style={{ backgroundImage: `url("${selectedRequest.avatar}")` }}
-                    />
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-3">
-                        <h1 className="text-3xl font-black tracking-tight text-foreground">
-                          {selectedRequest.name}
-                        </h1>
-                        <span className="bg-yellow-500/20 text-yellow-500 px-3 py-1 rounded-full text-sm font-bold border border-yellow-500/30 flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
-                          Chờ duyệt
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-6 text-muted-foreground text-base mt-1">
-                        <div className="flex items-center gap-2">
-                          <span className="material-symbols-outlined text-[20px]">cake</span>
-                          <span>
-                            {selectedRequest.age} tuổi ({selectedRequest.gender})
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="material-symbols-outlined text-[20px]">location_on</span>
-                          <span>{selectedRequest.address}</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-3 mt-2">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded border border-border bg-surface-dark-highlight text-xs font-medium text-foreground">
-                          <span className="material-symbols-outlined text-[14px] text-green-500">
-                            verified
-                          </span>
-                          SĐT đã xác thực
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded border border-border bg-surface-dark-highlight text-xs font-medium text-foreground">
-                          <span className="material-symbols-outlined text-[14px] text-green-500">
-                            verified
-                          </span>
-                          CCCD đã xác thực
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-2 text-muted-foreground">
-                    <span className="text-sm">
-                      Gửi đơn lúc: {new Date(selectedRequest.submittedAt).toLocaleDateString()}
-                    </span>
-                    <span className="text-sm">ID Đơn: #{selectedRequest.id}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Detail Grid */}
-              <div className="p-8 grid grid-cols-12 gap-8 max-w-[1200px]">
-                {/* Left Col */}
-                <div className="col-span-8 space-y-8">
-                  {/* Contact Info */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 rounded-xl bg-background-dark border border-border flex items-center gap-4">
-                      <div className="size-10 rounded-full bg-surface-dark-highlight flex items-center justify-center text-primary">
-                        <span className="material-symbols-outlined">call</span>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs uppercase font-semibold tracking-wider">
-                          Số điện thoại
-                        </p>
-                        <p className="text-foreground text-lg font-medium font-mono">
-                          {selectedRequest.phone}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="p-4 rounded-xl bg-background-dark border border-border flex items-center gap-4">
-                      <div className="size-10 rounded-full bg-surface-dark-highlight flex items-center justify-center text-primary shrink-0">
-                        <span className="material-symbols-outlined">mail</span>
-                      </div>
-
-                      {/* QUAN TRỌNG */}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-muted-foreground text-xs uppercase font-semibold tracking-wider">
-                          Email/Zalo
-                        </p>
-
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <p
-                                className="
-                                                              text-foreground text-lg font-medium dark:text-foreground
-                                                              truncate cursor-help
-                                                            "
-                              >
-                                {selectedRequest.email}
-                              </p>
-                            </TooltipTrigger>
-
-                            <TooltipContent className="max-w-xs break-words">
-                              {selectedRequest.email}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Experience */}
-                  <div className="space-y-4">
-                    <h3 className="text-xl font-bold flex items-center gap-2 text-foreground">
-                      <span className="material-symbols-outlined text-primary">handyman</span>
-                      Kỹ năng & Kinh nghiệm
-                    </h3>
-                    <div className="p-6 rounded-xl bg-background-dark border border-border space-y-6">
-                      <div>
-                        <p className="text-muted-foreground text-sm mb-3">Nhóm kỹ năng chính:</p>
-                        <div className="flex flex-wrap gap-2">
-                          {selectedRequest.skills.map((skill, idx) => (
-                            <span
-                              key={idx}
-                              className="px-3 py-1.5 rounded-lg bg-surface-dark-highlight text-foreground border border-border text-sm font-medium"
-                            >
-                              {skill}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-sm mb-3">Mô tả kinh nghiệm:</p>
-                        <p className="text-foreground leading-relaxed text-base">
-                          {selectedRequest.experience}
-                        </p>
-                      </div>
-                      {selectedRequest.images.length > 0 && (
-                        <div>
-                          <p className="text-muted-foreground text-sm mb-3">
-                            Ảnh/Chứng chỉ đính kèm ({selectedRequest.images.length}):
-                          </p>
-
-                          {/* Main View */}
-                          <div className="relative w-full aspect-video bg-black/20 rounded-xl overflow-hidden border border-border group">
-                            <div
-                              className="w-full h-full bg-contain bg-center bg-no-repeat cursor-zoom-in"
-                              style={{
-                                backgroundImage: `url("${selectedRequest.images[currentMediaIndex].url}")`,
-                              }}
-                              onClick={() => setIsFullscreen(true)}
-                            />
-
-                            {/* Fullscreen Modal */}
-                            {isFullscreen && (
-                              <div
-                                onClick={() => setIsFullscreen(false)}
-                                className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center animate-in fade-in duration-200"
-                              >
-                                <div className="relative w-full h-full max-w-[90vw] max-h-[90vh] flex items-center justify-center">
-                                  <img
-                                    src={selectedRequest.images[currentMediaIndex].url}
-                                    className="max-h-full max-w-full rounded-lg object-contain"
-                                    onClick={(e) => e.stopPropagation()}
-                                  />
-
-                                  {/* Navigation Buttons in Fullscreen */}
-                                  {selectedRequest.images.length > 1 && (
-                                    <>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setCurrentMediaIndex((prev) =>
-                                            prev === 0
-                                              ? selectedRequest.images.length - 1
-                                              : prev - 1,
-                                          );
-                                        }}
-                                        className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-all backdrop-blur-sm"
-                                      >
-                                        <span className="material-symbols-outlined text-3xl">
-                                          chevron_left
-                                        </span>
-                                      </button>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setCurrentMediaIndex((prev) =>
-                                            prev === selectedRequest.images.length - 1
-                                              ? 0
-                                              : prev + 1,
-                                          );
-                                        }}
-                                        className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-all backdrop-blur-sm"
-                                      >
-                                        <span className="material-symbols-outlined text-3xl">
-                                          chevron_right
-                                        </span>
-                                      </button>
-                                    </>
-                                  )}
-
-                                  <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-black/50 text-white text-sm font-medium backdrop-blur-sm">
-                                    {currentMediaIndex + 1} / {selectedRequest.images.length}
-                                  </div>
-                                </div>
-
-                                <button
-                                  onClick={() => setIsFullscreen(false)}
-                                  className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors"
-                                >
-                                  <span className="material-symbols-outlined text-4xl">close</span>
-                                </button>
-                              </div>
-                            )}
-
-                            {/* Navigation Buttons (Main View) */}
-                            {selectedRequest.images.length > 1 && (
-                              <>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setCurrentMediaIndex((prev) =>
-                                      prev === 0 ? selectedRequest.images.length - 1 : prev - 1,
-                                    );
-                                  }}
-                                  className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-primary transition-all opacity-0 group-hover:opacity-100 backdrop-blur-sm"
-                                >
-                                  <span className="material-symbols-outlined text-[20px]">
-                                    chevron_left
-                                  </span>
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setCurrentMediaIndex((prev) =>
-                                      prev === selectedRequest.images.length - 1 ? 0 : prev + 1,
-                                    );
-                                  }}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-primary transition-all opacity-0 group-hover:opacity-100 backdrop-blur-sm"
-                                >
-                                  <span className="material-symbols-outlined text-[20px]">
-                                    chevron_right
-                                  </span>
-                                </button>
-                              </>
-                            )}
-
-                            {/* Counter Badge */}
-                            <div className="absolute top-3 right-3 px-2 py-1 rounded-md bg-black/60 text-white text-xs font-medium backdrop-blur-sm">
-                              {currentMediaIndex + 1} / {selectedRequest.images.length}
-                            </div>
-                          </div>
-
-                          {/* Thumbnails */}
-                          {selectedRequest.images.length > 1 && (
-                            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-border-dark scrollbar-track-transparent mt-3">
-                              {selectedRequest.images.map((img, i) => (
-                                <div
-                                  key={i}
-                                  onClick={() => setCurrentMediaIndex(i)}
-                                  className={cn(
-                                    'relative w-20 h-14 shrink-0 rounded-lg overflow-hidden cursor-pointer border-2 transition-all',
-                                    i === currentMediaIndex
-                                      ? 'border-primary opacity-100 ring-2 ring-primary/20'
-                                      : 'border-transparent opacity-60 hover:opacity-100 hover:border-border',
-                                  )}
-                                >
-                                  <div
-                                    className="w-full h-full bg-cover bg-center"
-                                    style={{ backgroundImage: `url("${img.url}")` }}
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Col */}
-                <div className="col-span-4 space-y-6">
-                  {/* Readiness */}
-                  <div className="p-5 rounded-xl bg-background-dark border border-border">
-                    <h3 className="text-lg font-bold mb-4 text-foreground">Khả năng đáp ứng</h3>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between p-2 rounded hover:bg-surface-dark-highlight transition-colors">
-                        <span className="text-muted-foreground">Sức khỏe tốt</span>
-                        <span
-                          className={cn(
-                            'material-symbols-outlined',
-                            selectedRequest.readiness.health ? 'text-green-500' : 'text-red-500',
-                          )}
-                        >
-                          {selectedRequest.readiness.health ? 'check_circle' : 'cancel'}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between p-2 rounded hover:bg-surface-dark-highlight transition-colors">
-                        <span className="text-muted-foreground">Có phương tiện cá nhân</span>
-                        <span
-                          className={cn(
-                            'material-symbols-outlined',
-                            selectedRequest.readiness.vehicle
-                              ? 'text-green-500'
-                              : 'text-muted-foreground',
-                          )}
-                        >
-                          {selectedRequest.readiness.vehicle ? 'check_circle' : 'remove_circle'}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between p-2 rounded hover:bg-surface-dark-highlight transition-colors">
-                        <span className="text-muted-foreground">Sẵn sàng đi tỉnh xa</span>
-                        <span
-                          className={cn(
-                            'material-symbols-outlined',
-                            selectedRequest.readiness.travel
-                              ? 'text-green-500'
-                              : 'text-muted-foreground',
-                          )}
-                        >
-                          {selectedRequest.readiness.travel ? 'check_circle' : 'remove_circle'}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between p-2 rounded hover:bg-surface-dark-highlight transition-colors">
-                        <span className="text-muted-foreground">Cam kết tối thiểu 3 ngày</span>
-                        <span
-                          className={cn(
-                            'material-symbols-outlined',
-                            selectedRequest.readiness.commitment
-                              ? 'text-green-500'
-                              : 'text-muted-foreground',
-                          )}
-                        >
-                          {selectedRequest.readiness.commitment ? 'check_circle' : 'remove_circle'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Admin Notes */}
-                  <div className="p-5 rounded-xl bg-surface-dark-highlight/50 border border-border">
-                    <h3 className="text-sm font-bold mb-3 uppercase tracking-wider text-muted-foreground">
-                      Ghi chú nội bộ
-                    </h3>
-                    <textarea
-                      className="w-full bg-background-dark border border-border rounded-lg p-3 text-foreground text-sm focus:ring-1 focus:ring-primary outline-none resize-none h-32"
-                      placeholder="Nhập ghi chú cho điều phối viên khác..."
-                    ></textarea>
-                  </div>
-                </div>
-              </div>
-
-              {/* Sticky Footer */}
-              <div
-                className="sticky bottom-0 left-0 right-0 p-6 bg-card/90
-  backdrop-blur-md border-t border-border flex justify-between items-center z-20 shadow-2xl mt-auto"
-              >
-                <Button variant="outline" className="gap-2">
-                  <span className="material-symbols-outlined">history</span>
-                  Xem lịch sử
+                <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
+                  <span className="material-symbols-outlined text-base">refresh</span>
+                  Tải lại
                 </Button>
-                <div className="flex gap-4">
-                  <Button variant="outline" className="gap-2">
-                    <span className="material-symbols-outlined">help</span>
-                    Yêu cầu thêm thông tin
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/10 px-2 py-2">
+                  <p className="text-[11px] uppercase font-semibold text-yellow-700">Chờ duyệt</p>
+                  <p className="text-xl font-black mt-0.5">{stats.pending}</p>
+                </div>
+                <div className="rounded-xl border border-green-500/20 bg-green-500/10 px-2 py-2">
+                  <p className="text-[11px] uppercase font-semibold text-green-700">Đã duyệt</p>
+                  <p className="text-xl font-black mt-0.5">{stats.approved}</p>
+                </div>
+                <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-2 py-2">
+                  <p className="text-[11px] uppercase font-semibold text-red-700">Từ chối</p>
+                  <p className="text-xl font-black mt-0.5">{stats.rejected}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <input
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                  placeholder="Tìm theo tên / email / SĐT"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant={statusFilter === 'all' ? 'primary' : 'outline'}
+                    onClick={() => setStatusFilter('all')}
+                    className="rounded-full"
+                  >
+                    Tất cả
                   </Button>
                   <Button
-                    variant="outline"
-                    className="gap-2 text-red-500 border-red-500/30 hover:bg-red-500/10 dark:text-red-500 dark:border-red-500/30 dark:hover:bg-red-500/10"
+                    size="sm"
+                    variant={statusFilter === 'pending' ? 'primary' : 'outline'}
+                    onClick={() => setStatusFilter('pending')}
+                    className="rounded-full"
                   >
-                    <span className="material-symbols-outlined">close</span>
-                    Từ chối
+                    Chờ duyệt
                   </Button>
-                  <Button variant="primary" className="gap-2 text-lg px-8 dark:text-white">
-                    <span className="material-symbols-outlined">check</span>
-                    Chấp nhận & Điều phối
+                  <Button
+                    size="sm"
+                    variant={statusFilter === 'approved' ? 'primary' : 'outline'}
+                    onClick={() => setStatusFilter('approved')}
+                    className="rounded-full"
+                  >
+                    Đã duyệt
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={statusFilter === 'rejected' ? 'primary' : 'outline'}
+                    onClick={() => setStatusFilter('rejected')}
+                    className="rounded-full"
+                  >
+                    Từ chối
                   </Button>
                 </div>
               </div>
-            </>
+            </div>
+
+            <div className="flex-1 overflow-auto px-3 py-3">
+              {isLoading ? (
+                <div className="space-y-2 px-1">
+                  {[1, 2, 3].map((k) => (
+                    <Skeleton key={k} className="h-12" />
+                  ))}
+                </div>
+              ) : isError ? (
+                <div className="text-sm text-red-500 px-2">Không tải được danh sách request.</div>
+              ) : filteredApplications.length === 0 ? (
+                <div className="text-sm text-muted-foreground px-2">
+                  Không có request phù hợp bộ lọc.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredApplications.map((app) => {
+                    const active = selectedId === app.volunteerProfileId;
+
+                    return (
+                      <button
+                        key={app.volunteerProfileId}
+                        onClick={() => setSelectedId(app.volunteerProfileId)}
+                        className={cn(
+                          'w-full text-left rounded-xl border p-3 transition-all border-l-4',
+                          active
+                            ? 'border-primary bg-primary/10 shadow-sm border-l-primary'
+                            : 'border-border hover:bg-accent/60 border-l-transparent',
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-semibold text-sm leading-5 line-clamp-2">
+                            {app.fullName}
+                          </p>
+                          <span
+                            className={cn(
+                              'text-[11px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap',
+                              getVerificationStatusStyle(app.verificationStatus),
+                            )}
+                          >
+                            {getVerificationStatusText(app.verificationStatus)}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-muted-foreground mt-1 truncate">{app.email}</p>
+
+                        <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
+                          <span className="inline-flex items-center gap-1">
+                            <span className="material-symbols-outlined text-sm">call</span>
+                            {app.phoneNumber || '--'}
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <span className="material-symbols-outlined text-sm">schedule</span>
+                            {formatDateTimeVN(app.appliedAt)}
+                          </span>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {(app.skills || []).slice(0, 3).map((skill) => (
+                            <span
+                              key={`${app.volunteerProfileId}-${skill.skillId}`}
+                              className="text-[11px] px-2 py-0.5 rounded-full bg-accent border border-border"
+                            >
+                              {skill.name}
+                            </span>
+                          ))}
+                          {(app.skills || []).length > 3 && (
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-accent border border-border text-muted-foreground">
+                              +{app.skills.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 py-3 border-t border-border/70 text-xs text-muted-foreground">
+              Trang: {paging?.currentPage ?? 0}/{paging?.totalPages ?? 0} • Tổng:{' '}
+              {paging?.totalCount ?? 0}
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="h-full overflow-auto pr-1">
+          {!selectedApplication ? (
+            <Card className="h-full">
+              <CardContent className="h-full flex items-center justify-center text-muted-foreground">
+                Chọn một request ở cột trái để xem hồ sơ chi tiết.
+              </CardContent>
+            </Card>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              Chọn một đơn đăng ký để xem chi tiết
+            <div className="space-y-4 pb-2">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <Card className="lg:col-span-2 border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background">
+                  <CardContent className="p-5">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div>
+                        <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                          Hồ sơ ứng viên
+                        </p>
+                        <h2 className="text-2xl font-black mt-1">{selectedApplication.fullName}</h2>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          ID hồ sơ: {selectedApplication.volunteerProfileId}
+                        </p>
+                      </div>
+                      <span
+                        className={cn(
+                          'text-xs px-3 py-1 rounded-full border font-semibold',
+                          getVerificationStatusStyle(selectedApplication.verificationStatus),
+                        )}
+                      >
+                        {getVerificationStatusText(selectedApplication.verificationStatus)}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <span className="text-xs px-2.5 py-1 rounded-full border border-border bg-accent">
+                        Tuổi: {getAgeTextFromDob(selectedApplication.dateOfBirth)}
+                      </span>
+                      <span className="text-xs px-2.5 py-1 rounded-full border border-border bg-accent">
+                        Giới tính: {selectedApplication.gender || '--'}
+                      </span>
+                      <span className="text-xs px-2.5 py-1 rounded-full border border-border bg-accent">
+                        Trạng thái TNV: {getVolunteerStatusText(selectedApplication.status)}
+                      </span>
+                      <span className="text-xs px-2.5 py-1 rounded-full border border-border bg-accent">
+                        Vai trò mong muốn:{' '}
+                        {getPreferredTeamRoleText(selectedApplication.preferredTeamRole)}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 rounded-xl border border-border bg-background/80 p-3">
+                      <p className="text-xs uppercase text-muted-foreground mb-1">Địa chỉ</p>
+                      <p className="text-sm font-medium">{selectedApplication.address || '--'}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-5 space-y-4">
+                    <div>
+                      <p className="text-xs uppercase text-muted-foreground">Email liên hệ</p>
+                      <p className="font-medium break-all">{selectedApplication.email || '--'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase text-muted-foreground">Số điện thoại</p>
+                      <p className="font-medium">{selectedApplication.phoneNumber || '--'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase text-muted-foreground">Ngày ứng tuyển</p>
+                      <p className="font-medium">
+                        {formatDateTimeVN(selectedApplication.appliedAt)}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card>
+                  <CardContent className="p-5">
+                    <p className="text-xs uppercase text-muted-foreground mb-3">Kỹ năng</p>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedApplication.skills?.length ? (
+                        selectedApplication.skills.map((s) => (
+                          <span
+                            key={s.skillId}
+                            className="text-xs px-2.5 py-1 rounded-full border border-border bg-accent"
+                          >
+                            {s.name}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Chưa có kỹ năng</span>
+                      )}
+                    </div>
+
+                    <div className="mt-5">
+                      <p className="text-xs uppercase text-muted-foreground mb-1">Mô tả</p>
+                      <p className="text-sm leading-relaxed text-foreground">
+                        {selectedApplication.descriptions || 'Không có mô tả'}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-5">
+                    <p className="text-xs uppercase text-muted-foreground mb-3">Chứng chỉ</p>
+                    {selectedApplication.certificates?.length ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {selectedApplication.certificates.map((cert, idx) => (
+                          <div
+                            key={`${cert.name}-${idx}`}
+                            className="rounded-xl border border-border bg-background p-3"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-semibold text-sm line-clamp-2">
+                                {cert.name || 'Chứng chỉ'}
+                              </p>
+                              {cert.fileUrl ? (
+                                <a
+                                  href={cert.fileUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[11px] font-semibold text-primary underline shrink-0"
+                                >
+                                  Mở file
+                                </a>
+                              ) : null}
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mt-1">
+                              Cấp bởi: {cert.issuedBy || 'Không rõ'}
+                            </p>
+                            <div className="mt-2 space-y-1 text-[11px]">
+                              <p className="text-muted-foreground">
+                                Ngày cấp:{' '}
+                                <span className="text-foreground">
+                                  {formatDateVN(cert.issuedDate)}
+                                </span>
+                              </p>
+                              <p className="text-muted-foreground">
+                                Hết hạn:{' '}
+                                <span className="text-foreground">
+                                  {formatDateVN(cert.expiryDate)}
+                                </span>
+                              </p>
+                            </div>
+
+                            {cert.fileUrl ? (
+                              <div className="mt-2 rounded-md overflow-hidden border border-border bg-accent/40">
+                                <img
+                                  src={cert.fileUrl}
+                                  alt={cert.name || 'certificate'}
+                                  className="w-full h-24 object-cover"
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                  }}
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Chưa có chứng chỉ</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardContent className="p-5">
+                  <p className="text-xs uppercase text-muted-foreground mb-2">Ghi chú nội bộ</p>
+                  <Textarea rows={4} placeholder="Nhập ghi chú nội bộ cho hồ sơ này..." />
+                </CardContent>
+              </Card>
+
+              {selectedApplication.verificationStatus === 3 && (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+                  <p className="text-xs uppercase text-red-600 font-semibold">Lý do từ chối</p>
+                  <p className="text-sm text-red-700 mt-1">
+                    {selectedApplication.reason || 'Không có lý do cụ thể'}
+                  </p>
+                </div>
+              )}
+
+              <Card>
+                <CardContent className="p-5 space-y-3">
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      variant="primary"
+                      className="gap-2"
+                      disabled={!isPendingSelected || approveStatus === 'pending'}
+                      onClick={handleApprove}
+                    >
+                      <span className="material-symbols-outlined">check_circle</span>
+                      {approveStatus === 'pending' ? 'Đang xử lý...' : 'Chấp nhận'}
+                    </Button>
+
+                    <Button variant="outline" className="gap-2" disabled>
+                      <span className="material-symbols-outlined">contact_support</span>
+                      Yêu cầu bổ sung (sắp có)
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      className="gap-2 border-red-500/30 text-red-600 hover:bg-red-500/10"
+                      disabled={!isPendingSelected || rejectStatus === 'pending'}
+                      onClick={() => {
+                        setActionError('');
+                        setIsRejectDialogOpen(true);
+                      }}
+                    >
+                      <span className="material-symbols-outlined">close</span>
+                      Từ chối
+                    </Button>
+                  </div>
+
+                  {!isPendingSelected && (
+                    <p className="text-xs text-muted-foreground">
+                      Chỉ request ở trạng thái Chờ duyệt mới có thể chấp nhận hoặc từ chối.
+                    </p>
+                  )}
+
+                  {actionError ? <p className="text-sm text-red-500">{actionError}</p> : null}
+                </CardContent>
+              </Card>
             </div>
           )}
-        </section>
+        </div>
       </div>
+
+      <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Từ chối request volunteer</DialogTitle>
+            <DialogDescription>
+              Vui lòng nhập lý do từ chối. Lý do này sẽ được lưu vào trường reason.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Lý do từ chối *</label>
+            <Textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Nhập lý do từ chối..."
+              rows={4}
+            />
+          </div>
+
+          {actionError ? <p className="text-sm text-red-500">{actionError}</p> : null}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsRejectDialogOpen(false);
+                setRejectReason('');
+                setActionError('');
+              }}
+              disabled={rejectStatus === 'pending'}
+            >
+              Hủy
+            </Button>
+            <Button variant="primary" onClick={handleReject} disabled={rejectStatus === 'pending'}>
+              {rejectStatus === 'pending' ? 'Đang xử lý...' : 'Xác nhận từ chối'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

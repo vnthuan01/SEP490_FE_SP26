@@ -27,6 +27,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import {
   Form,
   FormControl,
   FormField,
@@ -45,6 +53,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useForm } from 'react-hook-form';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCampaigns, useCreateCampaign, useUpdateCampaignStatus } from '@/hooks/useCampaigns';
+import { useSupplyAllocationsByCampaign } from '@/hooks/useSupplies';
 import { useProvinces } from '@/hooks/useLocations';
 import {
   useProvincialStations,
@@ -52,23 +61,70 @@ import {
   RELIEF_STATION_KEYS,
 } from '@/hooks/useReliefStations';
 import { AddStationModal, type CreateStationFormData } from './components/AddStationModal';
-import type { CreateCampaignPayload } from '@/services/campaignService';
+import type { CampaignSummary, CreateCampaignPayload } from '@/services/campaignService';
 import { toast } from 'sonner';
+import { managerNavItems, managerProjects } from './components/sidebarConfig';
+import { formatNumberVN } from '@/lib/utils';
+import {
+  CampaignStatus,
+  CampaignStatusLabel,
+  CampaignType,
+  CampaignTypeLabel,
+  getCampaignStatusClass,
+  getCampaignStatusLabel,
+  getSupplyAllocationStatusClass,
+  getSupplyAllocationStatusLabel,
+  getCampaignTypeLabel,
+} from '@/enums/beEnums';
 
-const CAMPAIGN_STATUS_MAP: Record<
-  number,
-  { label: string; variant: 'success' | 'warning' | 'destructive' | 'outline' }
-> = {
-  0: { label: 'Nháp', variant: 'outline' },
-  1: { label: 'Đang hoạt động', variant: 'success' },
-  2: { label: 'Tạm dừng', variant: 'warning' },
-  3: { label: 'Kết thúc', variant: 'destructive' },
+const CAMPAIGN_STATUS_BADGE_ICON: Record<number, string> = {
+  [CampaignStatus.Draft]: 'draft',
+  [CampaignStatus.Active]: 'rocket_launch',
+  [CampaignStatus.Suspended]: 'pause_circle',
+  [CampaignStatus.Completed]: 'task_alt',
+  [CampaignStatus.Cancelled]: 'cancel',
+  [CampaignStatus.GoalsMet]: 'verified',
+  [CampaignStatus.ReadyToExecute]: 'check_circle',
+  [CampaignStatus.InProgress]: 'autorenew',
+  [CampaignStatus.Closing]: 'hourglass_top',
 };
 
-const CAMPAIGN_TYPE_MAP: Record<number, string> = {
-  0: 'Cứu trợ thiên tai',
-  1: 'Hỗ trợ nhân đạo',
-  2: 'Phòng chống dịch bệnh',
+const CAMPAIGN_TYPE_BADGE_ICON: Record<number, string> = {
+  [CampaignType.Fundraising]: 'volunteer_activism',
+  [CampaignType.Relief]: 'inventory_2',
+  [CampaignType.Rescue]: 'emergency',
+};
+
+const getCampaignStatusBadgeVariant = (
+  status: number,
+): 'success' | 'outline' | 'destructive' | 'warning' | 'info' => {
+  switch (status) {
+    case CampaignStatus.Active:
+    case CampaignStatus.ReadyToExecute:
+      return 'success';
+    case CampaignStatus.Suspended:
+    case CampaignStatus.Closing:
+      return 'warning';
+    case CampaignStatus.InProgress:
+      return 'info';
+    case CampaignStatus.Cancelled:
+      return 'destructive';
+    default:
+      return 'outline';
+  }
+};
+
+const getCampaignTypeBadgeClass = (type: number) => {
+  switch (type) {
+    case CampaignType.Fundraising:
+      return 'border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300';
+    case CampaignType.Relief:
+      return 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300';
+    case CampaignType.Rescue:
+      return 'border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300';
+    default:
+      return 'border border-border bg-muted/50 text-muted-foreground';
+  }
 };
 
 interface CreateCampaignFormValues {
@@ -94,6 +150,11 @@ export default function ManagerCampaignPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<number | undefined>(undefined);
   const [openCreateModal, setOpenCreateModal] = useState(false);
+  const [openAllocationModal, setOpenAllocationModal] = useState(false);
+  const [selectedCampaignForAllocations, setSelectedCampaignForAllocations] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [openAddStationModal, setOpenAddStationModal] = useState(false);
   const queryClient = useQueryClient();
 
@@ -106,6 +167,8 @@ export default function ManagerCampaignPage() {
 
   const { mutateAsync: createCampaign, status: createStatus } = useCreateCampaign();
   const { mutateAsync: updateStatus } = useUpdateCampaignStatus();
+  const { data: allocationsByCampaign = [], isLoading: isLoadingAllocations } =
+    useSupplyAllocationsByCampaign(selectedCampaignForAllocations?.id || '');
 
   const { data: provinces } = useProvinces();
   const { data: stationsData, isLoading: isLoadingStations } = useProvincialStations({
@@ -113,9 +176,26 @@ export default function ManagerCampaignPage() {
   });
   const { mutateAsync: createStation } = useCreateProvincialStation();
 
-  // Helper: API may return `stationId` or `id`
-  const getStationId = (s: any): string => s.stationId ?? s.id ?? '';
-  const stations = stationsData?.items || [];
+  const getStationId = (station: {
+    id?: string | null;
+    stationId?: string | null;
+    reliefStationId?: string | null;
+  }) => {
+    const rawId = station.reliefStationId ?? station.stationId ?? station.id;
+    return typeof rawId === 'string' && rawId.trim().length > 0 ? rawId : null;
+  };
+  const stations = (stationsData?.items || []).filter((station) => getStationId(station));
+
+  const getCampaignId = (campaign: Partial<CampaignSummary> & { id?: string | null }) => {
+    const rawId = campaign.campaignId ?? campaign.id;
+    return typeof rawId === 'string' && rawId.trim().length > 0 ? rawId : null;
+  };
+
+  const getCampaignDateText = (value?: string | null) => {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('vi-VN');
+  };
 
   const form = useForm<CreateCampaignFormValues>({
     defaultValues: {
@@ -128,7 +208,7 @@ export default function ManagerCampaignPage() {
       longitude: 106.660172,
       areaRadiusKm: 10,
       addressDetail: '',
-      type: 0,
+      type: CampaignType.Fundraising,
       completionRule: 0,
       allowOverTarget: false,
       availablePeopleCount: 0,
@@ -157,12 +237,12 @@ export default function ManagerCampaignPage() {
   const handleCreateStation = async (data: CreateStationFormData) => {
     try {
       const newStation = await createStation(data);
-      // Wait for the stations list to actually refetch before selecting the new station
       await queryClient.refetchQueries({ queryKey: RELIEF_STATION_KEYS.all });
-      // API may return `stationId` or `id`
-      const newId = newStation?.data?.stationId ?? newStation?.data?.id;
+      const newId = getStationId(newStation?.data ?? {});
       if (newId) {
         form.setValue('reliefStationId', newId);
+      } else {
+        toast.warning('Trạm đã tạo nhưng chưa lấy được mã trạm. Hãy chọn lại trong danh sách.');
       }
       setOpenAddStationModal(false);
     } catch (error) {
@@ -178,16 +258,26 @@ export default function ManagerCampaignPage() {
     }
   };
 
+  const openCampaignAllocations = (campaignId: string, campaignName: string) => {
+    setSelectedCampaignForAllocations({ id: campaignId, name: campaignName });
+    setOpenAllocationModal(true);
+  };
+
+  const allocationSummary = allocationsByCampaign.reduce(
+    (acc, allocation) => {
+      acc.totalAllocations += 1;
+      acc.totalItems += allocation.items?.length || 0;
+      acc.totalQuantity += (allocation.items || []).reduce(
+        (sum, item) => sum + (item.quantity || 0),
+        0,
+      );
+      return acc;
+    },
+    { totalAllocations: 0, totalItems: 0, totalQuantity: 0 },
+  );
+
   return (
-    <DashboardLayout
-      projects={[
-        { label: 'Chiến dịch', path: '/portal/manager/campaigns', icon: 'campaign' },
-        { label: 'Kho Tổng', path: '/portal/manager/inventory', icon: 'inventory_2' },
-        { label: 'Trạm Cứu Trợ', path: '/portal/manager/stations', icon: 'home_work' },
-        { label: 'Phương Tiện', path: '/portal/manager/vehicles', icon: 'local_shipping' },
-      ]}
-      navItems={[]}
-    >
+    <DashboardLayout projects={managerProjects} navItems={managerNavItems}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -235,7 +325,7 @@ export default function ManagerCampaignPage() {
               >
                 Tất cả
               </Button>
-              {Object.entries(CAMPAIGN_STATUS_MAP).map(([key, { label }]) => (
+              {Object.entries(CampaignStatusLabel).map(([key, label]) => (
                 <Button
                   key={key}
                   variant={statusFilter === Number(key) ? 'primary' : 'outline'}
@@ -290,40 +380,59 @@ export default function ManagerCampaignPage() {
                   </TableHeader>
                   <TableBody>
                     {campaigns.map((c) => {
-                      const statusInfo = CAMPAIGN_STATUS_MAP[c.status] || {
-                        label: 'Không rõ',
-                        variant: 'outline' as const,
-                      };
+                      const campaignId = getCampaignId(c);
+                      const statusLabel = getCampaignStatusLabel(c.status);
+                      const statusClass = getCampaignStatusClass(c.status);
+                      const statusVariant = getCampaignStatusBadgeVariant(c.status);
+                      const typeClass = getCampaignTypeBadgeClass(c.type);
+                      const typeIcon = CAMPAIGN_TYPE_BADGE_ICON[c.type] ?? 'category';
+                      const statusIcon = CAMPAIGN_STATUS_BADGE_ICON[c.status] ?? 'help';
                       return (
-                        <TableRow key={c.id} className="group hover:bg-card/50 transition-colors">
+                        <TableRow
+                          key={campaignId ?? `${c.name}-${c.startDate ?? 'unknown'}`}
+                          className="group hover:bg-card/50 transition-colors"
+                        >
                           <TableCell>
                             <p className="font-bold text-foreground text-sm">{c.name}</p>
                             <p className="text-[10px] text-muted-foreground uppercase">
-                              ID: {c.id.slice(0, 8)}
+                              ID: {campaignId ? campaignId.slice(0, 8) : '—'}
                             </p>
                           </TableCell>
                           <TableCell>
-                            <span className="text-foreground text-sm">
-                              {CAMPAIGN_TYPE_MAP[c.type] || 'Khác'}
-                            </span>
+                            <Badge
+                              variant="outline"
+                              appearance="outline"
+                              size="sm"
+                              className={`gap-1.5 rounded-full px-2.5 py-1 ${typeClass}`}
+                            >
+                              <span className="material-symbols-outlined text-xs">{typeIcon}</span>
+                              {getCampaignTypeLabel(c.type)}
+                            </Badge>
                           </TableCell>
                           <TableCell>
                             <div className="text-xs text-muted-foreground space-y-0.5">
-                              <p>Từ: {new Date(c.startDate).toLocaleDateString('vi-VN')}</p>
-                              <p>Đến: {new Date(c.endDate).toLocaleDateString('vi-VN')}</p>
+                              <p>Từ: {getCampaignDateText(c.startDate)}</p>
+                              <p>Đến: {getCampaignDateText(c.endDate)}</p>
                             </div>
                           </TableCell>
                           <TableCell>
-                            <span
-                              className="text-foreground text-sm truncate max-w-[150px] inline-block"
-                              title={c.addressDetail}
-                            >
-                              {c.addressDetail || '—'}
+                            <span className="text-foreground text-sm truncate max-w-[150px] inline-block">
+                              {typeof c.overallProgressPercent === 'number'
+                                ? `${Math.round(c.overallProgressPercent)}% tiến độ`
+                                : '—'}
                             </span>
                           </TableCell>
                           <TableCell>
-                            <Badge variant={statusInfo.variant} size="xs">
-                              {statusInfo.label}
+                            <Badge
+                              variant={statusVariant}
+                              appearance="outline"
+                              size="sm"
+                              className={`gap-1.5 rounded-full px-2.5 py-1 border ${statusClass}`}
+                            >
+                              <span className="material-symbols-outlined text-xs">
+                                {statusIcon}
+                              </span>
+                              {statusLabel}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
@@ -337,7 +446,11 @@ export default function ManagerCampaignPage() {
                                 {c.status === 0 && (
                                   <DropdownMenuItem
                                     className="gap-2 text-success"
-                                    onClick={() => handleUpdateStatus(c.id, 1)}
+                                    onClick={() =>
+                                      campaignId
+                                        ? handleUpdateStatus(campaignId, 1)
+                                        : toast.error('Không tìm thấy mã chiến dịch để kích hoạt')
+                                    }
                                   >
                                     <span className="material-symbols-outlined text-lg">
                                       play_arrow
@@ -348,7 +461,11 @@ export default function ManagerCampaignPage() {
                                 {c.status === 1 && (
                                   <DropdownMenuItem
                                     className="gap-2 text-warning"
-                                    onClick={() => handleUpdateStatus(c.id, 2)}
+                                    onClick={() =>
+                                      campaignId
+                                        ? handleUpdateStatus(campaignId, 2)
+                                        : toast.error('Không tìm thấy mã chiến dịch để tạm dừng')
+                                    }
                                   >
                                     <span className="material-symbols-outlined text-lg">pause</span>
                                     Tạm dừng
@@ -357,7 +474,11 @@ export default function ManagerCampaignPage() {
                                 {c.status === 2 && (
                                   <DropdownMenuItem
                                     className="gap-2 text-success"
-                                    onClick={() => handleUpdateStatus(c.id, 1)}
+                                    onClick={() =>
+                                      campaignId
+                                        ? handleUpdateStatus(campaignId, 1)
+                                        : toast.error('Không tìm thấy mã chiến dịch để tiếp tục')
+                                    }
                                   >
                                     <span className="material-symbols-outlined text-lg">
                                       play_arrow
@@ -368,12 +489,29 @@ export default function ManagerCampaignPage() {
                                 {(c.status === 1 || c.status === 2) && (
                                   <DropdownMenuItem
                                     className="gap-2 text-destructive"
-                                    onClick={() => handleUpdateStatus(c.id, 3)}
+                                    onClick={() =>
+                                      campaignId
+                                        ? handleUpdateStatus(campaignId, 3)
+                                        : toast.error('Không tìm thấy mã chiến dịch để kết thúc')
+                                    }
                                   >
                                     <span className="material-symbols-outlined text-lg">stop</span>
                                     Kết thúc chiến dịch
                                   </DropdownMenuItem>
                                 )}
+                                <DropdownMenuItem
+                                  className="gap-2 text-primary"
+                                  onClick={() =>
+                                    campaignId
+                                      ? openCampaignAllocations(campaignId, c.name)
+                                      : toast.error('Không tìm thấy mã chiến dịch để xem điều phối')
+                                  }
+                                >
+                                  <span className="material-symbols-outlined text-lg">
+                                    inventory_2
+                                  </span>
+                                  Xem hàng đã điều phối
+                                </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -494,7 +632,7 @@ export default function ManagerCampaignPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {Object.entries(CAMPAIGN_TYPE_MAP).map(([key, label]) => (
+                          {Object.entries(CampaignTypeLabel).map(([key, label]) => (
                             <SelectItem key={key} value={key}>
                               {label}
                             </SelectItem>
@@ -522,11 +660,13 @@ export default function ManagerCampaignPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {provinces?.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.fullName}
-                            </SelectItem>
-                          ))}
+                          {(provinces ?? [])
+                            .filter((p) => typeof p.id === 'string' && p.id.trim().length > 0)
+                            .map((p) => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.fullName}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -576,6 +716,7 @@ export default function ManagerCampaignPage() {
                             <SelectContent>
                               {stations.map((s) => {
                                 const sid = getStationId(s);
+                                if (!sid) return null;
                                 return (
                                   <SelectItem key={sid} value={sid}>
                                     {s.name}
@@ -727,6 +868,159 @@ export default function ManagerCampaignPage() {
         onSubmit={handleCreateStation}
         defaultLocationId={form.getValues('locationId')}
       />
+
+      <Sheet open={openAllocationModal} onOpenChange={setOpenAllocationModal}>
+        <SheetContent side="right" className="w-full sm:max-w-[1100px] p-0">
+          <SheetHeader className="px-6 pt-6 pb-4 border-b border-border">
+            <SheetTitle>Hàng hóa đã điều phối cho chiến dịch</SheetTitle>
+            <SheetDescription>
+              {selectedCampaignForAllocations
+                ? `Chiến dịch: ${selectedCampaignForAllocations.name}`
+                : 'Xem lịch sử điều phối hàng hóa theo chiến dịch'}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="border-border bg-card">
+                <CardContent className="p-5 bg-sky-500/10 rounded-xl">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Số đợt điều phối</p>
+                      <p className="mt-2 text-3xl font-black text-foreground">
+                        {formatNumberVN(allocationSummary.totalAllocations)}
+                      </p>
+                    </div>
+                    <div className="size-11 rounded-2xl bg-sky-500/15 text-sky-600 dark:text-sky-300 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-[22px]">local_shipping</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-border bg-card">
+                <CardContent className="p-5 bg-emerald-500/10 rounded-xl">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Tổng dòng vật phẩm</p>
+                      <p className="mt-2 text-3xl font-black text-foreground">
+                        {formatNumberVN(allocationSummary.totalItems)}
+                      </p>
+                    </div>
+                    <div className="size-11 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-[22px]">inventory_2</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border-border bg-card">
+                <CardContent className="p-5 bg-amber-500/10 rounded-xl">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Tổng số lượng đã cấp</p>
+                      <p className="mt-2 text-3xl font-black text-foreground">
+                        {formatNumberVN(allocationSummary.totalQuantity)}
+                      </p>
+                    </div>
+                    <div className="size-11 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-300 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-[22px]">deployed_code</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {isLoadingAllocations ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="flex flex-col items-center gap-3">
+                  <span className="material-symbols-outlined text-4xl text-primary animate-spin">
+                    progress_activity
+                  </span>
+                  <p className="text-muted-foreground text-sm">Đang tải lịch sử điều phối...</p>
+                </div>
+              </div>
+            ) : allocationsByCampaign.length === 0 ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="flex flex-col items-center gap-3">
+                  <span className="material-symbols-outlined text-4xl text-muted-foreground">
+                    inventory_2
+                  </span>
+                  <p className="text-muted-foreground text-sm">
+                    Chiến dịch này chưa có đợt điều phối nào
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {allocationsByCampaign.map((allocation, index) => (
+                  <Card
+                    className="relative cursor-pointer"
+                    key={allocation.allocationId || `${allocation.campaignId}-${index}`}
+                  >
+                    <CardHeader className="pb-3">
+                      <div>
+                        <Badge
+                          variant="outline"
+                          appearance="outline"
+                          size="sm"
+                          className={`absolute top-4 right-10 border ${getSupplyAllocationStatusClass(allocation.status)}`}
+                        >
+                          {getSupplyAllocationStatusLabel(allocation.status)}
+                        </Badge>
+                        <div>
+                          <CardTitle className="text-base py-2">
+                            Phiếu điều phối #{index + 1}
+                          </CardTitle>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Mã phiếu: {allocation.allocationId || '—'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Kho nguồn:{' '}
+                            {(allocation.sourceInventoryId && allocation?.sourceInventoryName && (
+                              <span className="text-xs text-muted-foreground font-normal">
+                                {allocation.sourceInventoryName}
+                              </span>
+                            )) ||
+                              '—'}
+                          </p>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Vật phẩm</TableHead>
+                            <TableHead>Số lượng</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {(allocation.items || []).map((item, itemIndex) => (
+                            <TableRow
+                              key={`${allocation.allocationId || index}-${item.supplyItemId}-${itemIndex}`}
+                            >
+                              <TableCell className="font-mono text-xs text-muted-foreground">
+                                {item.supplyItemId}
+                              </TableCell>
+                              <TableCell>{formatNumberVN(item.quantity)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <SheetFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
+            <Button variant="destructive" onClick={() => setOpenAllocationModal(false)}>
+              <span className="material-symbols-outlined text-lg">close</span>
+              Đóng
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </DashboardLayout>
   );
 }

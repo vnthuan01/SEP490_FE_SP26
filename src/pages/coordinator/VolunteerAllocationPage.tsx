@@ -4,6 +4,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { teamsData, volunteerRequestsData } from './components/mockData';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
 // import { Team, VolunteerRequest } from './components/types';
 
 // Mock data extension for the allocation page
@@ -60,36 +61,7 @@ export default function VolunteerAllocationPage() {
   };
 
   return (
-    <DashboardLayout
-      projects={[
-        { label: 'Tổng quan', path: '/portal/coordinator/data-management', icon: 'dashboard' },
-        { label: 'Điều phối & Bản đồ', path: '/portal/coordinator/maps', icon: 'map' },
-        { label: 'Đội tình nguyện', path: '/portal/coordinator/teams', icon: 'groups' },
-        // {
-        //     label: 'Tuyển tình nguyện viên',
-        //     path: '/portal/coordinator/volunteer-allocation' /* Current Page */,
-        //     icon: 'person_add',
-        // },
-        {
-          label: 'Yêu cầu tình nguyện',
-          path: '/portal/coordinator/volunteer-requests',
-          icon: 'how_to_reg',
-        },
-        {
-          label: 'Yêu cầu cứu trợ',
-          path: '/portal/coordinator/requests',
-          icon: 'person_raised_hand',
-        },
-        {
-          label: 'Kho vận & Nhu yếu phẩm',
-          path: '/portal/coordinator/inventory',
-          icon: 'inventory_2',
-        },
-      ]}
-      navItems={[
-        { label: 'Báo cáo & Thống kê', path: '/portal/coordinator/dashboard', icon: 'description' },
-      ]}
-    >
+    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between gap-6 mb-8 px-2">
         <div className="flex flex-col gap-2">
@@ -290,7 +262,12 @@ export default function VolunteerAllocationPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-xs font-medium border border-blue-200 dark:border-blue-800/50">
-                    {vol.skills[0] || 'TNV'}
+                    {typeof vol.skills?.[0] === 'string'
+                      ? vol.skills[0]
+                      : (vol.skills?.[0] as any)?.displayName ||
+                        (vol.skills?.[0] as any)?.name ||
+                        (vol.skills?.[0] as any)?.email ||
+                        'TNV'}
                   </span>
                 </div>
               </div>

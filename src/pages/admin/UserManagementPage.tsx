@@ -16,8 +16,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { type UserRoleType } from '@/enums/UserRole';
 import { roleVariantMap } from '@/constants/roleVariant';
 import { roleLabelMap } from '@/constants/roleLabel';
-import { useState } from 'react';
-import { AddUserModal } from './components/AddUserModal';
+import { useEffect, useState } from 'react';
+import { AddUserModal, type CreateUserPayload } from './components/AddUserModal';
+import { getCurrentUserProfile } from '@/services/userService';
 import { useAllUsers } from '@/hooks/useUsers';
 import { StatsCard } from '@/pages/admin/components/StatsCard';
 import {
@@ -46,65 +47,68 @@ export default function AdminUserManagementPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<boolean | undefined>(undefined);
-
-  // States for Ban/Unban dialogs
-  const [banUserDialog, setBanUserDialog] = useState<{
-    open: boolean;
-    userId: string;
-    email: string;
-  }>({
-    open: false,
-    userId: '',
-    email: '',
-  });
   const [banReason, setBanReason] = useState('');
-  const [unbanUserDialog, setUnbanUserDialog] = useState<{
-    open: boolean;
-    userId: string;
-    email: string;
-  }>({
-    open: false,
-    userId: '',
-    email: '',
-  });
+  const [banUserDialog, setBanUserDialog] = useState({ open: false, userId: '', email: '' });
+  const [unbanUserDialog, setUnbanUserDialog] = useState({ open: false, userId: '', email: '' });
 
   const { users, pagination, isLoading, refetch } = useAllUsers({
     pageIndex,
     pageSize,
-    search: search || undefined,
+    search: search.trim() || undefined,
     role: roleFilter,
     isBanned: statusFilter,
   });
+  const banUserMutation = useBanUser();
+  const unbanUserMutation = useUnbanUser();
 
-  const { mutateAsync: banUser } = useBanUser();
-  const { mutateAsync: unbanUser } = useUnbanUser();
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        await getCurrentUserProfile();
+      } catch (err) {
+        console.error('Lỗi lấy profile', err);
+      }
+    };
+
+    fetchProfile();
+  }, []);
+  const handleCreateUser = async (_data: CreateUserPayload) => {
+    console.log('Đã tạo user thành công');
+    await refetch();
+  };
 
   const handleBanUser = async () => {
+    const reason = banReason.trim();
+    if (!banUserDialog.userId || !reason) return;
+
     try {
-      await banUser({ userId: banUserDialog.userId, data: { reason: banReason } });
-      toast.success(`Đã khóa người dùng ${banUserDialog.email}`);
+      await banUserMutation.mutateAsync({
+        userId: banUserDialog.userId,
+        data: { reason },
+      });
+      toast.success('Đã khóa tài khoản người dùng');
       setBanUserDialog({ open: false, userId: '', email: '' });
       setBanReason('');
-      refetch();
-    } catch (error) {
-      console.error(error);
+      await refetch();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Không thể khóa tài khoản');
     }
   };
 
   const handleUnbanUser = async () => {
-    try {
-      await unbanUser({ userId: unbanUserDialog.userId, data: { note: 'Admin unbanned' } });
-      toast.success(`Đã mở khóa người dùng ${unbanUserDialog.email}`);
-      setUnbanUserDialog({ open: false, userId: '', email: '' });
-      refetch();
-    } catch (error) {
-      console.error(error);
-    }
-  };
+    if (!unbanUserDialog.userId) return;
 
-  const handleCreateUser = async () => {
-    console.log('Đã tạo user thành công');
-    refetch();
+    try {
+      await unbanUserMutation.mutateAsync({
+        userId: unbanUserDialog.userId,
+        data: { note: 'Unbanned by admin' },
+      });
+      toast.success('Đã mở khóa tài khoản người dùng');
+      setUnbanUserDialog({ open: false, userId: '', email: '' });
+      await refetch();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Không thể mở khóa tài khoản');
+    }
   };
 
   return (

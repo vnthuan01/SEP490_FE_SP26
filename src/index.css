@@ -48,11 +48,31 @@
 
 @keyframes shimmer {
   0% {
-    transform: translateX(-50%);
+    transform: translateX(-100%);
   }
   100% {
-    transform: translateX(50%);
+    transform: translateX(100%);
   }
+}
+
+/* Skeleton shimmer — follows theme via CSS vars */
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--muted);
+}
+
+.skeleton-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--muted-foreground) 8%, transparent) 50%,
+    transparent 100%
+  );
+  animation: shimmer 1.6s ease-in-out infinite;
 }
 
 @keyframes rotate {

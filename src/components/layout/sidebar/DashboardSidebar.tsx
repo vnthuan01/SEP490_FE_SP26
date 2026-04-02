@@ -47,13 +47,12 @@ export function DashboardSidebar({
 
   // Default projects for Admin
   const defaultProjects: ProjectItem[] = projects || [
-    { label: 'Tổng quan', path: '/portal/admin/data-management', icon: 'dashboard' },
-    { label: 'Người dùng', path: '/portal/admin/users', icon: 'group' },
+    { label: 'Tổng quan', path: '/', icon: 'dashboard' },
   ];
 
   // Default nav items for Admin
   const defaultNavItems: NavItem[] = navItems || [
-    { label: 'Thống Kê', path: '/portal/admin/dashboard', icon: 'description' },
+    { label: 'Thống Kê', path: '/', icon: 'description' },
   ];
 
   const sidebarContent = (
