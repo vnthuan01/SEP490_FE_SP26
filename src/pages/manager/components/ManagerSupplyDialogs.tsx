@@ -12,6 +12,7 @@ import {
   type SupplyEditableDraft,
   type SupplyEditableDraftKey,
 } from './ManagerSupplyItemFormCard';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 type CreateDraft = SupplyEditableDraft & { id: string };
 type BulkDraft = SupplyEditableDraft & { draftId: string; supplyItemId: string };
@@ -58,31 +59,39 @@ export function ManagerCreateSupplyDialog({
               />
               {drafts.length > 1 && (
                 <div className="flex justify-end">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive"
-                    onClick={() => onRemoveDraft(item.id)}
-                  >
-                    <span className="material-symbols-outlined text-lg">delete</span>
-                    Xóa dòng
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive"
+                        onClick={() => onRemoveDraft(item.id)}
+                      >
+                        <span className="material-symbols-outlined text-lg">delete</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      <p>Xóa thẻ vật phẩm phía trên này</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
               )}
             </div>
           ))}
 
-          <Button variant="outline" className="gap-2" onClick={onAddDraft}>
+          <Button variant="warning" className="gap-2" onClick={onAddDraft}>
             <span className="material-symbols-outlined text-lg">add</span>
             Thêm một vật phẩm nữa
           </Button>
         </div>
 
         <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="destructive" onClick={() => onOpenChange(false)}>
+            <span className="material-symbols-outlined text-lg">close</span>
             Hủy
           </Button>
-          <Button onClick={onSubmit} disabled={isPending}>
+          <Button variant="primary" onClick={onSubmit} disabled={isPending}>
+            <span className="material-symbols-outlined text-lg">add</span>
             {isPending ? 'Đang tạo...' : 'Tạo danh mục vật phẩm'}
           </Button>
         </DialogFooter>
@@ -128,7 +137,7 @@ export function ManagerBulkEditSupplyDialog({
                 item={item}
                 index={index}
                 title="Vật phẩm"
-                description="Mỗi vật phẩm có input và id riêng, có thể chỉnh độc lập rồi lưu cùng lúc."
+                description="Mỗi vật phẩm có thông tin khác nhau, có thể chỉnh sửa độc lập rồi lưu cùng lúc."
                 onChange={(key, value) => onDraftChange(item.draftId, key, value)}
                 showItemBadge
               />
@@ -137,10 +146,12 @@ export function ManagerBulkEditSupplyDialog({
         </div>
 
         <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="destructive" onClick={() => onOpenChange(false)}>
+            <span className="material-symbols-outlined text-lg">close</span>
             Hủy
           </Button>
-          <Button onClick={onSubmit} disabled={isPending}>
+          <Button variant="primary" onClick={onSubmit} disabled={isPending}>
+            <span className="material-symbols-outlined text-lg">save</span>
             {isPending ? 'Đang lưu...' : 'Lưu cập nhật đã chọn'}
           </Button>
         </DialogFooter>

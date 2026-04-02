@@ -121,7 +121,7 @@ export const useAssignModeratorToStation = () => {
       queryClient.invalidateQueries({ queryKey: RELIEF_STATION_KEYS.all });
     },
     onError: (error: any) => {
-      handleHookError(error, 'Không thể gán quản lý cho trạm');
+      handleHookError(error, 'Không thể gán quản lý cho trạm / Trạm đã có người quản lý');
     },
   });
 };

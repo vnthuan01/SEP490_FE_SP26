@@ -29,12 +29,14 @@ import {
 import {
   useProvincialStations,
   useCreateProvincialStation,
+  useUpdateProvincialStation,
   useDisableProvincialStation,
   useActivateProvincialStation,
   useAssignModeratorToStation,
 } from '@/hooks/useReliefStations';
 import { useModerators } from '@/hooks/useUsers';
 import { AddStationModal, type CreateStationFormData } from './components/AddStationModal';
+import { EditStationModal, type EditStationFormData } from './components/EditStationModal';
 import { toast } from 'sonner';
 import {
   ReliefStationStatus,
@@ -42,6 +44,7 @@ import {
   getReliefStationStatusClass,
 } from '@/enums/beEnums';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const getStationId = (station: {
   id?: string | null;
@@ -74,8 +77,18 @@ export default function ManagerStationPage() {
   const [pageSize] = useState(10);
   const [search, setSearch] = useState('');
   const [openAddModal, setOpenAddModal] = useState(false);
+  const [openEditModal, setOpenEditModal] = useState(false);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [selectedModeratorId, setSelectedModeratorId] = useState<string>('');
+  const [editingStation, setEditingStation] = useState<{
+    id: string | null;
+    name: string;
+    address: string;
+    contactNumber: string;
+    longitude: number;
+    latitude: number;
+    coverageRadiusKm: number;
+  } | null>(null);
   const [selectedStation, setSelectedStation] = useState<{ id: string | null; name: string }>({
     id: null,
     name: '',
@@ -98,6 +111,7 @@ export default function ManagerStationPage() {
   });
 
   const { mutateAsync: createStation } = useCreateProvincialStation();
+  const { mutateAsync: updateStation } = useUpdateProvincialStation();
   const { mutateAsync: disableStation } = useDisableProvincialStation();
   const { mutateAsync: activateStation } = useActivateProvincialStation();
   const { mutateAsync: assignModerator, status: assignModeratorStatus } =
@@ -126,6 +140,41 @@ export default function ManagerStationPage() {
       return;
     }
     await activateStation(id);
+  };
+
+  const openEditStationModal = (station: any) => {
+    const stationId = getStationId(station);
+
+    if (!stationId) {
+      toast.error('Không tìm thấy mã trạm để chỉnh sửa.');
+      return;
+    }
+
+    setEditingStation({
+      id: stationId,
+      name: station.name || '',
+      address: station.address || '',
+      contactNumber: station.contactNumber || '',
+      longitude: Number(station.longitude || 0),
+      latitude: Number(station.latitude || 0),
+      coverageRadiusKm: Number(station.coverageRadiusKm || 1),
+    });
+    setOpenEditModal(true);
+  };
+
+  const handleUpdateStation = async (data: EditStationFormData) => {
+    if (!editingStation?.id) {
+      toast.error('Không tìm thấy mã trạm để cập nhật.');
+      return;
+    }
+
+    await updateStation({
+      stationId: editingStation.id,
+      data,
+    });
+
+    setOpenEditModal(false);
+    setEditingStation(null);
   };
 
   const openAssignModeratorModal = (station: {
@@ -254,6 +303,7 @@ export default function ManagerStationPage() {
                       <TableHead>Tên trạm</TableHead>
                       <TableHead>Địa chỉ</TableHead>
                       <TableHead>Liên hệ</TableHead>
+                      <TableHead>Bán kính</TableHead>
                       <TableHead>Trạng thái</TableHead>
                       <TableHead className="text-right">Thao tác</TableHead>
                     </TableRow>
@@ -277,15 +327,25 @@ export default function ManagerStationPage() {
                             </p>
                           </TableCell>
                           <TableCell>
-                            <span
-                              className="text-foreground text-sm max-w-[200px] truncate inline-block"
-                              title={station.address}
-                            >
-                              {station.address}
-                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  className="text-foreground text-sm max-w-[200px] truncate inline-block"
+                                  title={station.address}
+                                >
+                                  {station.address}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>{station.address}</TooltipContent>
+                            </Tooltip>
                           </TableCell>
                           <TableCell>
                             <span className="text-foreground text-sm">{station.contactNumber}</span>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-foreground text-sm">
+                              {station.coverageRadiusKm ? `${station.coverageRadiusKm} km` : '—'}
+                            </span>
                           </TableCell>
                           <TableCell>
                             <Badge
@@ -312,7 +372,10 @@ export default function ManagerStationPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem className="gap-2">
+                                <DropdownMenuItem
+                                  className="gap-2"
+                                  onClick={() => openEditStationModal(station)}
+                                >
                                   <span className="material-symbols-outlined text-lg">edit</span>
                                   Chỉnh sửa
                                 </DropdownMenuItem>
@@ -410,6 +473,16 @@ export default function ManagerStationPage() {
         open={openAddModal}
         onClose={() => setOpenAddModal(false)}
         onSubmit={handleCreateStation}
+      />
+
+      <EditStationModal
+        open={openEditModal}
+        onClose={() => {
+          setOpenEditModal(false);
+          setEditingStation(null);
+        }}
+        onSubmit={handleUpdateStation}
+        initialData={editingStation}
       />
 
       <Dialog open={assignModalOpen} onOpenChange={setAssignModalOpen}>

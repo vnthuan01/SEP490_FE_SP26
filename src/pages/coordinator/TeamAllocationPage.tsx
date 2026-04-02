@@ -326,8 +326,8 @@ export default function CoordinatorTeamAllocationPage() {
                   "
                   aria-label={showSidebar ? 'Ẩn danh sách' : 'Hiện danh sách'}
                 >
-                  <span className="material-symbols-outlined text-[20px]">
-                    {showSidebar ? 'close' : 'list'}
+                  <span className=" material-symbols-outlined text-[20px]">
+                    {showSidebar ? 'close' : 'view_list'}
                   </span>
                 </button>
               </TooltipTrigger>
@@ -341,13 +341,13 @@ export default function CoordinatorTeamAllocationPage() {
                   shadow-lg
                   text-white
                   flex items-center gap-1
-                  ${showSidebar ? 'bg-rose-600' : 'bg-emerald-600'}
+                  ${showSidebar ? 'bg-destructive' : 'bg-primary'}
               `}
               >
-                <span className="material-symbols-outlined text-[14px] text-blue-500">
+                <span className="material-symbols-outlined text-[14px] text-secondary">
                   {showSidebar ? 'visibility_off' : 'visibility'}
                 </span>
-                {showSidebar ? 'Ẩn danh sách' : 'Hiện danh sách'}
+                {showSidebar ? 'Ẩn danh sách' : 'Hiển thị danh sách'}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

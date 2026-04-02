@@ -36,12 +36,18 @@ export function ManagerInventoryTable({
   isLoading,
   isUpdating,
   onManageStock,
+  onCreateTransfer,
+  onViewTransfers,
+  onViewTransactions,
   onToggleStatus,
 }: {
   inventories: InventoryItem[];
   isLoading: boolean;
   isUpdating: boolean;
   onManageStock: (inventoryId: string, inventoryName: string) => void;
+  onCreateTransfer: (inventoryId: string, inventoryName: string) => void;
+  onViewTransfers: (inventoryId: string, inventoryName: string) => void;
+  onViewTransactions: (inventoryId: string, inventoryName: string) => void;
   onToggleStatus: (inventoryId: string, level: number, status: EntityStatus) => void;
 }) {
   return (
@@ -147,6 +153,27 @@ export function ManagerInventoryTable({
                         >
                           <span className="material-symbols-outlined text-lg">inventory</span>
                           Nhập hoặc cập nhật tồn kho
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="gap-2 text-primary"
+                          onClick={() => onCreateTransfer(inv.inventoryId, inv.reliefStationName)}
+                        >
+                          <span className="material-symbols-outlined text-lg">swap_horiz</span>
+                          Tạo phiếu chuyển kho
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="gap-2 text-primary"
+                          onClick={() => onViewTransfers(inv.inventoryId, inv.reliefStationName)}
+                        >
+                          <span className="material-symbols-outlined text-lg">history</span>
+                          Xem lịch sử chuyển kho
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="gap-2 text-primary"
+                          onClick={() => onViewTransactions(inv.inventoryId, inv.reliefStationName)}
+                        >
+                          <span className="material-symbols-outlined text-lg">receipt_long</span>
+                          Xem lịch sử giao dịch
                         </DropdownMenuItem>
                         {inv.status === EntityStatus.Active ? (
                           <DropdownMenuItem
