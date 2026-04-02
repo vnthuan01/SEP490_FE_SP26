@@ -127,7 +127,7 @@ export function useUpdateCampaignStatus() {
       queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi cập nhật trạng thái');
+      console.error(error);
     },
   });
 }

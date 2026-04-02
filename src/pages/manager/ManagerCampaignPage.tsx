@@ -55,21 +55,64 @@ import { AddStationModal, type CreateStationFormData } from './components/AddSta
 import type { CampaignSummary, CreateCampaignPayload } from '@/services/campaignService';
 import { toast } from 'sonner';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
+import {
+  CampaignStatus,
+  CampaignStatusLabel,
+  CampaignType,
+  CampaignTypeLabel,
+  getCampaignStatusClass,
+  getCampaignStatusLabel,
+  getCampaignTypeLabel,
+} from '@/enums/beEnums';
 
-const CAMPAIGN_STATUS_MAP: Record<
-  number,
-  { label: string; variant: 'success' | 'warning' | 'destructive' | 'outline' }
-> = {
-  0: { label: 'Nháp', variant: 'outline' },
-  1: { label: 'Đang hoạt động', variant: 'success' },
-  2: { label: 'Tạm dừng', variant: 'warning' },
-  3: { label: 'Kết thúc', variant: 'destructive' },
+const CAMPAIGN_STATUS_BADGE_ICON: Record<number, string> = {
+  [CampaignStatus.Draft]: 'draft',
+  [CampaignStatus.Active]: 'rocket_launch',
+  [CampaignStatus.Suspended]: 'pause_circle',
+  [CampaignStatus.Completed]: 'task_alt',
+  [CampaignStatus.Cancelled]: 'cancel',
+  [CampaignStatus.GoalsMet]: 'verified',
+  [CampaignStatus.ReadyToExecute]: 'check_circle',
+  [CampaignStatus.InProgress]: 'autorenew',
+  [CampaignStatus.Closing]: 'hourglass_top',
 };
 
-const CAMPAIGN_TYPE_MAP: Record<number, string> = {
-  0: 'Cứu trợ thiên tai',
-  1: 'Hỗ trợ nhân đạo',
-  2: 'Phòng chống dịch bệnh',
+const CAMPAIGN_TYPE_BADGE_ICON: Record<number, string> = {
+  [CampaignType.Fundraising]: 'volunteer_activism',
+  [CampaignType.Relief]: 'inventory_2',
+  [CampaignType.Rescue]: 'emergency',
+};
+
+const getCampaignStatusBadgeVariant = (
+  status: number,
+): 'success' | 'outline' | 'destructive' | 'warning' | 'info' => {
+  switch (status) {
+    case CampaignStatus.Active:
+    case CampaignStatus.ReadyToExecute:
+      return 'success';
+    case CampaignStatus.Suspended:
+    case CampaignStatus.Closing:
+      return 'warning';
+    case CampaignStatus.InProgress:
+      return 'info';
+    case CampaignStatus.Cancelled:
+      return 'destructive';
+    default:
+      return 'outline';
+  }
+};
+
+const getCampaignTypeBadgeClass = (type: number) => {
+  switch (type) {
+    case CampaignType.Fundraising:
+      return 'border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300';
+    case CampaignType.Relief:
+      return 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300';
+    case CampaignType.Rescue:
+      return 'border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300';
+    default:
+      return 'border border-border bg-muted/50 text-muted-foreground';
+  }
 };
 
 interface CreateCampaignFormValues {
@@ -146,7 +189,7 @@ export default function ManagerCampaignPage() {
       longitude: 106.660172,
       areaRadiusKm: 10,
       addressDetail: '',
-      type: 0,
+      type: CampaignType.Fundraising,
       completionRule: 0,
       allowOverTarget: false,
       availablePeopleCount: 0,
@@ -245,7 +288,7 @@ export default function ManagerCampaignPage() {
               >
                 Tất cả
               </Button>
-              {Object.entries(CAMPAIGN_STATUS_MAP).map(([key, { label }]) => (
+              {Object.entries(CampaignStatusLabel).map(([key, label]) => (
                 <Button
                   key={key}
                   variant={statusFilter === Number(key) ? 'primary' : 'outline'}
@@ -301,10 +344,12 @@ export default function ManagerCampaignPage() {
                   <TableBody>
                     {campaigns.map((c) => {
                       const campaignId = getCampaignId(c);
-                      const statusInfo = CAMPAIGN_STATUS_MAP[c.status] || {
-                        label: 'Không rõ',
-                        variant: 'outline' as const,
-                      };
+                      const statusLabel = getCampaignStatusLabel(c.status);
+                      const statusClass = getCampaignStatusClass(c.status);
+                      const statusVariant = getCampaignStatusBadgeVariant(c.status);
+                      const typeClass = getCampaignTypeBadgeClass(c.type);
+                      const typeIcon = CAMPAIGN_TYPE_BADGE_ICON[c.type] ?? 'category';
+                      const statusIcon = CAMPAIGN_STATUS_BADGE_ICON[c.status] ?? 'help';
                       return (
                         <TableRow
                           key={campaignId ?? `${c.name}-${c.startDate ?? 'unknown'}`}
@@ -317,9 +362,15 @@ export default function ManagerCampaignPage() {
                             </p>
                           </TableCell>
                           <TableCell>
-                            <span className="text-foreground text-sm">
-                              {CAMPAIGN_TYPE_MAP[c.type] || 'Khác'}
-                            </span>
+                            <Badge
+                              variant="outline"
+                              appearance="outline"
+                              size="sm"
+                              className={`gap-1.5 rounded-full px-2.5 py-1 ${typeClass}`}
+                            >
+                              <span className="material-symbols-outlined text-xs">{typeIcon}</span>
+                              {getCampaignTypeLabel(c.type)}
+                            </Badge>
                           </TableCell>
                           <TableCell>
                             <div className="text-xs text-muted-foreground space-y-0.5">
@@ -335,8 +386,16 @@ export default function ManagerCampaignPage() {
                             </span>
                           </TableCell>
                           <TableCell>
-                            <Badge variant={statusInfo.variant} size="xs">
-                              {statusInfo.label}
+                            <Badge
+                              variant={statusVariant}
+                              appearance="outline"
+                              size="sm"
+                              className={`gap-1.5 rounded-full px-2.5 py-1 border ${statusClass}`}
+                            >
+                              <span className="material-symbols-outlined text-xs">
+                                {statusIcon}
+                              </span>
+                              {statusLabel}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
@@ -523,7 +582,7 @@ export default function ManagerCampaignPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {Object.entries(CAMPAIGN_TYPE_MAP).map(([key, label]) => (
+                          {Object.entries(CampaignTypeLabel).map(([key, label]) => (
                             <SelectItem key={key} value={key}>
                               {label}
                             </SelectItem>

@@ -124,17 +124,6 @@ export function useUpdateInventory() {
   });
 }
 
-export function useDeleteInventory() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => inventoryService.delete(id),
-    onSuccess: () => {
-      toast.success('Đã xóa kho');
-      queryClient.invalidateQueries({ queryKey: INVENTORY_KEYS.all });
-    },
-  });
-}
-
 export function useAddStock() {
   const queryClient = useQueryClient();
   return useMutation({

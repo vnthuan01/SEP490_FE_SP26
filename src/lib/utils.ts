@@ -28,6 +28,38 @@ export const formatCurrencyVNDSHORT = (value: number): string => {
   return value.toString();
 };
 
+export const formatNumberVN = (value: number | string | null | undefined): string => {
+  if (value === null || value === undefined || value === '') return '0';
+
+  const numericValue =
+    typeof value === 'number' ? value : Number(String(value).replace(/[.,\s]/g, ''));
+
+  if (!Number.isFinite(numericValue)) return '0';
+
+  return new Intl.NumberFormat('vi-VN', {
+    maximumFractionDigits: 0,
+  }).format(numericValue);
+};
+
+export const normalizeNumberInput = (value: string): string => value.replace(/\D/g, '');
+
+export const formatNumberInputVN = (value: string | number | null | undefined): string => {
+  if (value === null || value === undefined || value === '') return '';
+
+  const normalized = normalizeNumberInput(String(value));
+  if (!normalized) return '';
+
+  return formatNumberVN(normalized);
+};
+
+export const parseFormattedNumber = (value: string | number | null | undefined): number => {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+
+  const normalized = normalizeNumberInput(value);
+  return normalized ? Number(normalized) : 0;
+};
+
 //Local time
 export function getDateKey(d: Date): string {
   const year = d.getFullYear();

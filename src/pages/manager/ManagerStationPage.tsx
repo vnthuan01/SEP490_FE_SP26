@@ -33,6 +33,7 @@ import {
   useActivateProvincialStation,
   useAssignModeratorToStation,
 } from '@/hooks/useReliefStations';
+import { useModerators } from '@/hooks/useUsers';
 import { AddStationModal, type CreateStationFormData } from './components/AddStationModal';
 import { toast } from 'sonner';
 import {
@@ -41,34 +42,6 @@ import {
   getReliefStationStatusClass,
 } from '@/enums/beEnums';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
-
-interface MockModeratorOption {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-}
-
-const MOCK_MODERATORS: MockModeratorOption[] = [
-  {
-    id: 'mock-moderator-01',
-    name: 'Nguyễn Minh Anh',
-    email: 'minhanh.moderator@example.com',
-    phone: '0901000001',
-  },
-  {
-    id: 'mock-moderator-02',
-    name: 'Trần Quốc Bảo',
-    email: 'quocbao.moderator@example.com',
-    phone: '0901000002',
-  },
-  {
-    id: 'mock-moderator-03',
-    name: 'Lê Thu Hà',
-    email: 'thuha.moderator@example.com',
-    phone: '0901000003',
-  },
-];
 
 const getStationId = (station: {
   id?: string | null;
@@ -112,6 +85,15 @@ export default function ManagerStationPage() {
     pageIndex,
     pageSize,
     search: search || undefined,
+  });
+  const {
+    moderators,
+    isLoading: isLoadingModerators,
+    pagination: moderatorsPagination,
+  } = useModerators({
+    pageIndex: 1,
+    pageSize: 100,
+    isBanned: false,
   });
 
   const { mutateAsync: createStation } = useCreateProvincialStation();
@@ -417,7 +399,7 @@ export default function ManagerStationPage() {
           <DialogHeader>
             <DialogTitle>Gán điều phối viên cho trạm</DialogTitle>
             <DialogDescription>
-              Danh sách dưới đây đang dùng dữ liệu mock tạm thời cho đến khi có API lấy moderator.
+              Chọn điều phối viên từ danh sách moderator hiện có để gán cho trạm.
             </DialogDescription>
           </DialogHeader>
 
@@ -436,37 +418,66 @@ export default function ManagerStationPage() {
 
             <div className="space-y-2">
               <p className="text-sm font-semibold text-foreground">Chọn điều phối viên</p>
-              <div className="grid gap-3">
-                {MOCK_MODERATORS.map((moderator) => {
-                  const isActive = selectedModeratorId === moderator.id;
+              {isLoadingModerators ? (
+                <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+                  Đang tải danh sách điều phối viên...
+                </div>
+              ) : moderators.length === 0 ? (
+                <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+                  Không có moderator phù hợp để gán.
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {moderators.map((moderator) => {
+                    const isActive = selectedModeratorId === moderator.id;
+                    const isManagingStation = moderator.isManagingStation;
 
-                  return (
-                    <button
-                      key={moderator.id}
-                      type="button"
-                      onClick={() => setSelectedModeratorId(moderator.id)}
-                      className={`rounded-xl border p-4 text-left transition-colors ${
-                        isActive
-                          ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                          : 'border-border bg-background hover:border-primary/40'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-foreground">{moderator.name}</p>
-                          <p className="text-sm text-muted-foreground">{moderator.email}</p>
-                          <p className="text-sm text-muted-foreground">{moderator.phone}</p>
+                    return (
+                      <button
+                        key={moderator.id}
+                        type="button"
+                        onClick={() => setSelectedModeratorId(moderator.id)}
+                        disabled={isManagingStation}
+                        className={`rounded-xl border p-4 text-left transition-colors ${
+                          isActive
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                            : isManagingStation
+                              ? 'border-border bg-muted/40 opacity-60 cursor-not-allowed'
+                              : 'border-border bg-background hover:border-primary/40'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold text-foreground">
+                              {moderator.displayName || 'Chưa có tên hiển thị'}
+                            </p>
+                            <p className="text-sm text-muted-foreground">{moderator.email}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {moderator.phoneNumber || 'Chưa có số điện thoại'}
+                            </p>
+                            {isManagingStation && (
+                              <p className="mt-1 text-xs font-medium text-amber-600">
+                                Đang quản lý một trạm khác
+                              </p>
+                            )}
+                          </div>
+                          {isActive && (
+                            <span className="material-symbols-outlined text-primary">
+                              check_circle
+                            </span>
+                          )}
                         </div>
-                        {isActive && (
-                          <span className="material-symbols-outlined text-primary">
-                            check_circle
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {!!moderatorsPagination && moderatorsPagination.totalCount > moderators.length && (
+                <p className="text-xs text-muted-foreground">
+                  Đang hiển thị {moderators.length}/{moderatorsPagination.totalCount} moderator đầu
+                  tiên.
+                </p>
+              )}
             </div>
           </div>
 

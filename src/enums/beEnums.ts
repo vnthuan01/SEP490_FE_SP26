@@ -311,15 +311,6 @@ export type DispatchMode = (typeof DispatchMode)[keyof typeof DispatchMode];
 
 // ─── Supply / Inventory ────────────────────────────────────────────────────────
 
-export const InventoryStatus = {
-  Critical: 1,
-  NeedRestock: 2,
-  Safe: 3,
-  Full: 4,
-} as const;
-
-export type InventoryStatus = (typeof InventoryStatus)[keyof typeof InventoryStatus];
-
 export const InventoryLevel = {
   Regional: 1,
   Provincial: 2,
@@ -346,6 +337,39 @@ export const SupplyAllocationStatus = {
 
 export type SupplyAllocationStatus =
   (typeof SupplyAllocationStatus)[keyof typeof SupplyAllocationStatus];
+
+export const SupplyCategoryLabel: Record<SupplyCategory, string> = {
+  [SupplyCategory.LuongThuc]: 'Lương thực',
+  [SupplyCategory.YTeVaThuoc]: 'Y tế và thuốc',
+  [SupplyCategory.NuocUong]: 'Nước uống',
+  [SupplyCategory.DungCuVaLeuTrai]: 'Dụng cụ và lều trại',
+  [SupplyCategory.Khac]: 'Khác',
+};
+
+export const SupplyCategoryIcon: Record<SupplyCategory, string> = {
+  [SupplyCategory.LuongThuc]: 'restaurant',
+  [SupplyCategory.YTeVaThuoc]: 'medication',
+  [SupplyCategory.NuocUong]: 'water_drop',
+  [SupplyCategory.DungCuVaLeuTrai]: 'camping',
+  [SupplyCategory.Khac]: 'category',
+};
+
+export const SupplyCategoryClass: Record<SupplyCategory, string> = {
+  [SupplyCategory.LuongThuc]:
+    'border-orange-500/20 bg-orange-500/10 text-orange-600 dark:text-orange-300',
+  [SupplyCategory.YTeVaThuoc]: 'border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-300',
+  [SupplyCategory.NuocUong]: 'border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-300',
+  [SupplyCategory.DungCuVaLeuTrai]:
+    'border-green-500/20 bg-green-500/10 text-green-600 dark:text-green-300',
+  [SupplyCategory.Khac]: 'border-border bg-muted text-muted-foreground',
+};
+
+export const SupplyAllocationStatusLabel: Record<SupplyAllocationStatus, string> = {
+  [SupplyAllocationStatus.Pending]: 'Chờ duyệt',
+  [SupplyAllocationStatus.Approved]: 'Đã duyệt',
+  [SupplyAllocationStatus.Delivered]: 'Đã giao',
+  [SupplyAllocationStatus.Cancelled]: 'Đã hủy',
+};
 
 export const SupplyTransferStatus = {
   Pending: 1,
@@ -540,6 +564,76 @@ export const ReliefStationLevelLabel: Record<ReliefStationLevel, string> = {
   [ReliefStationLevel.Local]: 'Địa phương',
 };
 
+export const InventoryLevelLabel: Record<InventoryLevel, string> = {
+  [InventoryLevel.Regional]: 'Kho khu vực',
+  [InventoryLevel.Provincial]: 'Kho tỉnh / thành phố',
+};
+
+export const InventoryLevelIcon: Record<InventoryLevel, string> = {
+  [InventoryLevel.Regional]: 'warehouse',
+  [InventoryLevel.Provincial]: 'inventory_2',
+};
+
+export const InventoryLevelClass: Record<InventoryLevel, string> = {
+  [InventoryLevel.Regional]:
+    'border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-300',
+  [InventoryLevel.Provincial]: 'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+};
+
+export const EntityStatusLabel: Record<EntityStatus, string> = {
+  [EntityStatus.Inactive]: 'Không hoạt động',
+  [EntityStatus.Active]: 'Đang hoạt động',
+  [EntityStatus.Deleted]: 'Đã xoá',
+};
+
+export const EntityStatusIcon: Record<EntityStatus, string> = {
+  [EntityStatus.Inactive]: 'pause_circle',
+  [EntityStatus.Active]: 'verified',
+  [EntityStatus.Deleted]: 'delete',
+};
+
+export const CampaignStatusIcon: Record<CampaignStatus, string> = {
+  [CampaignStatus.Draft]: 'edit_note',
+  [CampaignStatus.Active]: 'rocket_launch',
+  [CampaignStatus.Suspended]: 'pause_circle',
+  [CampaignStatus.Completed]: 'check_circle',
+  [CampaignStatus.Cancelled]: 'cancel',
+  [CampaignStatus.GoalsMet]: 'emoji_events',
+  [CampaignStatus.ReadyToExecute]: 'task_alt',
+  [CampaignStatus.InProgress]: 'deployed_code_history',
+  [CampaignStatus.Closing]: 'hourglass_top',
+};
+
+export const CampaignStatusShortLabel: Record<CampaignStatus, string> = {
+  [CampaignStatus.Draft]: 'Bản nháp',
+  [CampaignStatus.Active]: 'Đang hoạt động',
+  [CampaignStatus.Suspended]: 'Tạm dừng',
+  [CampaignStatus.Completed]: 'Hoàn thành',
+  [CampaignStatus.Cancelled]: 'Đã hủy',
+  [CampaignStatus.GoalsMet]: 'Đạt mục tiêu',
+  [CampaignStatus.ReadyToExecute]: 'Sẵn sàng triển khai',
+  [CampaignStatus.InProgress]: 'Đang triển khai',
+  [CampaignStatus.Closing]: 'Đang kết thúc',
+};
+
+export const CampaignStatusLabel: Record<CampaignStatus, string> = {
+  [CampaignStatus.Draft]: 'Nháp',
+  [CampaignStatus.Active]: 'Đang hoạt động',
+  [CampaignStatus.Suspended]: 'Tạm dừng',
+  [CampaignStatus.Completed]: 'Hoàn thành',
+  [CampaignStatus.Cancelled]: 'Đã huỷ',
+  [CampaignStatus.GoalsMet]: 'Đạt mục tiêu',
+  [CampaignStatus.ReadyToExecute]: 'Sẵn sàng triển khai',
+  [CampaignStatus.InProgress]: 'Đang triển khai',
+  [CampaignStatus.Closing]: 'Đang kết thúc',
+};
+
+export const CampaignTypeLabel: Record<CampaignType, string> = {
+  [CampaignType.Fundraising]: 'Gây quỹ',
+  [CampaignType.Relief]: 'Cứu trợ',
+  [CampaignType.Rescue]: 'Cứu hộ',
+};
+
 export const DisasterTypeLabel: Record<DisasterType, string> = {
   [DisasterType.Flood]: 'Lũ lụt',
   [DisasterType.Landslide]: 'Sạt lở đất',
@@ -669,6 +763,253 @@ export function getReliefStationStatusClass(status: number): string {
     default:
       return 'bg-gray-500/20 text-gray-400';
   }
+}
+
+export function getInventoryLevelLabel(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in InventoryLevelLabel) return InventoryLevelLabel[n as InventoryLevel];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'regional') return InventoryLevelLabel[InventoryLevel.Regional];
+    if (normalized === 'provincial') return InventoryLevelLabel[InventoryLevel.Provincial];
+    return value;
+  }
+
+  return 'Không rõ';
+}
+
+export function getInventoryLevelIcon(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in InventoryLevelIcon) return InventoryLevelIcon[n as InventoryLevel];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'regional') return InventoryLevelIcon[InventoryLevel.Regional];
+    if (normalized === 'provincial') return InventoryLevelIcon[InventoryLevel.Provincial];
+  }
+
+  return 'layers';
+}
+
+export function getInventoryLevelClass(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in InventoryLevelClass) return InventoryLevelClass[n as InventoryLevel];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'regional') return InventoryLevelClass[InventoryLevel.Regional];
+    if (normalized === 'provincial') return InventoryLevelClass[InventoryLevel.Provincial];
+  }
+
+  return 'border-border bg-muted/50 text-muted-foreground';
+}
+
+export function getSupplyCategoryLabel(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in SupplyCategoryLabel) return SupplyCategoryLabel[n as SupplyCategory];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'luongthuc') return SupplyCategoryLabel[SupplyCategory.LuongThuc];
+    if (normalized === 'ytevathuoc') return SupplyCategoryLabel[SupplyCategory.YTeVaThuoc];
+    if (normalized === 'nuocuong') return SupplyCategoryLabel[SupplyCategory.NuocUong];
+    if (normalized === 'dungcuvaleutrai')
+      return SupplyCategoryLabel[SupplyCategory.DungCuVaLeuTrai];
+    if (normalized === 'khac') return SupplyCategoryLabel[SupplyCategory.Khac];
+    return value;
+  }
+
+  return 'Không rõ';
+}
+
+export function getSupplyCategoryIcon(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in SupplyCategoryIcon) return SupplyCategoryIcon[n as SupplyCategory];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'luongthuc') return SupplyCategoryIcon[SupplyCategory.LuongThuc];
+    if (normalized === 'ytevathuoc') return SupplyCategoryIcon[SupplyCategory.YTeVaThuoc];
+    if (normalized === 'nuocuong') return SupplyCategoryIcon[SupplyCategory.NuocUong];
+    if (normalized === 'dungcuvaleutrai') return SupplyCategoryIcon[SupplyCategory.DungCuVaLeuTrai];
+    if (normalized === 'khac') return SupplyCategoryIcon[SupplyCategory.Khac];
+  }
+
+  return 'category';
+}
+
+export function getSupplyCategoryClass(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in SupplyCategoryClass) return SupplyCategoryClass[n as SupplyCategory];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'luongthuc') return SupplyCategoryClass[SupplyCategory.LuongThuc];
+    if (normalized === 'ytevathuoc') return SupplyCategoryClass[SupplyCategory.YTeVaThuoc];
+    if (normalized === 'nuocuong') return SupplyCategoryClass[SupplyCategory.NuocUong];
+    if (normalized === 'dungcuvaleutrai')
+      return SupplyCategoryClass[SupplyCategory.DungCuVaLeuTrai];
+    if (normalized === 'khac') return SupplyCategoryClass[SupplyCategory.Khac];
+  }
+
+  return 'border-border bg-muted text-muted-foreground';
+}
+
+export function getSupplyAllocationStatusLabel(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in SupplyAllocationStatusLabel)
+    return SupplyAllocationStatusLabel[n as SupplyAllocationStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'pending')
+      return SupplyAllocationStatusLabel[SupplyAllocationStatus.Pending];
+    if (normalized === 'approved')
+      return SupplyAllocationStatusLabel[SupplyAllocationStatus.Approved];
+    if (normalized === 'delivered')
+      return SupplyAllocationStatusLabel[SupplyAllocationStatus.Delivered];
+    if (normalized === 'cancelled' || normalized === 'canceled')
+      return SupplyAllocationStatusLabel[SupplyAllocationStatus.Cancelled];
+    return value;
+  }
+
+  return 'Không rõ';
+}
+
+export function getSupplyAllocationStatusClass(status: number): string {
+  switch (status) {
+    case SupplyAllocationStatus.Pending:
+      return 'border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300';
+    case SupplyAllocationStatus.Approved:
+      return 'border border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-300';
+    case SupplyAllocationStatus.Delivered:
+      return 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300';
+    case SupplyAllocationStatus.Cancelled:
+      return 'border border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300';
+    default:
+      return 'border border-border bg-muted/50 text-muted-foreground';
+  }
+}
+
+export function getEntityStatusLabel(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in EntityStatusLabel) return EntityStatusLabel[n as EntityStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'inactive') return EntityStatusLabel[EntityStatus.Inactive];
+    if (normalized === 'active') return EntityStatusLabel[EntityStatus.Active];
+    if (normalized === 'deleted') return EntityStatusLabel[EntityStatus.Deleted];
+    return value;
+  }
+
+  return 'Không rõ';
+}
+
+export function getEntityStatusClass(status: number): string {
+  switch (status) {
+    case EntityStatus.Inactive:
+      return 'border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300';
+    case EntityStatus.Active:
+      return 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300';
+    case EntityStatus.Deleted:
+      return 'border border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300';
+    default:
+      return 'border border-border bg-muted/50 text-muted-foreground';
+  }
+}
+
+export function getEntityStatusIcon(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in EntityStatusIcon) return EntityStatusIcon[n as EntityStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'inactive') return EntityStatusIcon[EntityStatus.Inactive];
+    if (normalized === 'active') return EntityStatusIcon[EntityStatus.Active];
+    if (normalized === 'deleted') return EntityStatusIcon[EntityStatus.Deleted];
+  }
+
+  return 'help';
+}
+
+export function getCampaignStatusLabel(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in CampaignStatusLabel) return CampaignStatusLabel[n as CampaignStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    const matched = Object.entries(CampaignStatus).find(([key]) => key === normalized);
+    if (matched) return CampaignStatusLabel[matched[1] as CampaignStatus];
+    return value;
+  }
+
+  return 'Không rõ';
+}
+
+export function getCampaignStatusShortLabel(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in CampaignStatusShortLabel) return CampaignStatusShortLabel[n as CampaignStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    const matched = Object.entries(CampaignStatus).find(([key]) => key === normalized);
+    if (matched) return CampaignStatusShortLabel[matched[1] as CampaignStatus];
+    return value;
+  }
+
+  return 'Không rõ';
+}
+
+export function getCampaignTypeLabel(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in CampaignTypeLabel) return CampaignTypeLabel[n as CampaignType];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'fundraising') return CampaignTypeLabel[CampaignType.Fundraising];
+    if (normalized === 'relief') return CampaignTypeLabel[CampaignType.Relief];
+    if (normalized === 'rescue') return CampaignTypeLabel[CampaignType.Rescue];
+    return value;
+  }
+
+  return 'Không rõ';
+}
+
+export function getCampaignStatusClass(status: number): string {
+  switch (status) {
+    case CampaignStatus.Draft:
+      return 'bg-slate-500/20 text-slate-500';
+    case CampaignStatus.Active:
+    case CampaignStatus.ReadyToExecute:
+      return 'bg-green-500/20 text-green-500';
+    case CampaignStatus.Suspended:
+    case CampaignStatus.Closing:
+      return 'bg-yellow-500/20 text-yellow-600';
+    case CampaignStatus.InProgress:
+      return 'bg-blue-500/20 text-blue-600';
+    case CampaignStatus.Completed:
+    case CampaignStatus.GoalsMet:
+      return 'bg-emerald-500/20 text-emerald-600';
+    case CampaignStatus.Cancelled:
+      return 'bg-red-500/20 text-red-500';
+    default:
+      return 'bg-gray-500/20 text-gray-400';
+  }
+}
+
+export function getCampaignStatusIcon(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in CampaignStatusIcon) return CampaignStatusIcon[n as CampaignStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    const matched = Object.entries(CampaignStatus).find(([key]) => key === normalized);
+    if (matched) return CampaignStatusIcon[matched[1] as CampaignStatus];
+  }
+
+  return 'help';
 }
 
 /** Chuyển RescueRequestStatus → UI location status */
