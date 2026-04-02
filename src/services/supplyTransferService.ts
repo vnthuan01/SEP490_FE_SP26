@@ -19,6 +19,7 @@ export interface SupplyTransferItem {
 export interface CreateSupplyTransferPayload {
   sourceStationId: string;
   destinationStationId: string;
+  reason: string;
   notes?: string;
   items: SupplyTransferItem[];
 }

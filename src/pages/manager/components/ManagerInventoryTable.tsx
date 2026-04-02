@@ -25,6 +25,7 @@ const responsiveBadgeClass =
 
 type InventoryItem = {
   inventoryId: string;
+  reliefStationId: string;
   reliefStationName: string;
   level: number;
   status: number;
@@ -45,8 +46,8 @@ export function ManagerInventoryTable({
   isLoading: boolean;
   isUpdating: boolean;
   onManageStock: (inventoryId: string, inventoryName: string) => void;
-  onCreateTransfer: (inventoryId: string, inventoryName: string) => void;
-  onViewTransfers: (inventoryId: string, inventoryName: string) => void;
+  onCreateTransfer: (inventoryId: string, reliefStationId: string, inventoryName: string) => void;
+  onViewTransfers: (inventoryId: string, reliefStationId: string, inventoryName: string) => void;
   onViewTransactions: (inventoryId: string, inventoryName: string) => void;
   onToggleStatus: (inventoryId: string, level: number, status: EntityStatus) => void;
 }) {
@@ -156,14 +157,26 @@ export function ManagerInventoryTable({
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="gap-2 text-primary"
-                          onClick={() => onCreateTransfer(inv.inventoryId, inv.reliefStationName)}
+                          onClick={() =>
+                            onCreateTransfer(
+                              inv.inventoryId,
+                              inv.reliefStationId,
+                              inv.reliefStationName,
+                            )
+                          }
                         >
                           <span className="material-symbols-outlined text-lg">swap_horiz</span>
                           Tạo phiếu chuyển kho
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="gap-2 text-primary"
-                          onClick={() => onViewTransfers(inv.inventoryId, inv.reliefStationName)}
+                          onClick={() =>
+                            onViewTransfers(
+                              inv.inventoryId,
+                              inv.reliefStationId,
+                              inv.reliefStationName,
+                            )
+                          }
                         >
                           <span className="material-symbols-outlined text-lg">history</span>
                           Xem lịch sử chuyển kho
@@ -177,18 +190,18 @@ export function ManagerInventoryTable({
                         </DropdownMenuItem>
                         {inv.status === EntityStatus.Active ? (
                           <DropdownMenuItem
-                            className="gap-2 text-amber-600 dark:text-amber-300"
+                            className="gap-2 text-destructive"
                             disabled={isUpdating}
                             onClick={() =>
                               onToggleStatus(inv.inventoryId, inv.level, EntityStatus.Inactive)
                             }
                           >
-                            <span className="material-symbols-outlined text-lg">block</span>
+                            <span className="material-symbols-outlined text-lg ">block</span>
                             Ngừng hoạt động
                           </DropdownMenuItem>
                         ) : (
                           <DropdownMenuItem
-                            className="gap-2 text-emerald-600 dark:text-emerald-300"
+                            className="gap-2 text-green-500"
                             disabled={isUpdating}
                             onClick={() =>
                               onToggleStatus(inv.inventoryId, inv.level, EntityStatus.Active)

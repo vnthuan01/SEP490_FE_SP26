@@ -39,7 +39,12 @@ function SupplyRow({
       </td>
       <td className="px-5 py-4">
         <div>
-          <p className="font-semibold text-foreground">{item.name}</p>
+          <p className="font-semibold text-foreground flex items-center gap-2">
+            {item.iconUrl && (
+              <span className="material-symbols-outlined text-[18px]">{item.iconUrl}</span>
+            )}
+            {item.name}
+          </p>
           <p className="text-xs text-muted-foreground line-clamp-1">
             {item.description || 'Chưa có mô tả'}
           </p>

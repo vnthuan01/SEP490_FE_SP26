@@ -123,8 +123,10 @@ type DongCapNhatTonKho = {
 
 type TransferDialogState = {
   sourceInventoryId: string;
+  sourceStationId: string;
   sourceInventoryName: string;
   destinationStationId: string;
+  reason: string;
   notes: string;
   items: TransferItemDraft[];
 };
@@ -181,6 +183,8 @@ const taoDongTransfer = (): TransferItemDraft => ({
   id: crypto.randomUUID(),
   supplyItemId: '',
   quantity: '1',
+  notes: '',
+  iconUrl: '',
 });
 
 export default function ManagerInventoryCoordinationPage() {
@@ -230,8 +234,10 @@ export default function ManagerInventoryCoordinationPage() {
   });
   const [transferForm, setTransferForm] = useState<TransferDialogState>({
     sourceInventoryId: '',
+    sourceStationId: '',
     sourceInventoryName: '',
     destinationStationId: '',
+    reason: '',
     notes: '',
     items: [taoDongTransfer()],
   });
@@ -752,22 +758,32 @@ export default function ManagerInventoryCoordinationPage() {
     setOpenStockDialog(false);
   };
 
-  const openTransferDialog = (inventoryId: string, inventoryName: string) => {
+  const openTransferDialog = (
+    inventoryId: string,
+    reliefStationId: string,
+    inventoryName: string,
+  ) => {
     setTransferForm({
       sourceInventoryId: inventoryId,
+      sourceStationId: reliefStationId,
       sourceInventoryName: inventoryName,
       destinationStationId: '',
+      reason: '',
       notes: '',
       items: [taoDongTransfer()],
     });
     setOpenCreateTransfer(true);
   };
 
-  const updateTransferForm = (key: 'destinationStationId' | 'notes', value: string) => {
+  const updateTransferForm = (key: 'destinationStationId' | 'reason' | 'notes', value: string) => {
     setTransferForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const updateTransferItem = (id: string, key: 'supplyItemId' | 'quantity', value: string) => {
+  const updateTransferItem = (
+    id: string,
+    key: 'supplyItemId' | 'quantity' | 'notes',
+    value: string,
+  ) => {
     setTransferForm((prev) => ({
       ...prev,
       items: prev.items.map((item) => (item.id === id ? { ...item, [key]: value } : item)),
@@ -789,8 +805,13 @@ export default function ManagerInventoryCoordinationPage() {
   };
 
   const handleCreateTransfer = async () => {
-    if (!transferForm.sourceInventoryId || !transferForm.destinationStationId) {
+    if (!transferForm.sourceStationId || !transferForm.destinationStationId) {
       toast.error('Vui lòng chọn đầy đủ kho nguồn và trạm đích.');
+      return;
+    }
+
+    if (!transferForm.reason.trim()) {
+      toast.error('Vui lòng nhập lý do chuyển kho.');
       return;
     }
 
@@ -798,6 +819,7 @@ export default function ManagerInventoryCoordinationPage() {
       .map((item) => ({
         supplyItemId: item.supplyItemId,
         quantity: parseFormattedNumber(item.quantity),
+        notes: item.notes?.trim() || undefined,
       }))
       .filter((item) => item.supplyItemId && item.quantity > 0);
 
@@ -807,8 +829,9 @@ export default function ManagerInventoryCoordinationPage() {
     }
 
     const createdTransfer = await createSupplyTransfer({
-      sourceStationId: transferForm.sourceInventoryId,
+      sourceStationId: transferForm.sourceStationId,
       destinationStationId: transferForm.destinationStationId,
+      reason: transferForm.reason.trim(),
       notes: transferForm.notes,
       items: validItems,
     });
@@ -1502,17 +1525,25 @@ export default function ManagerInventoryCoordinationPage() {
                         <SelectContent>
                           {supplyItems.map((supplyItem) => (
                             <SelectItem key={supplyItem.id} value={supplyItem.id}>
-                              <div className="flex items-center justify-between gap-3 min-w-0">
-                                <span className="truncate">
-                                  {supplyItem.name} - {getSupplyCategoryLabel(supplyItem.category)}
-                                </span>
-                                <span className="text-xs text-muted-foreground shrink-0">
+                              <div className="flex items-center justify-between gap-3 min-w-0 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                  {supplyItem.iconUrl && (
+                                    <span className="material-symbols-outlined text-[18px] text-green-500">
+                                      {supplyItem.iconUrl}
+                                    </span>
+                                  )}
+                                  <span className="truncate">
+                                    {supplyItem.name} -{' '}
+                                    {getSupplyCategoryLabel(supplyItem.category)}
+                                  </span>
+                                </div>
+                                <div className="text-xs text-muted-foreground shrink-0">
                                   Tồn:{' '}
                                   {formatNumberVN(
                                     allocationStockMapBySupplyItemId.get(supplyItem.id)
                                       ?.currentQuantity || 0,
                                   )}
-                                </span>
+                                </div>
                               </div>
                             </SelectItem>
                           ))}
@@ -1548,6 +1579,12 @@ export default function ManagerInventoryCoordinationPage() {
                               ?.currentQuantity || 0,
                           )}
                         </span>
+                        /
+                        {supplyItems.find((supply) => supply.id === item.supplyItemId)?.unit && (
+                          <span className="text-[12px] text-muted-foreground font-normal">
+                            {supplyItems.find((supply) => supply.id === item.supplyItemId)?.unit}
+                          </span>
+                        )}
                       </p>
                       <p>
                         {isLoadingAllocationInventoryStocks
@@ -1648,6 +1685,11 @@ export default function ManagerInventoryCoordinationPage() {
                           <SelectContent>
                             {supplyItems.map((supplyItem) => (
                               <SelectItem key={supplyItem.id} value={supplyItem.id}>
+                                {supplyItem.iconUrl && (
+                                  <span className="material-symbols-outlined text-[18px] text-green-500">
+                                    {supplyItem.iconUrl}
+                                  </span>
+                                )}
                                 {supplyItem.name} - {getSupplyCategoryLabel(supplyItem.category)}
                               </SelectItem>
                             ))}
@@ -1762,6 +1804,7 @@ export default function ManagerInventoryCoordinationPage() {
         sourceStocks={transferInventoryStocks}
         transferForm={{
           destinationStationId: transferForm.destinationStationId,
+          reason: transferForm.reason,
           notes: transferForm.notes,
           items: transferForm.items,
         }}

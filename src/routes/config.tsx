@@ -16,6 +16,7 @@ import SettingsPage from '@/pages/user/settings';
 
 // Manager pages
 import ManagerStationPage from '@/pages/manager/ManagerStationPage';
+import ManagerDashboardPage from '@/pages/manager/ManagerDashboardPage';
 import ManagerVehicleManagementPage from '@/pages/manager/ManagerVehicleManagementPage';
 import ManagerInventoryCoordinationPage from '@/pages/manager/ManagerInventoryCoordinationPage';
 import ManagerCampaignPage from '@/pages/manager/ManagerCampaignPage';
@@ -110,6 +111,12 @@ export const routes: AppRoute[] = [
   },
 
   // Manager routes
+  {
+    path: '/portal/manager/dashboard',
+    element: <ManagerDashboardPage />,
+    roles: [UserRole.Manager],
+    isProtected: true,
+  },
   {
     path: '/portal/manager/stations',
     element: <ManagerStationPage />,

@@ -1,5 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { vehicleService } from '@/services/vehicleService';
+import {
+  normalizeVehicleType,
+  normalizeVehicleTypePage,
+  vehicleService,
+} from '@/services/vehicleService';
 import type {
   CreateVehiclePayload,
   UpdateVehiclePayload,
@@ -172,7 +176,7 @@ export function useVehicleTypes(id?: string, params?: SearchVehicleTypeParams) {
     queryKey: VEHICLE_TYPE_QUERY_KEYS.list(params),
     queryFn: async () => {
       const response = await vehicleService.getTypes(params);
-      return response.data;
+      return normalizeVehicleTypePage(response.data as any);
     },
   });
 
@@ -187,7 +191,7 @@ export function useVehicleTypes(id?: string, params?: SearchVehicleTypeParams) {
     queryFn: async () => {
       if (!id) throw new Error('Vehicle Type ID is required');
       const response = await vehicleService.getTypeById(id);
-      return response.data;
+      return normalizeVehicleType(response.data as any);
     },
     enabled: !!id,
   });

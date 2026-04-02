@@ -32,6 +32,8 @@ export type TransferItemDraft = {
   id: string;
   supplyItemId: string;
   quantity: string;
+  notes: string;
+  iconUrl: string;
 };
 
 const getSupplyTransferStatusMeta = (status: number) => {
@@ -122,11 +124,16 @@ export function ManagerCreateTransferDialog({
   onOpenChange: (open: boolean) => void;
   sourceInventoryName: string;
   destinationStations: Array<{ id: string; name: string }>;
-  supplyItems: Array<{ id: string; name: string; category: number; unit: string }>;
+  supplyItems: Array<{ id: string; name: string; category: number; unit: string; iconUrl: string }>;
   sourceStocks: Array<{ supplyItemId: string; currentQuantity: number }>;
-  transferForm: { destinationStationId: string; notes: string; items: TransferItemDraft[] };
-  onFormChange: (key: 'destinationStationId' | 'notes', value: string) => void;
-  onItemChange: (id: string, key: 'supplyItemId' | 'quantity', value: string) => void;
+  transferForm: {
+    destinationStationId: string;
+    reason: string;
+    notes: string;
+    items: TransferItemDraft[];
+  };
+  onFormChange: (key: 'destinationStationId' | 'reason' | 'notes', value: string) => void;
+  onItemChange: (id: string, key: 'supplyItemId' | 'quantity' | 'notes', value: string) => void;
   onAddItem: () => void;
   onRemoveItem: (id: string) => void;
   onSubmit: () => void;
@@ -168,6 +175,17 @@ export function ManagerCreateTransferDialog({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>
+                Lý do chuyển kho <RequiredMark />
+              </Label>
+              <Input
+                value={transferForm.reason}
+                onChange={(e) => onFormChange('reason', e.target.value)}
+                placeholder="Ví dụ: Điều phối hỗ trợ trạm tiếp nhận"
+              />
             </div>
 
             <div className="grid gap-2">
@@ -235,6 +253,11 @@ export function ManagerCreateTransferDialog({
                             {supplyItems.map((supplyItem) => (
                               <SelectItem key={supplyItem.id} value={supplyItem.id}>
                                 <div className="flex items-center justify-between gap-3 min-w-0">
+                                  {supplyItem.iconUrl && (
+                                    <span className="material-symbols-outlined text-[18px] text-green-500">
+                                      {supplyItem.iconUrl}
+                                    </span>
+                                  )}
                                   <span className="truncate">
                                     {supplyItem.name} -{' '}
                                     {getSupplyCategoryLabel(supplyItem.category)}
@@ -261,6 +284,15 @@ export function ManagerCreateTransferDialog({
                           }
                         />
                       </div>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label>Ghi chú vật phẩm</Label>
+                      <Textarea
+                        value={item.notes}
+                        onChange={(e) => onItemChange(item.id, 'notes', e.target.value)}
+                        placeholder="Ghi chú riêng cho dòng vật phẩm này"
+                      />
                     </div>
 
                     {selectedSupply && (

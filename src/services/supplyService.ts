@@ -76,9 +76,11 @@ export interface UpdateSupplyAllocationStatusPayload {
 }
 
 export interface SupplyAllocation {
-  id: string;
+  allocationId: string;
   campaignId: string;
   sourceInventoryId: string;
+  sourceInventoryName: string;
+
   status: number;
   items: SupplyAllocationItemPayload[];
 }
