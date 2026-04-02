@@ -11,6 +11,7 @@ export interface ReliefStation {
   longitude: number;
   latitude: number;
   status: number;
+  level?: number;
 }
 
 export interface CreateProvincialStationPayload {

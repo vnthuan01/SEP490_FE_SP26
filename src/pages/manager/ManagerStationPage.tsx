@@ -132,11 +132,17 @@ export default function ManagerStationPage() {
     stationId?: string;
     reliefStationId?: string;
     name: string;
+    level?: number;
   }) => {
     const stationId = getStationId(station);
 
     if (!stationId) {
       toast.error('Trạm này chưa có mã định danh hợp lệ để gán quản lý.');
+      return;
+    }
+
+    if (station.level === 1) {
+      toast.error('Trạm cấp 1 do manager quản lý rồi, không được gán điều phối viên.');
       return;
     }
 
@@ -309,7 +315,16 @@ export default function ManagerStationPage() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="gap-2 text-primary"
-                                  onClick={() => openAssignModeratorModal(station)}
+                                  onClick={() => {
+                                    if (station.level === 1) {
+                                      toast.error(
+                                        'Trạm cấp 1 do manager quản lý rồi, không được gán điều phối viên.',
+                                      );
+                                      return;
+                                    }
+                                    openAssignModeratorModal(station);
+                                  }}
+                                  disabled={station.level === 1}
                                 >
                                   <span className="material-symbols-outlined text-lg">
                                     group_add

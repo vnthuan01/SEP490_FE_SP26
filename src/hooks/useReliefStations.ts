@@ -14,6 +14,7 @@ import {
   type GetPendingStationJoinRequestsParams,
 } from '@/services/reliefStationService';
 import { toast } from 'sonner';
+import { handleHookError } from './hookErrorUtils';
 
 export const RELIEF_STATION_KEYS = {
   all: ['relief-stations'] as const,
@@ -53,7 +54,7 @@ export const useCreateProvincialStation = () => {
       queryClient.invalidateQueries({ queryKey: RELIEF_STATION_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi tạo trạm');
+      handleHookError(error, 'Không thể tạo trạm');
     },
   });
 };
@@ -74,7 +75,7 @@ export const useUpdateProvincialStation = () => {
       queryClient.invalidateQueries({ queryKey: RELIEF_STATION_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi cập nhật trạm');
+      handleHookError(error, 'Không thể cập nhật trạm');
     },
   });
 };
@@ -89,7 +90,7 @@ export const useDisableProvincialStation = () => {
       queryClient.invalidateQueries({ queryKey: RELIEF_STATION_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi vô hiệu hoá trạm');
+      handleHookError(error, 'Không thể vô hiệu hóa trạm');
     },
   });
 };
@@ -104,7 +105,7 @@ export const useActivateProvincialStation = () => {
       queryClient.invalidateQueries({ queryKey: RELIEF_STATION_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi kích hoạt trạm');
+      handleHookError(error, 'Không thể kích hoạt trạm');
     },
   });
 };
@@ -120,7 +121,7 @@ export const useAssignModeratorToStation = () => {
       queryClient.invalidateQueries({ queryKey: RELIEF_STATION_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi gán quản lý');
+      handleHookError(error, 'Không thể gán quản lý cho trạm');
     },
   });
 };
@@ -136,7 +137,7 @@ export const useAssignTeamToStation = () => {
       queryClient.invalidateQueries({ queryKey: RELIEF_STATION_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi gán đội vào trạm');
+      handleHookError(error, 'Không thể gán đội vào trạm');
     },
   });
 };
@@ -184,7 +185,7 @@ export const useCreateStationJoinRequest = () => {
       queryClient.invalidateQueries({ queryKey: STATION_JOIN_REQUEST_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi gửi yêu cầu');
+      handleHookError(error, 'Không thể gửi yêu cầu vào trạm');
     },
   });
 };
@@ -221,7 +222,7 @@ export const useCancelStationJoinRequest = () => {
       queryClient.invalidateQueries({ queryKey: STATION_JOIN_REQUEST_KEYS.detail(id) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi huỷ yêu cầu');
+      handleHookError(error, 'Không thể hủy yêu cầu vào trạm');
     },
   });
 };
@@ -252,7 +253,7 @@ export const useApproveStationJoinRequest = () => {
       queryClient.invalidateQueries({ queryKey: STATION_JOIN_REQUEST_KEYS.detail(id) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi duyệt yêu cầu');
+      handleHookError(error, 'Không thể duyệt yêu cầu vào trạm');
     },
   });
 };
@@ -269,7 +270,7 @@ export const useRejectStationJoinRequest = () => {
       queryClient.invalidateQueries({ queryKey: STATION_JOIN_REQUEST_KEYS.detail(id) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi từ chối yêu cầu');
+      handleHookError(error, 'Không thể từ chối yêu cầu vào trạm');
     },
   });
 };

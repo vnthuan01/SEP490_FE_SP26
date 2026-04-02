@@ -7,6 +7,7 @@ import {
   type SearchDistributionSessionsParams,
 } from '@/services/distributionSessionService';
 import { toast } from 'sonner';
+import { handleHookError } from './hookErrorUtils';
 
 export const DISTRIBUTION_SESSION_KEYS = {
   all: ['distribution-sessions'] as const,
@@ -24,7 +25,7 @@ export function useCreateDistributionSession() {
       queryClient.invalidateQueries({ queryKey: DISTRIBUTION_SESSION_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Tạo phiên phân phát thất bại');
+      handleHookError(error, 'Không thể tạo phiên phân phát');
     },
   });
 }
@@ -88,7 +89,7 @@ function createSessionActionMutation(
         queryClient.invalidateQueries({ queryKey: DISTRIBUTION_SESSION_KEYS.detail(id) });
       },
       onError: (error: any) => {
-        toast.error(error?.response?.data?.message || 'Cập nhật phiên phân phát thất bại');
+        handleHookError(error, 'Không thể cập nhật phiên phân phát');
       },
     });
   };

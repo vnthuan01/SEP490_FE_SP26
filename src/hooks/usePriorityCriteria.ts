@@ -6,6 +6,7 @@ import {
   type SearchPriorityCriteriaParams,
 } from '@/services/priorityCriteriaService';
 import { toast } from 'sonner';
+import { handleHookError } from './hookErrorUtils';
 
 export const PRIORITY_CRITERIA_KEYS = {
   all: ['priority-criteria'] as const,
@@ -45,7 +46,7 @@ export const useCreatePriorityCriteria = () => {
       queryClient.invalidateQueries({ queryKey: PRIORITY_CRITERIA_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi tạo tiêu chí ưu tiên');
+      handleHookError(error, 'Không thể tạo tiêu chí ưu tiên');
     },
   });
 };
@@ -62,7 +63,7 @@ export const useUpdatePriorityCriteria = () => {
       queryClient.invalidateQueries({ queryKey: PRIORITY_CRITERIA_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi cập nhật tiêu chí');
+      handleHookError(error, 'Không thể cập nhật tiêu chí ưu tiên');
     },
   });
 };
@@ -77,7 +78,7 @@ export const useDeletePriorityCriteria = () => {
       queryClient.invalidateQueries({ queryKey: PRIORITY_CRITERIA_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi xoá tiêu chí');
+      handleHookError(error, 'Không thể xóa tiêu chí ưu tiên');
     },
   });
 };

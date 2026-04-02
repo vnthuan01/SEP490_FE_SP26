@@ -12,6 +12,7 @@ import {
   type UpdateSupplyItemPayload,
 } from '@/services/supplyService';
 import { toast } from 'sonner';
+import { handleHookError } from './hookErrorUtils';
 
 export const SUPPLY_QUERY_KEYS = {
   all: ['supplies'] as const,
@@ -56,8 +57,7 @@ export function useCreateSupplyItem() {
       queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.all });
     },
     onError: (error: any) => {
-      console.error(error);
-      toast.error('Tạo hàng hóa thất bại');
+      handleHookError(error, 'Không thể tạo hàng hóa cứu trợ');
     },
   });
 }
@@ -73,7 +73,7 @@ export function useUpdateSupplyItem() {
       queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.itemDetail(variables.id) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Cập nhật hàng hóa thất bại');
+      handleHookError(error, 'Không thể cập nhật hàng hóa cứu trợ');
     },
   });
 }
@@ -87,7 +87,7 @@ export function useDeleteSupplyItem() {
       queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Xóa hàng hóa thất bại');
+      handleHookError(error, 'Không thể xóa hàng hóa cứu trợ');
     },
   });
 }
@@ -144,8 +144,7 @@ export function useCreateSupplyAllocation() {
       queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.all });
     },
     onError: (error: any) => {
-      console.error(error);
-      toast.error('Tạo điều phối thất bại');
+      handleHookError(error, 'Không thể tạo điều phối hàng hóa');
     },
   });
 }
@@ -161,7 +160,7 @@ export function useUpdateSupplyAllocationStatus() {
       queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.allocationDetail(variables.id) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Cập nhật trạng thái điều phối thất bại');
+      handleHookError(error, 'Không thể cập nhật trạng thái điều phối');
     },
   });
 }

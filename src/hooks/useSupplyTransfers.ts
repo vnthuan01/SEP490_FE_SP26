@@ -5,6 +5,7 @@ import {
   type SearchSupplyTransferByStatusParams,
 } from '@/services/supplyTransferService';
 import { toast } from 'sonner';
+import { handleHookError } from './hookErrorUtils';
 
 export const SUPPLY_TRANSFER_KEYS = {
   all: ['supply-transfers'] as const,
@@ -26,7 +27,7 @@ export function useCreateSupplyTransfer() {
       queryClient.invalidateQueries({ queryKey: SUPPLY_TRANSFER_KEYS.all });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Tạo phiếu chuyển hàng thất bại');
+      handleHookError(error, 'Không thể tạo phiếu chuyển hàng');
     },
   });
 }
@@ -85,7 +86,7 @@ function createStatusMutation(mutationFn: (id: string) => Promise<any>, successM
         queryClient.invalidateQueries({ queryKey: SUPPLY_TRANSFER_KEYS.detail(id) });
       },
       onError: (error: any) => {
-        toast.error(error?.response?.data?.message || 'Cập nhật trạng thái thất bại');
+        handleHookError(error, 'Không thể cập nhật trạng thái phiếu chuyển hàng');
       },
     });
   };
