@@ -90,6 +90,7 @@ export default function ManagerStationPage() {
     moderators,
     isLoading: isLoadingModerators,
     pagination: moderatorsPagination,
+    refetch: refetchModerators,
   } = useModerators({
     pageIndex: 1,
     pageSize: 100,
@@ -172,6 +173,8 @@ export default function ManagerStationPage() {
           reason: '',
         },
       });
+      // Refresh moderator list to reflect the latest assignment status.
+      await refetchModerators();
       setAssignModalOpen(false);
     } catch {
       // handled by hook toast
