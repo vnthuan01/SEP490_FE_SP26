@@ -95,6 +95,7 @@ export interface ReliefStationResponse {
   level: number;
   locationId: string;
   locationName: string;
+  coverageRadiusKm?: number | null;
   createdAt: string;
   updatedAt: string | null;
 }

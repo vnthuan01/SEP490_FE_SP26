@@ -49,6 +49,22 @@ export interface PagedResponse<T> {
   items: T[];
 }
 
+export interface TeamTrackingPoint {
+  teamTrackingPointId?: string;
+  teamId?: string;
+  rescueBatchId?: string | null;
+  rescueOperationId?: string | null;
+  latitude: number;
+  longitude: number;
+  accuracyMeters?: number | null;
+  speedKph?: number | null;
+  headingDegree?: number | null;
+  source?: string | null;
+  capturedAtUtc?: string;
+  createdAtUtc?: string;
+  note?: string | null;
+}
+
 export const teamService = {
   //Team CRUD
   getAll: () => apiClient.get<Team[]>('/Team'),
@@ -98,6 +114,12 @@ export const teamService = {
     apiClient.patch(`/Team/${id}/members/${userId}/promote-to-leader`),
 
   removeMember: (id: string, userId: string) => apiClient.delete(`/Team/${id}/members/${userId}`),
+
+  /** GET /api/Team/{teamId}/tracking/latest?limit=N — list of GPS points for polyline */
+  getTrackingPoints: (teamId: string, limit = 200) =>
+    apiClient.get<TeamTrackingPoint[]>(`/Team/${teamId}/tracking/latest`, {
+      params: { limit },
+    }),
 };
 
 //Team Join Request Payload Interfaces

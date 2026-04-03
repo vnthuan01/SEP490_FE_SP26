@@ -29,7 +29,8 @@ import {
   teamStatusToAvailability,
 } from '@/enums/beEnums';
 
-const GOONG_API_KEY = import.meta.env.VITE_GOONG_MAP_KEY || '';
+const GOONG_MAP_KEY = import.meta.env.VITE_GOONG_MAP_KEY || '';
+const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY || '';
 
 // ─── Adapters: convert API data → existing UI types ─────────────────────────
 
@@ -251,7 +252,7 @@ export default function CoordinatorTeamAllocationPage() {
   }, []);
 
   // ── loading state ──
-  if (!GOONG_API_KEY) {
+  if (!GOONG_MAP_KEY) {
     return (
       <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
         <div className="flex items-center justify-center h-[calc(100vh-64px)]">
@@ -295,7 +296,8 @@ export default function CoordinatorTeamAllocationPage() {
             headquarters={headquarters}
             onLocationSelect={handleLocationClick}
             selectedLocationId={selectedLocationId}
-            apiKey={GOONG_API_KEY}
+            mapApiKey={GOONG_MAP_KEY}
+            goongApiKey={GOONG_API_KEY}
           />
 
           <LocationDetailSheet
@@ -407,7 +409,8 @@ export default function CoordinatorTeamAllocationPage() {
               headquarters={headquarters}
               onLocationSelect={handleLocationClick}
               selectedLocationId={selectedLocationId}
-              apiKey={GOONG_API_KEY}
+              mapApiKey={GOONG_MAP_KEY}
+              goongApiKey={GOONG_API_KEY}
             />
           </div>
 

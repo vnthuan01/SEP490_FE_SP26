@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import goongjs, { type Map as GoongMap, type Marker } from '@goongmaps/goong-js';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,7 +15,9 @@ import {
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRescueRequestManagement } from '@/hooks/useRescueRequestManagement';
+import { useMyReliefStation } from '@/hooks/useReliefStation';
 import type { RescueRequestItem } from '@/services/rescueRequestService';
+import { getDirections } from '@/services/goongService';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
 import { toast } from 'sonner';
 import {
@@ -54,6 +57,71 @@ const formatMeters = (value?: number | null) =>
 const formatSeconds = (value?: number | null) =>
   value == null ? '-- giây' : `${value.toLocaleString('vi-VN')} giây`;
 
+const attachmentTypeLabel = (type?: number | string | null) => {
+  if (type === 0 || type === '0' || type === 'RequestEvidence') return 'Bằng chứng yêu cầu';
+  if (type === 1 || type === '1' || type === 'CompletionEvidence') return 'Bằng chứng hoàn thành';
+  return 'Khác';
+};
+
+const ROUTE_SOURCE_ID = 'request-route-source';
+const ROUTE_LAYER_ID = 'request-route-layer';
+const COVERAGE_SOURCE_ID = 'station-coverage-source';
+const COVERAGE_FILL_LAYER_ID = 'station-coverage-fill';
+const COVERAGE_OUTLINE_LAYER_ID = 'station-coverage-outline';
+
+function decodePolyline(encoded: string): Array<[number, number]> {
+  const coordinates: Array<[number, number]> = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < encoded.length) {
+    let b: number;
+    let shift = 0;
+    let result = 0;
+
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+
+    const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+
+    const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+    lng += dlng;
+
+    coordinates.push([lng / 1e5, lat / 1e5]);
+  }
+
+  return coordinates;
+}
+
+function buildCirclePolygon(lat: number, lng: number, radiusKm: number, points = 72): number[][] {
+  const ring: number[][] = [];
+  const latRadius = radiusKm / 111;
+  const lngRadius = radiusKm / (111 * Math.cos((lat * Math.PI) / 180));
+
+  for (let i = 0; i <= points; i += 1) {
+    const angle = (2 * Math.PI * i) / points;
+    ring.push([lng + lngRadius * Math.cos(angle), lat + latRadius * Math.sin(angle)]);
+  }
+
+  return ring;
+}
+
+const GOONG_MAP_KEY = import.meta.env.VITE_GOONG_MAP_KEY || '';
+const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY || '';
+
 export default function CoordinatorRequestManagementPage() {
   const {
     requests,
@@ -66,6 +134,7 @@ export default function CoordinatorRequestManagementPage() {
     rejectRequest,
     rejectStatus,
   } = useRescueRequestManagement(1, 10);
+  const { station } = useMyReliefStation();
 
   const [search, setSearch] = useState('');
   const [verificationFilter, setVerificationFilter] = useState<
@@ -82,6 +151,11 @@ export default function CoordinatorRequestManagementPage() {
   const [rejectNote, setRejectNote] = useState('');
 
   const [actionError, setActionError] = useState('');
+
+  const requestMapContainerRef = useRef<HTMLDivElement | null>(null);
+  const requestMapRef = useRef<GoongMap | null>(null);
+  const requestMarkerRef = useRef<Marker | null>(null);
+  const stationMarkerRef = useRef<Marker | null>(null);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -125,6 +199,311 @@ export default function CoordinatorRequestManagementPage() {
     currentStatus === '0' ||
     currentStatus === 'Pending' ||
     currentStatus == null;
+
+  const selectedCoordinates = useMemo(() => {
+    const lat = Number(selected?.latitude);
+    const lng = Number(selected?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  }, [selected?.latitude, selected?.longitude]);
+
+  const stationCoordinates = useMemo(() => {
+    const lat = Number(station?.latitude);
+    const lng = Number(station?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  }, [station?.latitude, station?.longitude]);
+
+  const coverageRadiusKm = useMemo(() => {
+    const radius = Number((station as any)?.coverageRadiusKm);
+    if (Number.isFinite(radius) && radius > 0) return radius;
+    return null;
+  }, [station]);
+
+  const requestEvidenceAttachments = useMemo(
+    () =>
+      (selected?.attachments || []).filter(
+        (att: any) =>
+          att?.attachmentType === 0 ||
+          att?.attachmentType === '0' ||
+          att?.attachmentType === 'RequestEvidence' ||
+          att?.attachmentType == null,
+      ),
+    [selected?.attachments],
+  );
+
+  const completionEvidenceAttachments = useMemo(
+    () =>
+      (selected?.attachments || []).filter(
+        (att: any) =>
+          att?.attachmentType === 1 ||
+          att?.attachmentType === '1' ||
+          att?.attachmentType === 'CompletionEvidence',
+      ),
+    [selected?.attachments],
+  );
+
+  useEffect(() => {
+    if (!requestMapContainerRef.current || !GOONG_MAP_KEY) return;
+
+    goongjs.accessToken = GOONG_MAP_KEY;
+    requestMapRef.current = new goongjs.Map({
+      container: requestMapContainerRef.current,
+      style: 'https://tiles.goong.io/assets/goong_map_web.json',
+      center: [108.2022, 16.0544],
+      zoom: 5,
+    });
+
+    return () => {
+      if (requestMarkerRef.current) {
+        requestMarkerRef.current.remove();
+        requestMarkerRef.current = null;
+      }
+      if (requestMapRef.current) {
+        requestMapRef.current.remove();
+        requestMapRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = requestMapRef.current;
+    if (!map) return;
+
+    if (stationMarkerRef.current) {
+      stationMarkerRef.current.remove();
+      stationMarkerRef.current = null;
+    }
+
+    if (!stationCoordinates) return;
+
+    const stationMarkerElement = document.createElement('div');
+    stationMarkerElement.className = 'flex items-center gap-1';
+    stationMarkerElement.innerHTML = `
+      <span style="width:10px;height:10px;background:#8b5cf6;border-radius:9999px;box-shadow:0 0 0 4px rgba(139,92,246,.25);"></span>
+      <span style="font-size:11px;font-weight:700;background:#6d28d9;color:#fff;padding:2px 6px;border-radius:9999px;white-space:nowrap;">Trạm hiện tại</span>
+    `;
+
+    stationMarkerRef.current = new goongjs.Marker({ element: stationMarkerElement })
+      .setLngLat([stationCoordinates.lng, stationCoordinates.lat])
+      .addTo(map);
+  }, [stationCoordinates]);
+
+  useEffect(() => {
+    const map = requestMapRef.current;
+    if (!map) return;
+
+    const drawCoverage = () => {
+      if ((map as any).getLayer(COVERAGE_FILL_LAYER_ID)) {
+        try {
+          (map as any).removeLayer(COVERAGE_FILL_LAYER_ID);
+        } catch (_error) {
+          // Ignore cleanup errors
+        }
+      }
+      if ((map as any).getLayer(COVERAGE_OUTLINE_LAYER_ID)) {
+        try {
+          (map as any).removeLayer(COVERAGE_OUTLINE_LAYER_ID);
+        } catch (_error) {
+          // Ignore cleanup errors
+        }
+      }
+      if ((map as any).getSource(COVERAGE_SOURCE_ID)) {
+        try {
+          (map as any).removeSource(COVERAGE_SOURCE_ID);
+        } catch (_error) {
+          // Ignore cleanup errors
+        }
+      }
+
+      if (!stationCoordinates || !coverageRadiusKm) return;
+
+      const circleRing = buildCirclePolygon(
+        stationCoordinates.lat,
+        stationCoordinates.lng,
+        coverageRadiusKm,
+      );
+
+      (map as any).addSource(COVERAGE_SOURCE_ID, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: { radiusKm: coverageRadiusKm },
+          geometry: { type: 'Polygon', coordinates: [circleRing] },
+        },
+      });
+
+      (map as any).addLayer({
+        id: COVERAGE_FILL_LAYER_ID,
+        type: 'fill',
+        source: COVERAGE_SOURCE_ID,
+        paint: {
+          'fill-color': '#a78bfa',
+          'fill-opacity': 0.16,
+        },
+      });
+
+      (map as any).addLayer({
+        id: COVERAGE_OUTLINE_LAYER_ID,
+        type: 'line',
+        source: COVERAGE_SOURCE_ID,
+        paint: {
+          'line-color': '#7c3aed',
+          'line-width': 2,
+          'line-dasharray': [2, 1],
+        },
+      });
+    };
+
+    if ((map as any).isStyleLoaded()) {
+      drawCoverage();
+      return;
+    }
+
+    map.on('load', drawCoverage);
+    return () => {
+      map.off('load', drawCoverage);
+    };
+  }, [stationCoordinates, coverageRadiusKm]);
+
+  useEffect(() => {
+    const map = requestMapRef.current;
+    if (!map) return;
+
+    if (requestMarkerRef.current) {
+      requestMarkerRef.current.remove();
+      requestMarkerRef.current = null;
+    }
+
+    if (!selectedCoordinates) return;
+
+    const markerElement = document.createElement('div');
+    markerElement.className = 'flex items-center gap-1';
+    markerElement.innerHTML = `
+      <span style="width:10px;height:10px;background:#ef4444;border-radius:9999px;box-shadow:0 0 0 4px rgba(239,68,68,.25);"></span>
+      <span style="font-size:11px;font-weight:700;background:#111827;color:#fff;padding:2px 6px;border-radius:9999px;white-space:nowrap;">Điểm yêu cầu</span>
+    `;
+
+    requestMarkerRef.current = new goongjs.Marker({ element: markerElement })
+      .setLngLat([selectedCoordinates.lng, selectedCoordinates.lat])
+      .addTo(map);
+
+    (map as any).flyTo({
+      center: [selectedCoordinates.lng, selectedCoordinates.lat],
+      zoom: 14,
+      speed: 1,
+    });
+  }, [selectedCoordinates]);
+
+  useEffect(() => {
+    const map = requestMapRef.current;
+    if (!map || !GOONG_API_KEY) return;
+
+    const drawRoute = async () => {
+      if ((map as any).getLayer(ROUTE_LAYER_ID)) {
+        try {
+          (map as any).removeLayer(ROUTE_LAYER_ID);
+        } catch (_error) {
+          // Ignore cleanup errors
+        }
+      }
+      if ((map as any).getSource(ROUTE_SOURCE_ID)) {
+        try {
+          (map as any).removeSource(ROUTE_SOURCE_ID);
+        } catch (_error) {
+          // Ignore cleanup errors
+        }
+      }
+
+      if (!stationCoordinates || !selectedCoordinates) return;
+
+      const direction = await getDirections(
+        stationCoordinates,
+        selectedCoordinates,
+        'car',
+        GOONG_API_KEY,
+      );
+      const route = direction?.routes?.[0];
+      const overviewPoints = route?.overview_polyline?.points;
+
+      let coords: Array<[number, number]> = [];
+
+      if (overviewPoints) {
+        coords = decodePolyline(overviewPoints);
+      } else {
+        const stepPolylines = (route?.legs || [])
+          .flatMap((leg: any) => leg?.steps || [])
+          .map((step: any) => step?.polyline?.points)
+          .filter((p: unknown): p is string => typeof p === 'string' && p.length > 0);
+
+        for (const p of stepPolylines) {
+          const partial = decodePolyline(p);
+          if (!partial.length) continue;
+
+          if (
+            coords.length > 0 &&
+            partial.length > 0 &&
+            coords[coords.length - 1][0] === partial[0][0] &&
+            coords[coords.length - 1][1] === partial[0][1]
+          ) {
+            coords.push(...partial.slice(1));
+          } else {
+            coords.push(...partial);
+          }
+        }
+      }
+
+      if (coords.length < 2) {
+        console.warn('Direction API returned no drawable polyline', direction);
+        return;
+      }
+
+      (map as any).addSource(ROUTE_SOURCE_ID, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: coords,
+          },
+        },
+      });
+
+      (map as any).addLayer({
+        id: ROUTE_LAYER_ID,
+        type: 'line',
+        source: ROUTE_SOURCE_ID,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': '#2563eb',
+          'line-width': 4,
+          'line-opacity': 0.85,
+        },
+      });
+
+      const bounds = new goongjs.LngLatBounds();
+      bounds.extend([stationCoordinates.lng, stationCoordinates.lat]);
+      bounds.extend([selectedCoordinates.lng, selectedCoordinates.lat]);
+      coords.forEach((c) => bounds.extend(c));
+      (map as any).fitBounds(bounds, { padding: 50, maxZoom: 14, duration: 700 });
+    };
+
+    if ((map as any).isStyleLoaded()) {
+      void drawRoute();
+      return;
+    }
+
+    const handleLoad = () => {
+      void drawRoute();
+    };
+
+    map.on('load', handleLoad);
+
+    return () => {
+      map.off('load', handleLoad);
+    };
+  }, [stationCoordinates, selectedCoordinates]);
 
   const handleVerify = async () => {
     if (!selected) return;
@@ -179,9 +558,7 @@ export default function CoordinatorRequestManagementPage() {
       <div className="mb-6 flex flex-wrap justify-between items-end gap-4">
         <div>
           <h1 className="text-3xl md:text-4xl font-black text-primary">Quản lý yêu cầu cứu hộ</h1>
-          <p className="text-muted-foreground mt-1">
-            Liệt kê yêu cầu cứu hộ bình thường (Normal) và xác minh thủ công.
-          </p>
+          <p className="text-muted-foreground mt-1">Liệt kê yêu cầu cứu hộ.</p>
         </div>
         <Button variant="outline" className="gap-2" onClick={() => refetch()}>
           <span className="material-symbols-outlined">refresh</span>
@@ -210,8 +587,13 @@ export default function CoordinatorRequestManagementPage() {
               <Button
                 size="sm"
                 variant={verificationFilter === 'pending' ? 'primary' : 'outline'}
+                className={cn(
+                  verificationFilter === 'pending' &&
+                    'bg-amber-400 border-amber-400 text-amber-950 hover:bg-amber-300',
+                )}
                 onClick={() => setVerificationFilter('pending')}
               >
+                <span className="material-symbols-outlined text-base">schedule</span>
                 Chờ xác minh
               </Button>
               <Button
@@ -290,7 +672,7 @@ export default function CoordinatorRequestManagementPage() {
             )}
 
             <p className="text-xs text-muted-foreground">
-              Tổng: {paging?.totalCount ?? filtered.length} request bình thường
+              Tổng: {paging?.totalCount ?? filtered.length} yêu cầu.
             </p>
           </CardContent>
         </Card>
@@ -318,103 +700,208 @@ export default function CoordinatorRequestManagementPage() {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Loại thiên tai</p>
-                    <p className="font-medium">
-                      {selected.disasterType != null
-                        ? getDisasterTypeLabel(selected.disasterType)
-                        : '--'}
-                    </p>
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-border p-4 space-y-3">
+                    <p className="text-sm font-semibold">A. Thông tin yêu cầu</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Loại thiên tai
+                        </p>
+                        <p className="text-sm">
+                          {selected.disasterType != null
+                            ? getDisasterTypeLabel(selected.disasterType)
+                            : '--'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Loại yêu cầu cứu hộ
+                        </p>
+                        <p className="text-sm">
+                          {selected.rescueRequestType != null
+                            ? getRescueRequestTypeLabel(selected.rescueRequestType)
+                            : '--'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Mức ưu tiên
+                        </p>
+                        <p className="text-sm">{selected.priority ?? '--'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Số điện thoại người báo tin
+                        </p>
+                        <p className="text-sm">{selected.reporterPhone || '--'}</p>
+                      </div>
+                      <div className="md:col-span-2">
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Mô tả
+                        </p>
+                        <p className="text-sm">{selected.description || 'Không có mô tả'}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Loại yêu cầu cứu hộ</p>
-                    <p className="font-medium">
-                      {selected.rescueRequestType != null
-                        ? getRescueRequestTypeLabel(selected.rescueRequestType)
-                        : '--'}
-                    </p>
+
+                  <div className="rounded-lg border border-border p-4 space-y-3">
+                    <p className="text-sm font-semibold">B. Vị trí</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="md:col-span-2">
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Địa chỉ
+                        </p>
+                        <p className="text-sm">{selected.address || 'Chưa cập nhật'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Vĩ độ
+                        </p>
+                        <p className="text-sm">{selected.latitude ?? '--'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Kinh độ
+                        </p>
+                        <p className="text-sm">{selected.longitude ?? '--'}</p>
+                      </div>
+                      <div className="md:col-span-2">
+                        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
+                          Bản đồ vị trí yêu cầu
+                        </p>
+                        <div className="rounded-lg border border-border overflow-hidden bg-accent/20">
+                          {!GOONG_MAP_KEY ? (
+                            <p className="p-3 text-sm text-muted-foreground">
+                              Thiếu VITE_GOONG_MAP_KEY để hiển thị bản đồ.
+                            </p>
+                          ) : (
+                            <>
+                              <div ref={requestMapContainerRef} className="h-[320px] w-full" />
+                              {!selectedCoordinates ? (
+                                <p className="p-3 text-xs text-muted-foreground">
+                                  Yêu cầu này chưa có tọa độ hợp lệ để ghim vị trí.
+                                </p>
+                              ) : null}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">
-                      Số điện thoại người báo tin
-                    </p>
-                    <p className="font-medium">{selected.reporterPhone || '--'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Mức ưu tiên</p>
-                    <p className="font-medium">{selected.priority ?? '--'}</p>
-                  </div>
-                  <div className="md:col-span-2">
-                    <p className="text-xs uppercase text-muted-foreground">Địa chỉ</p>
-                    <p className="font-medium">{selected.address || 'Chưa cập nhật'}</p>
-                  </div>
-                  <div className="md:col-span-2">
-                    <p className="text-xs uppercase text-muted-foreground">Mô tả</p>
-                    <p className="font-medium">{selected.description || 'Không có mô tả'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Vĩ độ</p>
-                    <p className="font-medium">{selected.latitude ?? '--'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Kinh độ</p>
-                    <p className="font-medium">{selected.longitude ?? '--'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Thời gian tạo</p>
-                    <p className="font-medium">{formatDate(selected.createdAt)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Khoảng cách (km)</p>
-                    <p className="font-medium">{formatKm(selected.stationToRequestDistanceKm)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">
-                      Thời gian di chuyển (phút)
-                    </p>
-                    <p className="font-medium">
-                      {formatMin(selected.stationToRequestDurationMinutes)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Khoảng cách (m)</p>
-                    <p className="font-medium">
-                      {formatMeters(selected.stationToRequestDistanceMeters)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">
-                      Thời gian di chuyển (giây)
-                    </p>
-                    <p className="font-medium">
-                      {formatSeconds(selected.stationToRequestDurationSeconds)}
-                    </p>
+
+                  <div className="rounded-lg border border-border p-4 space-y-3">
+                    <p className="text-sm font-semibold">C. Khoảng cách & thời gian di chuyển</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Thời gian tạo
+                        </p>
+                        <p className="text-sm">{formatDate(selected.createdAt)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Khoảng cách (km)
+                        </p>
+                        <p className="text-sm">{formatKm(selected.stationToRequestDistanceKm)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Thời gian di chuyển (phút)
+                        </p>
+                        <p className="text-sm">
+                          {formatMin(selected.stationToRequestDurationMinutes)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Khoảng cách (m)
+                        </p>
+                        <p className="text-sm">
+                          {formatMeters(selected.stationToRequestDistanceMeters)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Thời gian di chuyển (giây)
+                        </p>
+                        <p className="text-sm">
+                          {formatSeconds(selected.stationToRequestDurationSeconds)}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <p className="text-xs uppercase text-muted-foreground mb-2">Tệp đính kèm</p>
+                <div className="rounded-lg border border-border p-4 space-y-3">
+                  <p className="text-sm font-semibold">D. Tệp đính kèm</p>
                   {selected.attachments?.length ? (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {selected.attachments.map((att) => (
-                        <a
-                          key={att.attachmentId}
-                          href={att.fileUrl || '#'}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-lg overflow-hidden border border-border bg-accent/30"
-                        >
-                          <img
-                            src={att.fileUrl || ''}
-                            alt="attachment"
-                            className="w-full h-28 object-cover"
-                            onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).style.display = 'none';
-                            }}
-                          />
-                        </a>
-                      ))}
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
+                          RequestEvidence (0) · Bằng chứng yêu cầu
+                        </p>
+                        {requestEvidenceAttachments.length ? (
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            {requestEvidenceAttachments.map((att) => (
+                              <a
+                                key={att.attachmentId}
+                                href={att.fileUrl || '#'}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-lg overflow-hidden border border-border bg-accent/30"
+                                title={attachmentTypeLabel(att.attachmentType)}
+                              >
+                                <img
+                                  src={att.fileUrl || ''}
+                                  alt="attachment"
+                                  className="w-full h-28 object-cover"
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                  }}
+                                />
+                              </a>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Không có bằng chứng yêu cầu.
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
+                          CompletionEvidence (1) · Bằng chứng hoàn thành
+                        </p>
+                        {completionEvidenceAttachments.length ? (
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            {completionEvidenceAttachments.map((att) => (
+                              <a
+                                key={att.attachmentId}
+                                href={att.fileUrl || '#'}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-lg overflow-hidden border border-border bg-accent/30"
+                                title={attachmentTypeLabel(att.attachmentType)}
+                              >
+                                <img
+                                  src={att.fileUrl || ''}
+                                  alt="attachment"
+                                  className="w-full h-28 object-cover"
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                  }}
+                                />
+                              </a>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Không có bằng chứng hoàn thành.
+                          </p>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">Không có ảnh đính kèm.</p>
@@ -422,7 +909,7 @@ export default function CoordinatorRequestManagementPage() {
                 </div>
 
                 <div className="rounded-lg border border-border p-4 space-y-3">
-                  <p className="text-sm font-semibold">Xác minh yêu cầu</p>
+                  <p className="text-sm font-semibold">E. Xác minh yêu cầu</p>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>

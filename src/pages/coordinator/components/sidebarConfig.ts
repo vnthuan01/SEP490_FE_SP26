@@ -9,9 +9,14 @@ export const coordinatorProjects = [
     icon: 'how_to_reg',
   },
   {
-    label: 'Yêu cầu cứu trợ',
+    label: 'Yêu cầu cứu hộ',
     path: '/portal/coordinator/requests',
     icon: 'person_raised_hand',
+  },
+  {
+    label: 'Theo dõi Mission',
+    path: '/portal/coordinator/mission-tracking',
+    icon: 'radar',
   },
 
   {
