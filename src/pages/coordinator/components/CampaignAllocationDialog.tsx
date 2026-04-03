@@ -22,6 +22,7 @@ export function CampaignAllocationDialog({
   onSubmit,
 }: CampaignAllocationDialogProps) {
   const [selectedItems, setSelectedItems] = React.useState<ExportItem[]>([]);
+  const [checkedItemIds, setCheckedItemIds] = React.useState<string[]>([]);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [note, setNote] = React.useState('');
   const [campaignId, setCampaignId] = React.useState('');
@@ -29,6 +30,7 @@ export function CampaignAllocationDialog({
   React.useEffect(() => {
     if (!open) return;
     setSelectedItems([]);
+    setCheckedItemIds([]);
     setNote('');
     setCampaignId('');
     setEditingId(null);
@@ -50,6 +52,44 @@ export function CampaignAllocationDialog({
       if (prev.some((i) => i.id === item.id)) return prev;
       return [...prev, { ...item, quantity: 1 }];
     });
+  };
+
+  const toggleCheckedItem = (id: string, checked: boolean) => {
+    setCheckedItemIds((prev) => {
+      if (checked) {
+        return prev.includes(id) ? prev : [...prev, id];
+      }
+
+      return prev.filter((itemId) => itemId !== id);
+    });
+  };
+
+  const addCheckedItems = () => {
+    if (checkedItemIds.length === 0) return;
+
+    setSelectedItems((prev) => {
+      const existingIds = new Set(prev.map((item) => item.id));
+      const itemsToAdd = items
+        .filter((item) => checkedItemIds.includes(item.id) && !existingIds.has(item.id))
+        .map((item) => ({ ...item, quantity: 1 }));
+
+      return [...prev, ...itemsToAdd];
+    });
+
+    setCheckedItemIds([]);
+  };
+
+  const addAllItems = () => {
+    setSelectedItems((prev) => {
+      const existingIds = new Set(prev.map((item) => item.id));
+      const itemsToAdd = items
+        .filter((item) => !existingIds.has(item.id))
+        .map((item) => ({ ...item, quantity: 1 }));
+
+      return [...prev, ...itemsToAdd];
+    });
+
+    setCheckedItemIds([]);
   };
 
   const updateQty = (id: string, delta: number) => {
@@ -98,15 +138,64 @@ export function CampaignAllocationDialog({
         <div className="flex h-full min-h-0">
           {/* LEFT – INVENTORY */}
           <div className="flex-1 p-6 overflow-y-auto min-h-0 space-y-4">
-            <h3 className="font-medium">Danh sách vật tư có trong kho trạm:</h3>
+            <div className="space-y-3">
+              <div>
+                <h3 className="font-medium text-foreground">Vật tư hiện có trong kho trạm</h3>
+                <p className="text-sm text-muted-foreground">
+                  Chọn một hoặc nhiều vật tư từ kho trạm để thêm vào phiếu cấp phát cho chiến dịch.
+                  Những vật tư đã có trong phiếu sẽ không bị thêm trùng.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2 rounded-xl border border-border bg-muted/30 p-3 md:flex-row md:items-center md:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Đã chọn{' '}
+                  <span className="font-semibold text-foreground">{checkedItemIds.length}</span> vật
+                  tư để thêm vào phiếu.
+                </p>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={checkedItemIds.length === 0}
+                    onClick={addCheckedItems}
+                  >
+                    <span className="material-symbols-outlined text-sm mr-1">playlist_add</span>
+                    Thêm mục đã chọn
+                  </Button>
+
+                  <Button size="sm" variant="outline" onClick={addAllItems}>
+                    <span className="material-symbols-outlined text-sm mr-1">select_all</span>
+                    Thêm tất cả
+                  </Button>
+                </div>
+              </div>
+            </div>
+
             {items.map((item) => {
               const added = selectedItems.some((i) => i.id === item.id);
+              const checked = checkedItemIds.includes(item.id);
 
               return (
                 <div
                   key={item.id}
-                  className="flex items-center gap-4 border border-border rounded-xl p-4 bg-card"
+                  className={cn(
+                    'flex items-center gap-4 border rounded-xl p-4 bg-card transition-colors',
+                    checked ? 'border-primary/50 bg-primary/5' : 'border-border',
+                  )}
                 >
+                  <label className="flex items-center justify-center">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                      checked={checked}
+                      disabled={added}
+                      onChange={(e) => toggleCheckedItem(item.id, e.target.checked)}
+                      aria-label={`Chọn vật tư ${item.name}`}
+                    />
+                  </label>
+
                   {item.icon && (
                     <span className="material-symbols-outlined text-3xl text-primary">
                       {item.icon}
@@ -132,10 +221,13 @@ export function CampaignAllocationDialog({
                     size="sm"
                     variant={added ? 'success' : 'outline'}
                     disabled={added}
-                    onClick={() => addToAllocation(item)}
+                    onClick={() => {
+                      addToAllocation(item);
+                      toggleCheckedItem(item.id, false);
+                    }}
                   >
                     <span className="material-symbols-outlined text-sm mr-1">add</span>
-                    {added ? 'Đã thêm' : 'Thêm vào phiếu'}
+                    {added ? 'Đã có trong phiếu' : 'Thêm nhanh'}
                   </Button>
                 </div>
               );
@@ -148,9 +240,17 @@ export function CampaignAllocationDialog({
               Phiếu cấp phát chiến dịch
             </h3>
 
+            <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm text-muted-foreground">
+              Phiếu này dùng để cấp phát vật tư từ{' '}
+              <span className="font-medium text-foreground">kho trạm</span> sang{' '}
+              <span className="font-medium text-foreground">chiến dịch đang hoạt động</span>. Sau
+              khi thêm vật tư vào phiếu, bạn vẫn có thể điều chỉnh số lượng từng dòng trước khi xác
+              nhận.
+            </div>
+
             {/* CAMPAIGN */}
             <div className="mb-4">
-              <p className="text-sm font-medium mb-2 text-foreground">Chiến dịch nhận vật tư</p>
+              <p className="text-sm font-medium mb-2 text-foreground">Chiến dịch nhận cấp phát</p>
               <select
                 value={campaignId}
                 onChange={(e) => setCampaignId(e.target.value)}
@@ -249,7 +349,7 @@ export function CampaignAllocationDialog({
 
               {totalLines === 0 && (
                 <p className="text-sm text-muted-foreground italic">
-                  Chưa có vật tư nào trong phiếu
+                  Chưa có vật tư nào trong phiếu cấp phát
                 </p>
               )}
 

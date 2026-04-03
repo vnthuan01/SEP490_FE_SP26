@@ -433,6 +433,20 @@ export const CampaignType = {
 
 export type CampaignType = (typeof CampaignType)[keyof typeof CampaignType];
 
+export const CampaignResourceType = {
+  Money: 1,
+  Supplies: 2,
+  People: 3,
+} as const;
+
+export type CampaignResourceType = (typeof CampaignResourceType)[keyof typeof CampaignResourceType];
+
+export const CampaignResourceTypeLabel: Record<number, string> = {
+  [CampaignResourceType.Money]: 'Tiền',
+  [CampaignResourceType.Supplies]: 'Vật tư',
+  [CampaignResourceType.People]: 'Người tình nguyện',
+};
+
 export const CampaignTeamStatus = {
   Invited: 0,
   Accepted: 1,

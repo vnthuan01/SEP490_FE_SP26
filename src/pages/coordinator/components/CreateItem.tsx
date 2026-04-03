@@ -13,8 +13,31 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import type { NewInventoryItem, ItemInventoryProps } from '@/types/createItemInventory';
+import CustomCalendar from '@/components/ui/customCalendar';
 
 const UNIT_OPTIONS = ['Thùng', 'Hộp', 'Bao', 'Chai', 'Cái', 'Gói'];
+
+const parseLocalDateFromYmd = (value?: string | null) => {
+  if (!value) return undefined;
+
+  if (value.includes('T')) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return undefined;
+
+  return new Date(year, month - 1, day, 12, 0, 0);
+};
+
+const toUtcIsoFromDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const day = date.getDate();
+
+  return new Date(Date.UTC(year, month, day, 12, 0, 0)).toISOString();
+};
 
 export function CreateInventoryItemDialog({
   open,
@@ -32,9 +55,10 @@ export function CreateInventoryItemDialog({
     unit: '',
     quantity: 1,
     capacity: undefined,
-    note: '',
     expirationDate: null,
   });
+  const [openExpirationDateCalendarDialog, setOpenExpirationDateCalendarDialog] =
+    React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
@@ -44,20 +68,20 @@ export function CreateInventoryItemDialog({
       name: selected?.name || '',
       category: selected?.category || '',
       icon: selected?.icon || '',
+      iconUrl: selected?.iconUrl || selected?.icon || '',
       unit: selected?.unit || '',
       quantity: 1,
       capacity: existingStock?.maximumStockLevel,
-      note: '',
       expirationDate: null,
     });
+    setOpenExpirationDateCalendarDialog(false);
   }, [open, initialSupplyItemId, supplyItems, existingStock]);
 
   const update = <K extends keyof NewInventoryItem>(key: K, value: NewInventoryItem[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const canSubmit =
-    form.supplyItemId && form.unit.trim() && form.quantity > 0 && !!form.note?.trim();
+  const canSubmit = form.supplyItemId && form.unit.trim() && form.quantity > 0;
 
   const handleSelectSupplyItem = (supplyItemId: string) => {
     const selected = supplyItems.find((item) => item.id === supplyItemId);
@@ -69,8 +93,13 @@ export function CreateInventoryItemDialog({
       name: selected.name,
       category: selected.category,
       icon: selected.icon,
+      iconUrl: selected.iconUrl || selected.icon,
       unit: selected.unit,
     }));
+  };
+
+  const closeExpirationDateCalendarDialogAction = () => {
+    setOpenExpirationDateCalendarDialog(false);
   };
 
   return (
@@ -125,12 +154,16 @@ export function CreateInventoryItemDialog({
           {/* ICON */}
           <div className="space-y-2">
             <Label>Icon</Label>
-            <Input placeholder="Icon tự động điền theo vật tư" value={form.icon} readOnly />
+            <Input
+              placeholder="Icon tự động điền theo vật tư"
+              value={form.iconUrl || form.icon || ''}
+              readOnly
+            />
           </div>
 
           <Separator />
 
-          {existingStock && (
+          {existingStock ? (
             <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground space-y-1">
               <p>
                 Tồn hiện tại:{' '}
@@ -142,7 +175,15 @@ export function CreateInventoryItemDialog({
                 Ngưỡng tồn hiện có: {existingStock.minimumStockLevel} -{' '}
                 {existingStock.maximumStockLevel}
               </p>
-              <p>Vật phẩm đã có trong kho, bạn chỉ cần nhập thêm số lượng và nêu rõ lý do nhập.</p>
+              <p>
+                Vật phẩm đã có trong kho nên lần nhập này sẽ tạo giao dịch nhập kho. Vui lòng nhập
+                lý do nhập kho.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground space-y-1">
+              <p>Vật phẩm chưa có trong kho nên hệ thống sẽ tạo mới một lô/stock trực tiếp.</p>
+              <p>Trường hợp này không yêu cầu ghi chú vì API tạo stock không có trường ghi chú.</p>
             </div>
           )}
 
@@ -210,34 +251,90 @@ export function CreateInventoryItemDialog({
           {!existingStock && (
             <div className="space-y-2">
               <Label>Ngày hết hạn lô hàng (tùy chọn)</Label>
-              <Input
-                type="date"
-                value={form.expirationDate ?? ''}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  update('expirationDate', e.target.value || null)
-                }
-              />
+              <div className="space-y-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => {
+                    if (openExpirationDateCalendarDialog) {
+                      closeExpirationDateCalendarDialogAction();
+                      return;
+                    }
+
+                    setOpenExpirationDateCalendarDialog(true);
+                  }}
+                >
+                  <span className="material-symbols-outlined text-[16px]">calendar</span>
+                  {form.expirationDate ? (
+                    parseLocalDateFromYmd(form.expirationDate)?.toLocaleDateString('vi-VN')
+                  ) : (
+                    <span className="text-muted-foreground text-xs">Chọn ngày hết hạn</span>
+                  )}
+                </Button>
+
+                {openExpirationDateCalendarDialog && (
+                  <div className="rounded-xl border border-border bg-muted/20 p-3 w-fit">
+                    <CustomCalendar
+                      disabledDays={{ before: new Date() }}
+                      value={parseLocalDateFromYmd(form.expirationDate)}
+                      onChange={(date) => {
+                        if (date) {
+                          update('expirationDate', toUtcIsoFromDate(date));
+                        } else {
+                          update('expirationDate', '');
+                        }
+
+                        closeExpirationDateCalendarDialogAction();
+                      }}
+                    />
+
+                    <div className="mt-3 flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          update('expirationDate', '');
+                          closeExpirationDateCalendarDialogAction();
+                        }}
+                      >
+                        Xóa ngày
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={closeExpirationDateCalendarDialogAction}
+                      >
+                        Đóng
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
                 Để trống nếu lô hàng không có hạn sử dụng cụ thể.
               </p>
             </div>
           )}
 
-          {/* NOTE */}
-          <div className="space-y-2">
-            <Label>
-              Lý do nhập kho <span className="text-red-500">*</span>
-            </Label>
-            <Textarea
-              rows={3}
-              placeholder="Ví dụ: Bổ sung vật tư do nhu cầu sử dụng tăng cao"
-              value={form.note}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                update('note', e.target.value)
-              }
-              className="resize-none"
-            />
-          </div>
+          {existingStock && (
+            <div className="space-y-2">
+              <Label>
+                Lý do nhập kho <span className="text-red-500">*</span>
+              </Label>
+              <Textarea
+                rows={3}
+                placeholder="Ví dụ: Bổ sung vật tư do nhu cầu sử dụng tăng cao"
+                value={form.note || ''}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  update('note', e.target.value)
+                }
+                className="resize-none"
+              />
+            </div>
+          )}
         </div>
 
         {/* ACTIONS */}

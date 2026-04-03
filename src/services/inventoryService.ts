@@ -51,6 +51,8 @@ export interface Stock {
   currentQuantity: number;
   minimumStockLevel: number;
   maximumStockLevel: number;
+  /** Optional – backend may or may not include this field */
+  expirationDate?: string | null;
 }
 
 export interface CreateStockPayload {

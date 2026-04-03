@@ -3,6 +3,7 @@ export interface NewInventoryItem {
   name: string;
   category: string;
   icon?: string;
+  iconUrl?: string;
   unit: string;
   quantity: number;
   capacity?: number;
@@ -19,6 +20,7 @@ export interface ItemInventoryProps {
     name: string;
     category: string;
     icon?: string;
+    iconUrl?: string;
     unit: string;
   }>;
   initialSupplyItemId?: string;

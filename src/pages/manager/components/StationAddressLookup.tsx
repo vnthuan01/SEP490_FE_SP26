@@ -21,11 +21,15 @@ export function StationAddressLookup({
   latitude,
   longitude,
   onPickAddress,
+  label = 'Địa chỉ trạm',
+  required: isRequired = true,
 }: {
   address: string;
   latitude: number;
   longitude: number;
   onPickAddress: (payload: { address: string; latitude: number; longitude: number }) => void;
+  label?: string;
+  required?: boolean;
 }) {
   const [searchValue, setSearchValue] = useState(address || '');
   const [mapSearchValue, setMapSearchValue] = useState(address || '');
@@ -172,7 +176,7 @@ export function StationAddressLookup({
     <div className="space-y-3">
       <div className="flex flex-col gap-2">
         <FormLabel>
-          Địa chỉ trạm <span className="text-destructive">*</span>
+          {label} {isRequired && <span className="text-destructive">*</span>}
         </FormLabel>
         <Input
           className="w-full h-9"
