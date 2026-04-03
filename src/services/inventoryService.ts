@@ -51,6 +51,8 @@ export interface Stock {
   currentQuantity: number;
   minimumStockLevel: number;
   maximumStockLevel: number;
+  /** Optional – backend may or may not include this field */
+  expirationDate?: string | null;
 }
 
 export interface CreateStockPayload {
@@ -58,6 +60,7 @@ export interface CreateStockPayload {
   currentQuantity: number;
   minimumStockLevel: number;
   maximumStockLevel: number;
+  expirationDate?: string | null;
 }
 
 export interface UpdateStockPayload {
@@ -69,6 +72,8 @@ export interface UpdateStockPayload {
 
 export interface TransactionItem {
   supplyItemId: string;
+  supplyItemName: string;
+  supplyItemUnit: string;
   quantity: number;
   notes: string;
 }
@@ -79,16 +84,23 @@ export interface CreateTransactionPayload {
   reason: number;
   notes: string;
   items: TransactionItem[];
+  /** Optional link to a supply transfer (used for SupplyTransferOut/In transactions) */
+  supplyTransferId?: string;
 }
 
 export interface InventoryTransaction {
   transactionId: string;
   inventoryId: string;
+  transactionCode?: string;
   type: number;
+  typeName?: string;
   reason: number;
+  reasonName?: string;
+  totalItems?: number;
   notes: string;
   createdAt: string;
-  items: any[];
+  createdByName?: string;
+  items: TransactionItem[];
 }
 
 export interface SearchTransactionParams {

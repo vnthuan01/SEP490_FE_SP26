@@ -83,6 +83,7 @@ import {
   parseFormattedNumber,
 } from '@/lib/utils';
 import { toast } from 'sonner';
+import CustomCalendar from '@/components/ui/customCalendar';
 
 type QuanLyTab = 'hang-hoa' | 'chien-dich';
 
@@ -119,6 +120,7 @@ type DongCapNhatTonKho = {
   maximumStockLevel: string;
   stockId?: string;
   isExisting?: boolean;
+  expirationDate?: string | null;
 };
 
 type TransferDialogState = {
@@ -177,6 +179,7 @@ const taoDongCapNhatTonKho = (): DongCapNhatTonKho => ({
   importQuantity: '0',
   minimumStockLevel: '0',
   maximumStockLevel: '0',
+  expirationDate: null,
 });
 
 const taoDongTransfer = (): TransferItemDraft => ({
@@ -186,6 +189,28 @@ const taoDongTransfer = (): TransferItemDraft => ({
   notes: '',
   iconUrl: '',
 });
+
+export const parseLocalDateFromYmd = (value?: string | null) => {
+  if (!value) return undefined;
+
+  if (value.includes('T')) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return undefined;
+
+  return new Date(year, month - 1, day, 12, 0, 0);
+};
+
+const toUtcIsoFromDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const day = date.getDate();
+
+  return new Date(Date.UTC(year, month, day, 12, 0, 0)).toISOString();
+};
 
 export default function ManagerInventoryCoordinationPage() {
   const [selectedTab, setSelectedTab] = useState<QuanLyTab>('hang-hoa');
@@ -202,6 +227,8 @@ export default function ManagerInventoryCoordinationPage() {
   const [openTransactionHistory, setOpenTransactionHistory] = useState(false);
   const [openTransferPdfWorkflow, setOpenTransferPdfWorkflow] = useState(false);
   const [openStockDialog, setOpenStockDialog] = useState(false);
+  const [openExpirationDateCalendarDialog, setOpenExpirationDateCalendarDialog] = useState(false);
+  const [selectedExpirationDateId, setSelectedExpirationDateId] = useState('');
   const [selectedInventoryForStock, setSelectedInventoryForStock] = useState<{
     id: string;
     name: string;
@@ -620,10 +647,16 @@ export default function ManagerInventoryCoordinationPage() {
     }
 
     const validItems = allocationForm.items
-      .map((item) => ({
-        supplyItemId: item.supplyItemId,
-        quantity: parseFormattedNumber(item.quantity),
-      }))
+      .map((item) => {
+        const matchedSupplyItem = supplyItems.find((supply) => supply.id === item.supplyItemId);
+
+        return {
+          supplyItemId: item.supplyItemId,
+          supplyItemName: matchedSupplyItem?.name || item.supplyItemId,
+          supplyItemUnit: matchedSupplyItem?.unit || '',
+          quantity: parseFormattedNumber(item.quantity),
+        };
+      })
       .filter((item) => item.supplyItemId && Number.isFinite(item.quantity) && item.quantity > 0);
 
     if (validItems.length === 0) {
@@ -735,6 +768,11 @@ export default function ManagerInventoryCoordinationPage() {
             items: [
               {
                 supplyItemId: item.supplyItemId,
+                supplyItemName:
+                  supplyItems.find((supply) => supply.id === item.supplyItemId)?.name ||
+                  item.supplyItemId,
+                supplyItemUnit:
+                  supplyItems.find((supply) => supply.id === item.supplyItemId)?.unit || '',
                 quantity: importQuantity,
                 notes: 'Nhập hoặc cập nhật tồn kho từ trang điều phối kho',
               },
@@ -749,6 +787,7 @@ export default function ManagerInventoryCoordinationPage() {
             currentQuantity: importQuantity,
             minimumStockLevel,
             maximumStockLevel,
+            ...(item.expirationDate ? { expirationDate: item.expirationDate } : {}),
           },
         });
       }
@@ -854,6 +893,16 @@ export default function ManagerInventoryCoordinationPage() {
   const openTransactionHistoryDialog = (inventoryId: string, inventoryName: string) => {
     setSelectedInventoryForHistory({ id: inventoryId, name: inventoryName });
     setOpenTransactionHistory(true);
+  };
+
+  const openExpirationDateCalendarDialogAction = (id: string) => {
+    setSelectedExpirationDateId(id);
+    setOpenExpirationDateCalendarDialog(true);
+  };
+
+  const closeExpirationDateCalendarDialogAction = () => {
+    setOpenExpirationDateCalendarDialog(false);
+    setSelectedExpirationDateId('');
   };
 
   return (
@@ -1744,6 +1793,98 @@ export default function ManagerInventoryCoordinationPage() {
                           placeholder="0"
                         />
                       </div>
+
+                      <div className="grid gap-2 md:col-span-2">
+                        <Label htmlFor={`expiration-date-${item.id}`}>
+                          Ngày hết hạn (tùy chọn)
+                        </Label>
+                        {existingStock ? (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span className="material-symbols-outlined text-[16px]">info</span>
+                            <span>
+                              Ngày hết hạn chỉ áp dụng khi thêm vật phẩm mới vào kho. Để cập nhật
+                              hạn sử dụng cho hàng hiện có, vui lòng chỉnh sửa trực tiếp trong tồn
+                              kho.
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <Button
+                              variant="outline"
+                              className="gap-2"
+                              onClick={() => {
+                                if (
+                                  openExpirationDateCalendarDialog &&
+                                  selectedExpirationDateId === item.id
+                                ) {
+                                  closeExpirationDateCalendarDialogAction();
+                                  return;
+                                }
+
+                                openExpirationDateCalendarDialogAction(item.id);
+                              }}
+                            >
+                              <span className="material-symbols-outlined text-[16px]">
+                                calendar
+                              </span>
+                              {item.expirationDate ? (
+                                parseLocalDateFromYmd(item.expirationDate)?.toLocaleDateString(
+                                  'vi-VN',
+                                )
+                              ) : (
+                                <span className="text-muted-foreground text-xs">
+                                  Chọn ngày hết hạn
+                                </span>
+                              )}
+                            </Button>
+
+                            {openExpirationDateCalendarDialog &&
+                              selectedExpirationDateId === item.id && (
+                                <div className="rounded-xl border border-border bg-muted/20 p-3 w-fit">
+                                  <CustomCalendar
+                                    disabledDays={{ before: new Date() }}
+                                    value={parseLocalDateFromYmd(item.expirationDate)}
+                                    onChange={(date) => {
+                                      if (date) {
+                                        updateStockDraft(
+                                          item.id,
+                                          'expirationDate',
+                                          toUtcIsoFromDate(date),
+                                        );
+                                      } else {
+                                        updateStockDraft(item.id, 'expirationDate', '');
+                                      }
+
+                                      closeExpirationDateCalendarDialogAction();
+                                    }}
+                                  />
+
+                                  <div className="mt-3 flex justify-end gap-2">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        updateStockDraft(item.id, 'expirationDate', '');
+                                        closeExpirationDateCalendarDialogAction();
+                                      }}
+                                    >
+                                      Xóa ngày
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={closeExpirationDateCalendarDialogAction}
+                                    >
+                                      Đóng
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {selectedSupply && (
@@ -1764,7 +1905,7 @@ export default function ManagerInventoryCoordinationPage() {
               );
             })}
 
-            <Button variant="outline" className="gap-2" onClick={addStockDraft}>
+            <Button variant="warning" className="gap-2" onClick={addStockDraft}>
               <span className="material-symbols-outlined text-lg">add</span>
               Thêm dòng tồn kho
             </Button>

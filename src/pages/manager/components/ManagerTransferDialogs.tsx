@@ -491,10 +491,15 @@ export function ManagerTransactionHistoryDialog({
   inventoryName: string;
   transactions: Array<{
     transactionId: string;
+    transactionCode?: string;
     type: number;
+    typeName?: string;
     reason: number;
+    reasonName?: string;
+    totalItems?: number;
     notes: string;
     createdAt: string;
+    createdByName?: string;
     items: Array<{ supplyItemId: string; quantity: number; notes?: string }>;
   }>;
   isLoading: boolean;
@@ -524,12 +529,18 @@ export function ManagerTransactionHistoryDialog({
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="font-semibold text-foreground">
-                            Mã giao dịch: {transaction.transactionId.slice(0, 8)}...
+                            Mã giao dịch:{' '}
+                            {transaction.transactionCode ||
+                              `${transaction.transactionId.slice(0, 8)}...`}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {transaction.createdAt
                               ? new Date(transaction.createdAt).toLocaleString('vi-VN')
                               : 'Chưa có dữ liệu thời gian'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Người tạo: {transaction.createdByName || 'Chưa rõ'} • Lý do:{' '}
+                            {transaction.reasonName || 'Chưa rõ'}
                           </p>
                         </div>
                         <div
@@ -542,7 +553,8 @@ export function ManagerTransactionHistoryDialog({
 
                       <div className="rounded-xl border border-border bg-muted/20 p-4">
                         <p className="text-sm text-muted-foreground">
-                          Ghi chú: {transaction.notes || 'Không có ghi chú'}
+                          Ghi chú: {transaction.notes || 'Không có ghi chú'} • Tổng dòng vật phẩm:{' '}
+                          {formatNumberVN(transaction.totalItems || transaction.items?.length || 0)}
                         </p>
                         <div className="mt-3 space-y-2 text-sm text-muted-foreground">
                           {transaction.items?.map((item, index) => (

@@ -47,20 +47,19 @@ export function FilterBar({
 }: FilterBarProps) {
   return (
     <div className={`border-b space-y-3 ${isFullscreen ? 'p-2' : ''}`}>
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-bold text-primary leading-tight">
+          Điều phối cứu trợ những yêu cầu gần trạm quản lý của bạn
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {stats.total} điểm cần cứu trợ • {stats.highUrgency} khẩn cấp cao
+        </p>
+      </div>
       <div className="flex items-center justify-between">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold text-primary leading-tight">
-            Điều phối cứu trợ cả nước
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {stats.total} điểm cần cứu trợ • {stats.highUrgency} khẩn cấp cao
-          </p>
-        </div>
         <div className="flex gap-2">
           <div className="flex flex-col gap-1">
             {/* Label */}
             <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-              <span className="material-symbols-outlined text-sm text-slate-500">search</span>
               Tìm kiếm
             </label>
 

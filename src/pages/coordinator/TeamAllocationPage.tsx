@@ -19,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 // ── API hooks ──
 import { useRescueRequests } from '@/hooks/useRescueRequests';
-import { useTeamsInStation } from '@/hooks/useTeams';
+import { useTeamLatestTracking, useTeamsInStation } from '@/hooks/useTeams';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { rescueRequestService } from '@/services/rescueRequestService';
 import type { RescueRequestItem } from '@/services/rescueRequestService';
@@ -141,6 +141,8 @@ export default function CoordinatorTeamAllocationPage() {
     statusFilter: 1, // Verified
   });
   const { teams: apiTeams } = useTeamsInStation(station?.reliefStationId);
+  const firstTeamId = apiTeams?.[0]?.teamId;
+  const { trackingPoints } = useTeamLatestTracking(String(firstTeamId || ''), 100);
 
   // ── build headquarters from station ──
   const headquarters: Headquarters = useMemo(
@@ -157,6 +159,36 @@ export default function CoordinatorTeamAllocationPage() {
 
   // ── convert API teams → UI Team type ──
   const teams: Team[] = useMemo(() => (apiTeams || []).map(toTeam), [apiTeams]);
+
+  const teamsWithTracking: Team[] = useMemo(() => {
+    const latestPointByTeam = new Map<string, any>();
+    (trackingPoints || []).forEach((point: any) => {
+      const teamId = String(point.teamId || firstTeamId || '');
+      if (!teamId) return;
+      const existing = latestPointByTeam.get(teamId);
+      if (
+        !existing ||
+        new Date(point.capturedAtUtc || point.createdAt || 0).getTime() >
+          new Date(existing.capturedAtUtc || existing.createdAt || 0).getTime()
+      ) {
+        latestPointByTeam.set(teamId, point);
+      }
+    });
+
+    return teams.map((team) => {
+      const tracked = latestPointByTeam.get(team.id);
+      if (!tracked) return team;
+
+      return {
+        ...team,
+        currentLocation: {
+          lat: Number(tracked.latitude) || team.currentLocation.lat,
+          lng: Number(tracked.longitude) || team.currentLocation.lng,
+        },
+        area: tracked.note || team.area,
+      };
+    });
+  }, [teams, trackingPoints, firstTeamId]);
 
   // ── convert API requests → ReliefLocation[] with scores ──
   const reliefLocations: ReliefLocation[] = useMemo(
@@ -203,7 +235,10 @@ export default function CoordinatorTeamAllocationPage() {
   }, [reliefLocations, urgencyFilter, statusFilter, needsFilter, search]);
 
   // ── available teams ──
-  const availableTeams = useMemo(() => teams.filter((t) => t.status === 'available'), [teams]);
+  const availableTeams = useMemo(
+    () => teamsWithTracking.filter((t) => t.status === 'available'),
+    [teamsWithTracking],
+  );
 
   // ── stats ──
   const stats = useMemo(

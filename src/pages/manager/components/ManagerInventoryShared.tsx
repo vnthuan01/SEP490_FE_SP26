@@ -6,6 +6,7 @@ import {
   getSupplyCategoryIcon,
   getSupplyCategoryLabel,
 } from '@/enums/beEnums';
+import { cn } from '@/lib/utils';
 
 export const RequiredMark = () => <span className="text-red-500">*</span>;
 
@@ -51,15 +52,17 @@ export function StatCard({
   icon,
   iconClass,
   note,
+  className,
 }: {
   label: string;
   value: string | number;
-  icon: string;
-  iconClass: string;
+  icon?: string;
+  iconClass?: string;
   note: string;
+  className?: string;
 }) {
   return (
-    <Card className="border-border bg-card">
+    <Card className={cn('border-border bg-card', className)}>
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -68,7 +71,9 @@ export function StatCard({
             <p className="mt-2 text-xs text-muted-foreground">{note}</p>
           </div>
           <div
-            className={`size-11 rounded-2xl border border-border flex items-center justify-center ${iconClass}`}
+            className={cn(
+              `size-10 rounded-2xl border border-border flex items-center justify-center ${iconClass}`,
+            )}
           >
             <span className="material-symbols-outlined text-[22px]">{icon}</span>
           </div>

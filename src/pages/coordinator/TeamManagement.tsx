@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useNavigate } from 'react-router-dom';
-import { useTeams, useTeamsInStation } from '@/hooks/useTeams';
+import { useTeamMembers, useTeams, useTeamsInStation } from '@/hooks/useTeams';
 import {
   Dialog,
   DialogContent,
@@ -15,9 +15,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
+import { useVolunteerProfiles } from '@/hooks/useVolunteerProfiles';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
 import { toast } from 'sonner';
 import type { TeamStatus } from '@/enums/beEnums';
@@ -74,11 +82,13 @@ export default function CoordinatorTeamManagementPage() {
   const [selectedTeamId, setSelectedTeamId] = useState<string>();
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [selectedVolunteerIds, setSelectedVolunteerIds] = useState<string[]>([]);
   const navigate = useNavigate();
 
   const isLoading = isLoadingStation || isLoadingTeamList;
@@ -116,6 +126,14 @@ export default function CoordinatorTeamManagementPage() {
     [selectedTeamId, teams],
   );
 
+  const { members, addMembersBulk, addMembersBulkStatus, promoteToLeader, removeMember } =
+    useTeamMembers(selectedTeamId || '');
+
+  const { profiles } = useVolunteerProfiles({
+    pageIndex: 1,
+    pageSize: 200,
+  });
+
   const filteredTeams = useMemo(() => {
     return teams.filter(
       (t) =>
@@ -144,6 +162,16 @@ export default function CoordinatorTeamManagementPage() {
     setContactPhone('');
     setCreateError('');
   };
+
+  const availableVolunteers = useMemo(() => {
+    const memberIds = new Set(
+      (members || []).map((member: any) => String(member.userId ?? member.id ?? '')),
+    );
+    return (profiles || []).filter((profile: any) => {
+      const userId = String(profile.userId ?? profile.volunteerProfileId ?? '');
+      return userId && !memberIds.has(userId);
+    });
+  }, [members, profiles]);
 
   const handleCreateTeam = async () => {
     if (!reliefStationId) {
@@ -181,6 +209,26 @@ export default function CoordinatorTeamManagementPage() {
     } finally {
       setIsCreating(false);
     }
+  };
+
+  const handleAddMembersBulk = async () => {
+    if (!selectedTeamId || selectedVolunteerIds.length === 0) {
+      toast.error('Vui lòng chọn ít nhất một tình nguyện viên.');
+      return;
+    }
+
+    await addMembersBulk({ volunteerIds: selectedVolunteerIds });
+    setSelectedVolunteerIds([]);
+  };
+
+  const handlePromoteLeader = async (userId: string) => {
+    if (!selectedTeamId) return;
+    await promoteToLeader(userId);
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!selectedTeamId) return;
+    await removeMember(userId);
   };
 
   return (
@@ -527,36 +575,63 @@ export default function CoordinatorTeamManagementPage() {
                   <h4 className="text-sm font-bold text-slate-900 dark:text-foreground uppercase tracking-wide">
                     Thành viên ({selectedTeam.members})
                   </h4>
-                  <button className="text-primary text-sm font-bold hover:underline">
+                  <button
+                    className="text-primary text-sm font-bold hover:underline"
+                    onClick={() => setIsManageMembersOpen(true)}
+                  >
                     Quản lý
                   </button>
                 </div>
                 <div className="flex flex-col gap-2">
-                  {selectedTeam.memberDetails && selectedTeam.memberDetails.length > 0 ? (
-                    selectedTeam.memberDetails.map((member) => (
+                  {members && members.length > 0 ? (
+                    members.map((member: any) => (
                       <div
-                        key={member.id}
+                        key={member.userId ?? member.id}
                         className="flex items-center p-3 rounded-lg bg-slate-50 dark:bg-background border border-transparent hover:border-slate-300 dark:hover:border-border transition-colors group/member"
                       >
-                        {member.avatar ? (
+                        {member.avatarUrl ? (
                           <div
                             className="size-10 rounded-full bg-cover bg-center mr-3"
-                            style={{ backgroundImage: `url('${member.avatar}')` }}
+                            style={{ backgroundImage: `url('${member.avatarUrl}')` }}
                           />
                         ) : (
                           <div className="size-10 rounded-full bg-slate-200 dark:bg-slate-700 mr-3" />
                         )}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-slate-900 dark:text-foreground truncate">
-                            {member.name}
+                            {toDisplayText(
+                              member.displayName ?? member.fullName ?? member.name,
+                              'Không tên',
+                            )}
                           </p>
-                          <p className="text-xs text-muted-foreground truncate">{member.role}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {member.isLeader
+                              ? 'Leader'
+                              : member.roleName || member.role || 'Member'}
+                          </p>
                         </div>
-                        <button className="text-muted-foreground hover:text-red-500 opacity-0 group-hover/member:opacity-100 transition-opacity p-1">
-                          <span className="material-symbols-outlined text-xl">
-                            remove_circle_outline
-                          </span>
-                        </button>
+                        <div className="flex items-center gap-1 opacity-0 group-hover/member:opacity-100 transition-opacity">
+                          {!member.isLeader && (
+                            <button
+                              className="text-muted-foreground hover:text-primary transition-colors p-1"
+                              onClick={() =>
+                                handlePromoteLeader(String(member.userId ?? member.id))
+                              }
+                            >
+                              <span className="material-symbols-outlined text-xl">
+                                military_tech
+                              </span>
+                            </button>
+                          )}
+                          <button
+                            className="text-muted-foreground hover:text-red-500 transition-colors p-1"
+                            onClick={() => handleRemoveMember(String(member.userId ?? member.id))}
+                          >
+                            <span className="material-symbols-outlined text-xl">
+                              remove_circle_outline
+                            </span>
+                          </button>
+                        </div>
                       </div>
                     ))
                   ) : (
@@ -572,6 +647,7 @@ export default function CoordinatorTeamManagementPage() {
                 <Button
                   variant="outline"
                   className="w-full gap-2 border-dashed bg-transparent hover:bg-slate-200 dark:hover:bg-white/5 text-slate-900 dark:text-foreground"
+                  onClick={() => setIsManageMembersOpen(true)}
                 >
                   <span className="material-symbols-outlined text-lg">person_add</span>
                   Thêm tình nguyện viên
@@ -641,6 +717,127 @@ export default function CoordinatorTeamManagementPage() {
             </Button>
             <Button onClick={handleCreateTeam} disabled={isCreating}>
               {isCreating ? 'Đang tạo...' : 'Tạo đội ngũ'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isManageMembersOpen} onOpenChange={setIsManageMembersOpen}>
+        <DialogContent className="sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>Quản lý thành viên đội</DialogTitle>
+            <DialogDescription>
+              Thêm nhiều tình nguyện viên, cập nhật leader hoặc xóa member khỏi đội.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Chọn tình nguyện viên để thêm</label>
+              <Select
+                onValueChange={(value) => {
+                  setSelectedVolunteerIds((prev) =>
+                    prev.includes(value) ? prev : [...prev, value],
+                  );
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn tình nguyện viên" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableVolunteers.map((volunteer: any) => {
+                    const id = String(volunteer.userId ?? volunteer.volunteerProfileId ?? '');
+                    return (
+                      <SelectItem key={id} value={id}>
+                        {volunteer.fullName || volunteer.email || id}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedVolunteerIds.length > 0 && (
+              <div className="rounded-lg border border-border p-3 bg-muted/30 flex flex-wrap gap-2">
+                {selectedVolunteerIds.map((id) => {
+                  const matched = availableVolunteers.find(
+                    (volunteer: any) =>
+                      String(volunteer.userId ?? volunteer.volunteerProfileId ?? '') === id,
+                  );
+                  return (
+                    <button
+                      key={id}
+                      className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1 text-xs bg-background"
+                      onClick={() =>
+                        setSelectedVolunteerIds((prev) => prev.filter((item) => item !== id))
+                      }
+                    >
+                      {matched?.fullName || matched?.email || id}
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+              <p className="text-sm font-semibold text-foreground">Thành viên hiện tại</p>
+              {members?.length ? (
+                members.map((member: any) => (
+                  <div
+                    key={member.userId ?? member.id}
+                    className="flex items-center justify-between gap-3 rounded-lg bg-background px-3 py-2 border border-border"
+                  >
+                    <div>
+                      <p className="font-medium text-sm text-foreground">
+                        {toDisplayText(
+                          member.displayName ?? member.fullName ?? member.name,
+                          'Không tên',
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {member.isLeader ? 'Leader' : member.roleName || member.role || 'Member'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!member.isLeader && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => handlePromoteLeader(String(member.userId ?? member.id))}
+                        >
+                          <span className="material-symbols-outlined text-sm">military_tech</span>
+                          Promote Leader
+                        </Button>
+                      )}
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="gap-1"
+                        onClick={() => handleRemoveMember(String(member.userId ?? member.id))}
+                      >
+                        <span className="material-symbols-outlined text-sm">delete</span>
+                        Xóa
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">Chưa có thành viên nào trong đội.</p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsManageMembersOpen(false)}>
+              Đóng
+            </Button>
+            <Button
+              onClick={handleAddMembersBulk}
+              disabled={selectedVolunteerIds.length === 0 || addMembersBulkStatus === 'pending'}
+            >
+              {addMembersBulkStatus === 'pending' ? 'Đang thêm...' : 'Thêm thành viên đã chọn'}
             </Button>
           </DialogFooter>
         </DialogContent>

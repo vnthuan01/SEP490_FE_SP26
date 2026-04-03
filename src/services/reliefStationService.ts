@@ -95,7 +95,6 @@ export interface ReliefStationResponse {
   contactNumber: string | null;
   longitude: number;
   latitude: number;
-  coverageRadiusKm?: number;
   status: number;
   level: number;
   locationId: string;

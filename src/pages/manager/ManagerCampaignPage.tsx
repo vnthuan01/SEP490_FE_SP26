@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -50,7 +50,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch, useFieldArray } from 'react-hook-form';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCampaigns, useCreateCampaign, useUpdateCampaignStatus } from '@/hooks/useCampaigns';
 import { useSupplyAllocationsByCampaign } from '@/hooks/useSupplies';
@@ -61,6 +61,8 @@ import {
   RELIEF_STATION_KEYS,
 } from '@/hooks/useReliefStations';
 import { AddStationModal, type CreateStationFormData } from './components/AddStationModal';
+import { StationAddressLookup } from './components/StationAddressLookup';
+import CustomCalendar from '@/components/ui/customCalendar';
 import type { CampaignSummary, CreateCampaignPayload } from '@/services/campaignService';
 import { toast } from 'sonner';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
@@ -70,12 +72,37 @@ import {
   CampaignStatusLabel,
   CampaignType,
   CampaignTypeLabel,
+  CampaignResourceType,
+  CampaignResourceTypeLabel,
   getCampaignStatusClass,
   getCampaignStatusLabel,
   getSupplyAllocationStatusClass,
   getSupplyAllocationStatusLabel,
   getCampaignTypeLabel,
 } from '@/enums/beEnums';
+
+// ─── Date helpers (same pattern as ManagerInventoryCoordinationPage) ────────────
+
+const parseIsoToDate = (value?: string | null): Date | undefined => {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+};
+
+const toUtcNoonIso = (date: Date): string => {
+  return new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0),
+  ).toISOString();
+};
+
+const formatDateVN = (isoString?: string): string => {
+  if (!isoString) return '';
+  const d = parseIsoToDate(isoString);
+  if (!d) return '';
+  return d.toLocaleDateString('vi-VN');
+};
+
+// ─── Badge helpers ────────────────────────────────────────────────────────────
 
 const CAMPAIGN_STATUS_BADGE_ICON: Record<number, string> = {
   [CampaignStatus.Draft]: 'draft',
@@ -127,6 +154,8 @@ const getCampaignTypeBadgeClass = (type: number) => {
   }
 };
 
+// ─── Form types ───────────────────────────────────────────────────────────────
+
 interface CreateCampaignFormValues {
   name: string;
   description: string;
@@ -142,7 +171,12 @@ interface CreateCampaignFormValues {
   allowOverTarget: boolean;
   availablePeopleCount: number;
   reliefStationId: string;
+  goals: Array<{ resourceType: number; targetAmount: number; isRequired: boolean }>;
 }
+
+// ─── Page Component ───────────────────────────────────────────────────────────
+
+const CAMPAIGN_DRAFT_KEY = 'campaign_create_draft';
 
 export default function ManagerCampaignPage() {
   const [pageIndex, setPageIndex] = useState(1);
@@ -156,6 +190,11 @@ export default function ManagerCampaignPage() {
     name: string;
   } | null>(null);
   const [openAddStationModal, setOpenAddStationModal] = useState(false);
+
+  // Calendar open state for start/end date pickers
+  const [openStartCalendar, setOpenStartCalendar] = useState(false);
+  const [openEndCalendar, setOpenEndCalendar] = useState(false);
+
   const queryClient = useQueryClient();
 
   const { campaigns, pagination, isLoading } = useCampaigns({
@@ -213,21 +252,110 @@ export default function ManagerCampaignPage() {
       allowOverTarget: false,
       availablePeopleCount: 0,
       reliefStationId: '',
+      goals: [],
     },
   });
+
+  const {
+    fields: goalFields,
+    append: appendGoal,
+    remove: removeGoal,
+  } = useFieldArray({
+    control: form.control,
+    name: 'goals',
+  });
+
+  // ── Draft persistence ──────────────────────────────────────────────────────
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Restore draft when modal opens
+  useEffect(() => {
+    if (!openCreateModal) return;
+    try {
+      const raw = localStorage.getItem(CAMPAIGN_DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as CreateCampaignFormValues;
+      form.reset(draft);
+    } catch {
+      localStorage.removeItem(CAMPAIGN_DRAFT_KEY);
+    }
+  }, [openCreateModal, form]);
+
+  // Auto-save draft 400ms after any field change
+  useEffect(() => {
+    const subscription = form.watch((values) => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = setTimeout(() => {
+        try {
+          localStorage.setItem(CAMPAIGN_DRAFT_KEY, JSON.stringify(values));
+        } catch {
+          // quota exceeded — silently ignore
+        }
+      }, 400);
+    });
+    return () => {
+      subscription.unsubscribe();
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    };
+  }, [form]);
+
+  // Watch form values needed for derived UI
+  const watchedStationId = useWatch({ control: form.control, name: 'reliefStationId' });
+  const watchedAddressDetail = useWatch({ control: form.control, name: 'addressDetail' });
+  const watchedLatitude = useWatch({ control: form.control, name: 'latitude' });
+  const watchedLongitude = useWatch({ control: form.control, name: 'longitude' });
+  const watchedType = useWatch({ control: form.control, name: 'type' });
+
+  // For Fundraising: only Money(1) and People(3) are allowed; Supplies(2) blocked
+  const isFundraising = Number(watchedType) === CampaignType.Fundraising;
+  const allowedResourceTypes = Object.entries(CampaignResourceTypeLabel).filter(
+    ([key]) => !isFundraising || Number(key) !== CampaignResourceType.Supplies,
+  );
+
+  // Derive the province from the selected station
+  const selectedStation = stations.find((s) => getStationId(s) === watchedStationId);
+  const derivedLocationId = selectedStation?.locationId ?? '';
+  const derivedProvinceName = provinces?.find((p) => p.id === derivedLocationId)?.fullName;
+
+  // Keep locationId in sync whenever selected station changes
+  // (we use setValue directly in the station onChange handler below)
+
+  /** Close modal WITHOUT deleting draft (user may reopen) */
+  const closeModalKeepDraft = () => {
+    setOpenCreateModal(false);
+    setOpenStartCalendar(false);
+    setOpenEndCalendar(false);
+  };
+
+  /** Close modal AND delete draft + reset form */
+  const closeAndDiscardDraft = () => {
+    localStorage.removeItem(CAMPAIGN_DRAFT_KEY);
+    setOpenCreateModal(false);
+    setOpenStartCalendar(false);
+    setOpenEndCalendar(false);
+    form.reset();
+  };
 
   const handleCreateCampaign = async (values: CreateCampaignFormValues) => {
     try {
       const payload: CreateCampaignPayload = {
         ...values,
+        locationId: derivedLocationId || values.locationId,
         latitude: Number(values.latitude),
         longitude: Number(values.longitude),
         areaRadiusKm: Number(values.areaRadiusKm),
         availablePeopleCount: Number(values.availablePeopleCount),
-        goals: [],
+        goals: values.goals.map((g) => ({
+          resourceType: Number(g.resourceType),
+          targetAmount: Number(g.targetAmount),
+          isRequired: Boolean(g.isRequired),
+        })),
       };
       await createCampaign(payload);
+      localStorage.removeItem(CAMPAIGN_DRAFT_KEY);
       setOpenCreateModal(false);
+      setOpenStartCalendar(false);
+      setOpenEndCalendar(false);
       form.reset();
     } catch {
       // error is handled by the hook
@@ -241,6 +369,7 @@ export default function ManagerCampaignPage() {
       const newId = getStationId(newStation?.data ?? {});
       if (newId) {
         form.setValue('reliefStationId', newId);
+        // Province will auto-derive from the station once stations list refreshes
       } else {
         toast.warning('Trạm đã tạo nhưng chưa lấy được mã trạm. Hãy chọn lại trong danh sách.');
       }
@@ -278,7 +407,7 @@ export default function ManagerCampaignPage() {
 
   return (
     <DashboardLayout projects={managerProjects} navItems={managerNavItems}>
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6 w-full max-w-full relative">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-black text-primary">Quản lý Chiến dịch</h1>
@@ -558,302 +687,595 @@ export default function ManagerCampaignPage() {
       </div>
 
       {/* === Create Campaign Modal === */}
-      <Dialog open={openCreateModal} onOpenChange={(val) => !val && setOpenCreateModal(false)}>
-        <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Tạo chiến dịch cứu trợ mới</DialogTitle>
-            <DialogDescription>
-              Điền các thông tin cần thiết để khởi tạo chiến dịch mới.
-            </DialogDescription>
+      <Dialog
+        open={openCreateModal}
+        onOpenChange={(val) => {
+          if (!val) closeModalKeepDraft();
+        }}
+      >
+        <DialogContent className="w-[98vw] max-w-[1200px] sm:max-w-[1200px] max-h-[92vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="px-6 pt-6 pb-0">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <DialogTitle>Tạo chiến dịch cứu trợ mới</DialogTitle>
+                <DialogDescription>
+                  Điền các thông tin cần thiết để khởi tạo chiến dịch mới.
+                </DialogDescription>
+              </div>
+              {typeof window !== 'undefined' && localStorage.getItem(CAMPAIGN_DRAFT_KEY) && (
+                <div className="flex items-center gap-2 shrink-0 mt-0.5">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                    <span className="material-symbols-outlined text-[13px]">save</span>
+                    Bản nháp đã lưu
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                    onClick={closeAndDiscardDraft}
+                  >
+                    <span className="material-symbols-outlined text-sm">delete</span>
+                    Xóa nháp
+                  </Button>
+                </div>
+              )}
+            </div>
           </DialogHeader>
 
           <Form {...form}>
             <form
               id="create-campaign-form"
               onSubmit={form.handleSubmit(handleCreateCampaign)}
-              className="space-y-4"
+              className="overflow-y-auto flex-1 px-6 pb-6"
             >
-              <FormField
-                control={form.control}
-                name="name"
-                rules={{ required: 'Vui lòng nhập tên chiến dịch' }}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Tên chiến dịch <span className="text-destructive">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input placeholder="Vd: Cứu trợ lũ lụt miền Trung 2025..." {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="description"
-                rules={{
-                  required: 'Vui lòng nhập mô tả',
-                  minLength: { value: 10, message: 'Mô tả ít nhất 10 ký tự' },
-                }}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Mô tả <span className="text-destructive">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Mô tả chi tiết về chiến dịch..."
-                        className="resize-none"
-                        rows={3}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="type"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Loại chiến dịch</FormLabel>
-                      <Select
-                        onValueChange={(val) => field.onChange(Number(val))}
-                        value={String(field.value)}
-                      >
+              {/* Two-column layout: left = form fields, right = map */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-4">
+                {/* ── LEFT COLUMN ── */}
+                <div className="space-y-4">
+                  {/* Tên chiến dịch */}
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    rules={{ required: 'Vui lòng nhập tên chiến dịch' }}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Tên chiến dịch <span className="text-destructive">*</span>
+                        </FormLabel>
                         <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Chọn loại" />
-                          </SelectTrigger>
+                          <Input placeholder="Vd: Cứu trợ lũ lụt miền Trung 2025..." {...field} />
                         </FormControl>
-                        <SelectContent>
-                          {Object.entries(CampaignTypeLabel).map(([key, label]) => (
-                            <SelectItem key={key} value={key}>
-                              {label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
-                  control={form.control}
-                  name="locationId"
-                  rules={{ required: 'Vui lòng chọn Tỉnh/Thành' }}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Tỉnh/Thành phố <span className="text-destructive">*</span>
-                      </FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                  {/* Mô tả */}
+                  <FormField
+                    control={form.control}
+                    name="description"
+                    rules={{
+                      required: 'Vui lòng nhập mô tả',
+                      minLength: { value: 10, message: 'Mô tả ít nhất 10 ký tự' },
+                    }}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Mô tả <span className="text-destructive">*</span>
+                        </FormLabel>
                         <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Chọn Tỉnh/Thành" />
-                          </SelectTrigger>
+                          <Textarea
+                            placeholder="Mô tả chi tiết về chiến dịch..."
+                            className="resize-none"
+                            rows={3}
+                            {...field}
+                          />
                         </FormControl>
-                        <SelectContent>
-                          {(provinces ?? [])
-                            .filter((p) => typeof p.id === 'string' && p.id.trim().length > 0)
-                            .map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.fullName}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Loại chiến dịch */}
+                  <FormField
+                    control={form.control}
+                    name="type"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Loại chiến dịch</FormLabel>
+                        <Select
+                          onValueChange={(val) => field.onChange(Number(val))}
+                          value={String(field.value)}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Chọn loại" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {Object.entries(CampaignTypeLabel).map(([key, label]) => (
+                              <SelectItem key={key} value={key}>
+                                {label}
                               </SelectItem>
                             ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="reliefStationId"
-                rules={{ required: 'Vui lòng chọn Trạm cứu trợ' }}
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>
-                      Trạm cứu trợ phụ trách <span className="text-destructive">*</span>
-                    </FormLabel>
-                    {isLoadingStations ? (
-                      <div className="h-10 border rounded px-3 py-2 text-sm text-muted-foreground bg-muted/50">
-                        Đang tải danh sách trạm...
-                      </div>
-                    ) : stations.length === 0 ? (
-                      <div className="flex flex-col gap-2">
-                        <div className="h-10 border rounded px-3 py-2 text-sm text-muted-foreground bg-muted/50">
-                          Chưa có trạm cứu trợ nào
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="w-fit"
-                          onClick={() => setOpenAddStationModal(true)}
-                        >
-                          <span className="material-symbols-outlined text-sm mr-1">add</span>
-                          Tạo trạm cứu trợ mới
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Chọn trạm cứu trợ" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {stations.map((s) => {
-                                const sid = getStationId(s);
-                                if (!sid) return null;
-                                return (
-                                  <SelectItem key={sid} value={sid}>
-                                    {s.name}
-                                  </SelectItem>
-                                );
-                              })}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          title="Tạo trạm cứu trợ mới"
-                          onClick={() => setOpenAddStationModal(true)}
-                        >
-                          <span className="material-symbols-outlined text-sm">add</span>
-                        </Button>
+                  {/* Trạm cứu trợ + province derived */}
+                  <FormField
+                    control={form.control}
+                    name="reliefStationId"
+                    rules={{ required: 'Vui lòng chọn Trạm cứu trợ' }}
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>
+                          Trạm cứu trợ phụ trách <span className="text-destructive">*</span>
+                        </FormLabel>
+                        {isLoadingStations ? (
+                          <div className="h-10 border rounded px-3 py-2 text-sm text-muted-foreground bg-muted/50">
+                            Đang tải danh sách trạm...
+                          </div>
+                        ) : stations.length === 0 ? (
+                          <div className="flex flex-col gap-2">
+                            <div className="h-10 border rounded px-3 py-2 text-sm text-muted-foreground bg-muted/50">
+                              Chưa có trạm cứu trợ nào
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="w-fit"
+                              onClick={() => setOpenAddStationModal(true)}
+                            >
+                              <span className="material-symbols-outlined text-sm mr-1">add</span>
+                              Tạo trạm cứu trợ mới
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <Select
+                                onValueChange={(val) => {
+                                  field.onChange(val);
+                                  // Sync locationId from the chosen station
+                                  const chosen = stations.find((s) => getStationId(s) === val);
+                                  if (chosen?.locationId) {
+                                    form.setValue('locationId', chosen.locationId);
+                                  } else {
+                                    form.setValue('locationId', '');
+                                  }
+                                }}
+                                value={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Chọn trạm cứu trợ" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {stations.map((s) => {
+                                    const sid = getStationId(s);
+                                    if (!sid) return null;
+                                    return (
+                                      <SelectItem key={sid} value={sid}>
+                                        {s.name}
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              title="Tạo trạm cứu trợ mới"
+                              onClick={() => setOpenAddStationModal(true)}
+                            >
+                              <span className="material-symbols-outlined text-sm">add</span>
+                            </Button>
+                          </div>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Tỉnh/Thành phố — derived from station, read-only */}
+                  <div className="flex flex-col gap-1.5">
+                    <FormLabel>Tỉnh / Thành phố</FormLabel>
+                    <div className="h-10 border rounded px-3 py-2 text-sm bg-muted/40 text-muted-foreground flex items-center">
+                      {watchedStationId ? (
+                        derivedProvinceName ? (
+                          <span className="text-foreground font-medium">{derivedProvinceName}</span>
+                        ) : (
+                          <span className="italic">Trạm chưa có thông tin tỉnh/thành</span>
+                        )
+                      ) : (
+                        <span className="italic">Chọn trạm để tự động điền tỉnh/thành</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Ngày bắt đầu & kết thúc */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Start Date */}
+                    <FormField
+                      control={form.control}
+                      name="startDate"
+                      rules={{ required: 'Vui lòng chọn ngày bắt đầu' }}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            Ngày bắt đầu <span className="text-destructive">*</span>
+                          </FormLabel>
+
+                          <div className="relative">
+                            {/* Button */}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="w-full justify-start gap-2 font-normal"
+                              onClick={() => {
+                                setOpenStartCalendar((prev) => !prev);
+                                setOpenEndCalendar(false);
+                              }}
+                            >
+                              <span className="material-symbols-outlined text-[16px]">
+                                calendar_month
+                              </span>
+                              {field.value ? (
+                                formatDateVN(field.value)
+                              ) : (
+                                <span className="text-muted-foreground text-xs">Chọn ngày</span>
+                              )}
+                            </Button>
+
+                            {/* Calendar (absolute → không đẩy layout) */}
+                            {openStartCalendar && (
+                              <div className="absolute z-50 mt-2 rounded-xl border border-border bg-white shadow-lg p-3 w-fit">
+                                <CustomCalendar
+                                  value={parseIsoToDate(field.value)}
+                                  onChange={(date) => {
+                                    field.onChange(date ? toUtcNoonIso(date) : '');
+                                    setOpenStartCalendar(false);
+                                  }}
+                                />
+
+                                <div className="mt-2 flex justify-end gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      field.onChange('');
+                                      setOpenStartCalendar(false);
+                                    }}
+                                  >
+                                    Xóa
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setOpenStartCalendar(false)}
+                                  >
+                                    Đóng
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* End Date */}
+                    <FormField
+                      control={form.control}
+                      name="endDate"
+                      rules={{ required: 'Vui lòng chọn ngày kết thúc' }}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            Ngày kết thúc <span className="text-destructive">*</span>
+                          </FormLabel>
+
+                          <div className="relative">
+                            {/* Button */}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="w-full justify-start gap-2 font-normal"
+                              onClick={() => {
+                                setOpenEndCalendar((prev) => !prev);
+                                setOpenStartCalendar(false);
+                              }}
+                            >
+                              <span className="material-symbols-outlined text-[16px]">
+                                calendar_month
+                              </span>
+                              {field.value ? (
+                                formatDateVN(field.value)
+                              ) : (
+                                <span className="text-muted-foreground text-xs">Chọn ngày</span>
+                              )}
+                            </Button>
+
+                            {/* Calendar */}
+                            {openEndCalendar && (
+                              <div className="absolute z-50 mt-2 rounded-xl border border-border bg-white shadow-lg p-3 w-fit">
+                                <CustomCalendar
+                                  value={parseIsoToDate(field.value)}
+                                  onChange={(date) => {
+                                    field.onChange(date ? toUtcNoonIso(date) : '');
+                                    setOpenEndCalendar(false);
+                                  }}
+                                />
+
+                                <div className="mt-2 flex justify-end gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      field.onChange('');
+                                      setOpenEndCalendar(false);
+                                    }}
+                                  >
+                                    Xóa
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setOpenEndCalendar(false)}
+                                  >
+                                    Đóng
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  {/* Số người cần hỗ trợ */}
+                  <FormField
+                    control={form.control}
+                    name="availablePeopleCount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Số người cần hỗ trợ (dự kiến)</FormLabel>
+                        <FormControl>
+                          <Input type="number" min={0} placeholder="Vd: 500" {...field} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* ── Mục tiêu chiến dịch ── */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <FormLabel>
+                        Mục tiêu chiến dịch{' '}
+                        {isFundraising && <span className="text-destructive">*</span>}
+                      </FormLabel>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-1"
+                        onClick={() =>
+                          appendGoal({
+                            resourceType: isFundraising
+                              ? CampaignResourceType.Money
+                              : CampaignResourceType.Supplies,
+                            targetAmount: 0,
+                            isRequired: true,
+                          })
+                        }
+                      >
+                        <span className="material-symbols-outlined text-sm">add</span>
+                        Thêm mục tiêu
+                      </Button>
+                    </div>
+
+                    {isFundraising && goalFields.length === 0 && (
+                      <p className="text-xs text-destructive">
+                        Chiến dịch Gây quỹ phải có ít nhất 1 mục tiêu Tiền hoặc Người tình nguyện.
+                      </p>
+                    )}
+
+                    {goalFields.length > 0 && (
+                      <div className="space-y-3">
+                        {goalFields.map((goalField, index) => (
+                          <div
+                            key={goalField.id}
+                            className="rounded-xl border border-border bg-muted/20 p-3 space-y-3"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-medium text-foreground">
+                                Mục tiêu #{index + 1}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-destructive hover:text-destructive"
+                                onClick={() => removeGoal(index)}
+                              >
+                                <span className="material-symbols-outlined text-sm">close</span>
+                              </Button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              {/* Loại nguồn lực */}
+                              <FormField
+                                control={form.control}
+                                name={`goals.${index}.resourceType`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className="text-xs">Loại</FormLabel>
+                                    <Select
+                                      onValueChange={(val) => field.onChange(Number(val))}
+                                      value={String(field.value)}
+                                    >
+                                      <FormControl>
+                                        <SelectTrigger className="h-9">
+                                          <SelectValue placeholder="Chọn loại" />
+                                        </SelectTrigger>
+                                      </FormControl>
+                                      <SelectContent>
+                                        {allowedResourceTypes.map(([key, label]) => (
+                                          <SelectItem key={key} value={key}>
+                                            {label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+
+                              {/* Mục tiêu số lượng */}
+                              <FormField
+                                control={form.control}
+                                name={`goals.${index}.targetAmount`}
+                                rules={{ required: true, min: 1 }}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className="text-xs">Mục tiêu</FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        type="number"
+                                        min={1}
+                                        placeholder="Vd: 10000000"
+                                        className="h-9"
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+
+                            {/* Bắt buộc */}
+                            <FormField
+                              control={form.control}
+                              name={`goals.${index}.isRequired`}
+                              render={({ field }) => (
+                                <FormItem className="flex items-center gap-2">
+                                  <FormControl>
+                                    <input
+                                      type="checkbox"
+                                      checked={field.value}
+                                      onChange={field.onChange}
+                                      className="h-4 w-4 rounded border-border"
+                                    />
+                                  </FormControl>
+                                  <FormLabel className="text-xs cursor-pointer font-normal">
+                                    Bắt buộc đạt mục tiêu này
+                                  </FormLabel>
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                        ))}
                       </div>
                     )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  </div>
+                </div>
 
-              <FormField
-                control={form.control}
-                name="addressDetail"
-                rules={{ required: 'Vui lòng nhập địa chỉ chi tiết' }}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Địa chỉ chi tiết <span className="text-destructive">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input placeholder="Vd: Xã A, Huyện B, Tỉnh C" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                {/* ── RIGHT COLUMN: Map + location ── */}
+                <div className="space-y-4">
+                  {/* Map-based location picker reusing StationAddressLookup */}
+                  <StationAddressLookup
+                    label="Địa điểm chiến dịch"
+                    required
+                    address={watchedAddressDetail || ''}
+                    latitude={Number(watchedLatitude || 0)}
+                    longitude={Number(watchedLongitude || 0)}
+                    onPickAddress={({ address, latitude, longitude }) => {
+                      form.setValue('addressDetail', address);
+                      form.setValue('latitude', latitude);
+                      form.setValue('longitude', longitude);
+                    }}
+                  />
 
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="startDate"
-                  rules={{ required: 'Vui lòng chọn ngày bắt đầu' }}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Ngày bắt đầu <span className="text-destructive">*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input type="datetime-local" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="endDate"
-                  rules={{ required: 'Vui lòng chọn ngày kết thúc' }}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Ngày kết thúc <span className="text-destructive">*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input type="datetime-local" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                  {/* Coordinates summary (read-only) */}
+                  {watchedLatitude || watchedLongitude ? (
+                    <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
+                      <p>
+                        <span className="font-medium text-foreground">Vĩ độ:</span>{' '}
+                        {Number(watchedLatitude).toFixed(6)}
+                      </p>
+                      <p>
+                        <span className="font-medium text-foreground">Kinh độ:</span>{' '}
+                        {Number(watchedLongitude).toFixed(6)}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {/* Bán kính */}
+                  <FormField
+                    control={form.control}
+                    name="areaRadiusKm"
+                    rules={{ required: true, min: 1 }}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Bán kính khu vực (km) <span className="text-destructive">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input type="number" min={1} placeholder="Vd: 10" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Hidden field: addressDetail kept in form state via map, but show validation */}
+                  <FormField
+                    control={form.control}
+                    name="addressDetail"
+                    rules={{ required: 'Vui lòng chọn địa điểm trên bản đồ' }}
+                    render={() => (
+                      <FormItem>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <FormField
-                  control={form.control}
-                  name="latitude"
-                  rules={{ required: true }}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Vĩ độ</FormLabel>
-                      <FormControl>
-                        <Input type="number" step="0.000001" {...field} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="longitude"
-                  rules={{ required: true }}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Kinh độ</FormLabel>
-                      <FormControl>
-                        <Input type="number" step="0.000001" {...field} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="areaRadiusKm"
-                  rules={{ required: true, min: 1 }}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Bán kính (km)</FormLabel>
-                      <FormControl>
-                        <Input type="number" min={1} {...field} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <FormField
-                control={form.control}
-                name="availablePeopleCount"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Số người cần hỗ trợ (dự kiến)</FormLabel>
-                    <FormControl>
-                      <Input type="number" min={0} placeholder="Vd: 500" {...field} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
             </form>
           </Form>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpenCreateModal(false)}>
-              Hủy
+          <DialogFooter className="px-6 py-4 border-t border-border shrink-0">
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-muted-foreground hover:text-destructive mr-auto"
+              onClick={closeAndDiscardDraft}
+            >
+              <span className="material-symbols-outlined text-sm">delete</span>
+              Hủy & xóa nháp
+            </Button>
+            <Button variant="outline" onClick={closeModalKeepDraft}>
+              Đóng (giữ nháp)
             </Button>
             <Button type="submit" form="create-campaign-form" disabled={createStatus === 'pending'}>
               {createStatus === 'pending' ? 'Đang tạo...' : 'Tạo chiến dịch'}
@@ -861,12 +1283,13 @@ export default function ManagerCampaignPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
       {/* Sub-modal: Add Station */}
       <AddStationModal
         open={openAddStationModal}
         onClose={() => setOpenAddStationModal(false)}
         onSubmit={handleCreateStation}
-        defaultLocationId={form.getValues('locationId')}
+        defaultLocationId={derivedLocationId || form.getValues('locationId')}
       />
 
       <Sheet open={openAllocationModal} onOpenChange={setOpenAllocationModal}>
@@ -999,9 +1422,14 @@ export default function ManagerCampaignPage() {
                               key={`${allocation.allocationId || index}-${item.supplyItemId}-${itemIndex}`}
                             >
                               <TableCell className="font-mono text-xs text-muted-foreground">
-                                {item.supplyItemId}
+                                {item.supplyItemName}
                               </TableCell>
-                              <TableCell>{formatNumberVN(item.quantity)}</TableCell>
+                              <TableCell>
+                                {formatNumberVN(item.quantity)}/
+                                <span className="text-xs text-muted-foreground font-normal">
+                                  {item.supplyItemUnit || ''}
+                                </span>
+                              </TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
