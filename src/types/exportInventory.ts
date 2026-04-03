@@ -17,10 +17,25 @@ export interface Team {
   name: string;
 }
 
+/** A campaign option shown in the campaign-allocation dialog */
+export interface CampaignOption {
+  id: string;
+  name: string;
+}
+
 export interface ExportInventoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   items: ExportItem[];
   teams: Team[];
   onSubmit: (items: ExportItem[], note: string, teamId: string) => void;
+}
+
+/** Props for the campaign-allocation variant of the export dialog */
+export interface CampaignAllocationDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  items: ExportItem[];
+  campaigns: CampaignOption[];
+  onSubmit: (items: ExportItem[], note: string, campaignId: string) => void;
 }

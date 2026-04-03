@@ -620,10 +620,16 @@ export default function ManagerInventoryCoordinationPage() {
     }
 
     const validItems = allocationForm.items
-      .map((item) => ({
-        supplyItemId: item.supplyItemId,
-        quantity: parseFormattedNumber(item.quantity),
-      }))
+      .map((item) => {
+        const matchedSupplyItem = supplyItems.find((supply) => supply.id === item.supplyItemId);
+
+        return {
+          supplyItemId: item.supplyItemId,
+          supplyItemName: matchedSupplyItem?.name || item.supplyItemId,
+          supplyItemUnit: matchedSupplyItem?.unit || '',
+          quantity: parseFormattedNumber(item.quantity),
+        };
+      })
       .filter((item) => item.supplyItemId && Number.isFinite(item.quantity) && item.quantity > 0);
 
     if (validItems.length === 0) {
@@ -735,6 +741,11 @@ export default function ManagerInventoryCoordinationPage() {
             items: [
               {
                 supplyItemId: item.supplyItemId,
+                supplyItemName:
+                  supplyItems.find((supply) => supply.id === item.supplyItemId)?.name ||
+                  item.supplyItemId,
+                supplyItemUnit:
+                  supplyItems.find((supply) => supply.id === item.supplyItemId)?.unit || '',
                 quantity: importQuantity,
                 notes: 'Nhập hoặc cập nhật tồn kho từ trang điều phối kho',
               },

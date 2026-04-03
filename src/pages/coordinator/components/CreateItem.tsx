@@ -13,47 +13,19 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import type { NewInventoryItem, ItemInventoryProps } from '@/types/createItemInventory';
-import { cn } from '@/lib/utils';
-import { Link } from 'react-router-dom';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-
-export const CATEGORIES = [
-  {
-    value: 'food',
-    label: 'Lương thực',
-    icon: 'restaurant',
-    color: 'text-orange-600 bg-orange-500/10 border-orange-500/20',
-  },
-  {
-    value: 'water',
-    label: 'Nước uống',
-    icon: 'water_drop',
-    color: 'text-blue-600 bg-blue-500/10 border-blue-500/20',
-  },
-  {
-    value: 'medical',
-    label: 'Y tế & thuốc',
-    icon: 'medication',
-    color: 'text-red-600 bg-red-500/10 border-red-500/20',
-  },
-  {
-    value: 'equipment',
-    label: 'Dụng cụ & lều trại',
-    icon: 'camping',
-    color: 'text-green-600 bg-green-500/10 border-green-500/20',
-  },
-  {
-    value: 'other',
-    label: 'Khác',
-    icon: 'category',
-    color: 'text-muted-foreground bg-muted border-border',
-  },
-];
 
 const UNIT_OPTIONS = ['Thùng', 'Hộp', 'Bao', 'Chai', 'Cái', 'Gói'];
 
-export function CreateInventoryItemDialog({ open, onOpenChange, onSubmit }: ItemInventoryProps) {
+export function CreateInventoryItemDialog({
+  open,
+  onOpenChange,
+  onSubmit,
+  supplyItems = [],
+  initialSupplyItemId,
+  existingStock,
+}: ItemInventoryProps) {
   const [form, setForm] = React.useState<NewInventoryItem>({
+    supplyItemId: '',
     name: '',
     category: '',
     icon: '',
@@ -61,13 +33,45 @@ export function CreateInventoryItemDialog({ open, onOpenChange, onSubmit }: Item
     quantity: 1,
     capacity: undefined,
     note: '',
+    expirationDate: null,
   });
+
+  React.useEffect(() => {
+    if (!open) return;
+    const selected = supplyItems.find((item) => item.id === initialSupplyItemId);
+    setForm({
+      supplyItemId: selected?.id || '',
+      name: selected?.name || '',
+      category: selected?.category || '',
+      icon: selected?.icon || '',
+      unit: selected?.unit || '',
+      quantity: 1,
+      capacity: existingStock?.maximumStockLevel,
+      note: '',
+      expirationDate: null,
+    });
+  }, [open, initialSupplyItemId, supplyItems, existingStock]);
 
   const update = <K extends keyof NewInventoryItem>(key: K, value: NewInventoryItem[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const canSubmit = form.name.trim() && form.category && form.unit.trim() && form.quantity > 0;
+  const canSubmit =
+    form.supplyItemId && form.unit.trim() && form.quantity > 0 && !!form.note?.trim();
+
+  const handleSelectSupplyItem = (supplyItemId: string) => {
+    const selected = supplyItems.find((item) => item.id === supplyItemId);
+    if (!selected) return;
+
+    setForm((prev) => ({
+      ...prev,
+      supplyItemId,
+      name: selected.name,
+      category: selected.category,
+      icon: selected.icon,
+      unit: selected.unit,
+    }));
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -79,118 +83,68 @@ export function CreateInventoryItemDialog({ open, onOpenChange, onSubmit }: Item
         </DialogHeader>
 
         <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
-          {/* NAME */}
+          {/* SUPPLY ITEM */}
           <div className="space-y-2">
             <Label>
-              Tên vật tư <span className="text-red-500">*</span>
+              Chọn vật tư có sẵn <span className="text-red-500">*</span>
             </Label>
-            <Input
-              placeholder="Ví dụ: Mì tôm Hảo Hảo"
-              value={form.name}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => update('name', e.target.value)}
-            />
-          </div>
-
-          {/* CATEGORY */}
-          <div className="space-y-2">
-            <Label>
-              Danh mục <span className="text-red-500">*</span>
-            </Label>
-            <Select value={form.category} onValueChange={(v: string) => update('category', v)}>
+            <Select value={form.supplyItemId} onValueChange={handleSelectSupplyItem}>
               <SelectTrigger>
-                <SelectValue placeholder="Chọn loại vật tư" />
+                <SelectValue placeholder="Chọn vật tư từ danh mục" />
               </SelectTrigger>
               <SelectContent>
-                {CATEGORIES.map((c) => (
-                  <SelectItem key={c.value} value={c.value}>
-                    {/* <div className={cn('flex items-center gap-2 text-sm ', c.color)}> */}
-                    <span
-                      className={cn(
-                        'material-symbols-outlined text-[18px] border rounded-full p-1 leading-none',
-                        c.color,
+                {supplyItems.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      {item.icon && (
+                        <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
                       )}
-                    >
-                      {c.icon}
-                    </span>
-                    <span className="font-medium">{c.label}</span>
-                    {/* </div> */}
+                      <span className="font-medium truncate">{item.name}</span>
+                      <span className="text-xs text-muted-foreground truncate">
+                        • {item.category}
+                      </span>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
+          {/* NAME */}
+          <div className="space-y-2">
+            <Label>Tên vật tư</Label>
+            <Input placeholder="Tên vật tư tự động điền theo lựa chọn" value={form.name} readOnly />
+          </div>
+
+          {/* CATEGORY */}
+          <div className="space-y-2">
+            <Label>Danh mục</Label>
+            <Input placeholder="Danh mục tự động điền theo vật tư" value={form.category} readOnly />
+          </div>
+
           {/* ICON */}
           <div className="space-y-2">
-            <Label>
-              Icon <span className="text-red-500">*</span>{' '}
-              <TooltipProvider>
-                <Tooltip delayDuration={200}>
-                  <TooltipTrigger asChild>
-                    <span
-                      className="
-                      material-symbols-outlined
-                      text-[18px]
-                      text-muted-foreground
-                      cursor-help
-                      hover:text-foreground
-                      transition-colors
-                    "
-                    >
-                      help
-                    </span>
-                  </TooltipTrigger>
-
-                  <TooltipContent
-                    side="top"
-                    align="start"
-                    className="
-                    max-w-[260px] 
-                    text-xs 
-                    leading-relaxed 
-                    rounded 
-                    bg-background 
-                    text-foreground 
-                    shadow-md 
-                    border border-border
-                    dark:bg-slate-800 
-                    dark:text-slate-100 
-                    dark:border-slate-700
-                    "
-                  >
-                    <p className="font-medium mb-1">Cách nhập Icon</p>
-
-                    <p className="text-muted-foreground dark:text-slate-300">
-                      Nhập <b>tên icon</b> từ{' '}
-                      <Link
-                        className="underline text-blue-500"
-                        to={'https://fonts.google.com/icons'}
-                        target="_blank"
-                      >
-                        Google Material Icons
-                      </Link>
-                      .
-                    </p>
-
-                    <code className="block mt-2 rounded bg-muted px-2 py-1 text-[11px] dark:bg-slate-700 dark:text-slate-100">
-                      {'<span class="material-symbols-outlined">inventory_2</span>'}
-                    </code>
-
-                    <p className="text-muted-foreground mt-2 dark:text-slate-300">
-                      Ví dụ: <b>inventory_2</b>, <b>water_drop</b>, <b>medication</b>
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </Label>
-            <Input
-              placeholder="Ví dụ: ramen_dining, water_drop"
-              value={form.icon}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => update('icon', e.target.value)}
-            />
+            <Label>Icon</Label>
+            <Input placeholder="Icon tự động điền theo vật tư" value={form.icon} readOnly />
           </div>
 
           <Separator />
+
+          {existingStock && (
+            <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground space-y-1">
+              <p>
+                Tồn hiện tại:{' '}
+                <span className="font-semibold text-foreground">
+                  {existingStock.currentQuantity}
+                </span>
+              </p>
+              <p>
+                Ngưỡng tồn hiện có: {existingStock.minimumStockLevel} -{' '}
+                {existingStock.maximumStockLevel}
+              </p>
+              <p>Vật phẩm đã có trong kho, bạn chỉ cần nhập thêm số lượng và nêu rõ lý do nhập.</p>
+            </div>
+          )}
 
           {/* QUANTITY */}
           <div className="grid grid-cols-2 gap-4">
@@ -237,24 +191,46 @@ export function CreateInventoryItemDialog({ open, onOpenChange, onSubmit }: Item
 
           {/* CAPACITY */}
           <div className="space-y-2">
-            <Label>Sức chứa tối đa (optional)</Label>
+            <Label>
+              {existingStock ? 'Sức chứa tối đa hiện tại' : 'Sức chứa tối đa (optional)'}
+            </Label>
             <Input
               type="number"
               min={form.quantity}
               placeholder="Ví dụ: 1000"
               value={form.capacity ?? ''}
+              disabled={!!existingStock}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 update('capacity', e.target.value ? Number(e.target.value) : undefined)
               }
             />
           </div>
 
+          {/* EXPIRATION DATE – chỉ hiện khi tạo mới (chưa có stock) */}
+          {!existingStock && (
+            <div className="space-y-2">
+              <Label>Ngày hết hạn lô hàng (tùy chọn)</Label>
+              <Input
+                type="date"
+                value={form.expirationDate ?? ''}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  update('expirationDate', e.target.value || null)
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Để trống nếu lô hàng không có hạn sử dụng cụ thể.
+              </p>
+            </div>
+          )}
+
           {/* NOTE */}
           <div className="space-y-2">
-            <Label>Ghi chú</Label>
+            <Label>
+              Lý do nhập kho <span className="text-red-500">*</span>
+            </Label>
             <Textarea
               rows={3}
-              placeholder="Thông tin thêm về vật tư"
+              placeholder="Ví dụ: Bổ sung vật tư do nhu cầu sử dụng tăng cao"
               value={form.note}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                 update('note', e.target.value)

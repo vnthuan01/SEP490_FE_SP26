@@ -191,11 +191,6 @@ export default function ManagerStationPage() {
       return;
     }
 
-    if (station.level === 1) {
-      toast.error('Trạm cấp 1 do manager quản lý rồi, không được gán điều phối viên.');
-      return;
-    }
-
     setSelectedStation({ id: stationId, name: station.name });
     setSelectedModeratorId('');
     setAssignModalOpen(true);
@@ -382,15 +377,8 @@ export default function ManagerStationPage() {
                                 <DropdownMenuItem
                                   className="gap-2 text-primary"
                                   onClick={() => {
-                                    if (station.level === 1) {
-                                      toast.error(
-                                        'Trạm cấp 1 do manager quản lý rồi, không được gán điều phối viên.',
-                                      );
-                                      return;
-                                    }
                                     openAssignModeratorModal(station);
                                   }}
-                                  disabled={station.level === 1}
                                 >
                                   <span className="material-symbols-outlined text-lg">
                                     group_add

@@ -999,9 +999,14 @@ export default function ManagerCampaignPage() {
                               key={`${allocation.allocationId || index}-${item.supplyItemId}-${itemIndex}`}
                             >
                               <TableCell className="font-mono text-xs text-muted-foreground">
-                                {item.supplyItemId}
+                                {item.supplyItemName}
                               </TableCell>
-                              <TableCell>{formatNumberVN(item.quantity)}</TableCell>
+                              <TableCell>
+                                {formatNumberVN(item.quantity)}/
+                                <span className="text-xs text-muted-foreground font-normal">
+                                  {item.supplyItemUnit || ''}
+                                </span>
+                              </TableCell>
                             </TableRow>
                           ))}
                         </TableBody>

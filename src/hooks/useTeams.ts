@@ -5,10 +5,13 @@ import type {
   UpdateTeamPayload,
   SearchTeamParams,
   AddTeamMemberPayload,
+  AddTeamMembersBulkPayload,
   CreateTeamJoinRequestPayload,
   ReviewTeamJoinRequestPayload,
 } from '@/services/teamService';
 import { teamJoinRequestService } from '@/services/teamService';
+import { handleHookError } from './hookErrorUtils';
+import { toast } from 'sonner';
 
 export const TEAM_QUERY_KEYS = {
   all: ['teams'] as const,
@@ -18,6 +21,8 @@ export const TEAM_QUERY_KEYS = {
   myTeam: ['teams', 'my-team'] as const,
   members: (id: string) => ['teams', id, 'members'] as const,
   inStation: (stationId: string) => ['teams', 'in-station', stationId] as const,
+  latestTracking: (id: string, limit: number) =>
+    ['teams', id, 'tracking', 'latest', limit] as const,
 };
 
 // 1. Main hook for global teams management
@@ -205,24 +210,48 @@ export function useTeamMembers(teamId: string) {
   const addMemberMutation = useMutation({
     mutationFn: (data: AddTeamMemberPayload) => teamService.addMember(teamId, data),
     onSuccess: () => {
+      toast.success('Đã thêm thành viên vào đội');
       queryClient.invalidateQueries({ queryKey: TEAM_QUERY_KEYS.members(teamId) });
       queryClient.invalidateQueries({ queryKey: TEAM_QUERY_KEYS.detail(teamId) });
+    },
+    onError: (error) => {
+      handleHookError(error, 'Không thể thêm thành viên vào đội');
+    },
+  });
+
+  const addMembersBulkMutation = useMutation({
+    mutationFn: (data: AddTeamMembersBulkPayload) => teamService.addMembersBulk(teamId, data),
+    onSuccess: () => {
+      toast.success('Đã thêm nhiều thành viên vào đội');
+      queryClient.invalidateQueries({ queryKey: TEAM_QUERY_KEYS.members(teamId) });
+      queryClient.invalidateQueries({ queryKey: TEAM_QUERY_KEYS.detail(teamId) });
+    },
+    onError: (error) => {
+      handleHookError(error, 'Không thể thêm nhiều thành viên vào đội');
     },
   });
 
   const promoteToLeaderMutation = useMutation({
     mutationFn: (userId: string) => teamService.promoteToLeader(teamId, userId),
     onSuccess: () => {
+      toast.success('Đã cập nhật trưởng nhóm');
       queryClient.invalidateQueries({ queryKey: TEAM_QUERY_KEYS.members(teamId) });
       queryClient.invalidateQueries({ queryKey: TEAM_QUERY_KEYS.detail(teamId) });
+    },
+    onError: (error) => {
+      handleHookError(error, 'Không thể cập nhật trưởng nhóm');
     },
   });
 
   const removeMemberMutation = useMutation({
     mutationFn: (userId: string) => teamService.removeMember(teamId, userId),
     onSuccess: () => {
+      toast.success('Đã xóa thành viên khỏi đội');
       queryClient.invalidateQueries({ queryKey: TEAM_QUERY_KEYS.members(teamId) });
       queryClient.invalidateQueries({ queryKey: TEAM_QUERY_KEYS.detail(teamId) });
+    },
+    onError: (error) => {
+      handleHookError(error, 'Không thể xóa thành viên khỏi đội');
     },
   });
 
@@ -235,11 +264,33 @@ export function useTeamMembers(teamId: string) {
     addMember: addMemberMutation.mutateAsync,
     addMemberStatus: addMemberMutation.status,
 
+    addMembersBulk: addMembersBulkMutation.mutateAsync,
+    addMembersBulkStatus: addMembersBulkMutation.status,
+
     promoteToLeader: promoteToLeaderMutation.mutateAsync,
     promoteToLeaderStatus: promoteToLeaderMutation.status,
 
     removeMember: removeMemberMutation.mutateAsync,
     removeMemberStatus: removeMemberMutation.status,
+  };
+}
+
+export function useTeamLatestTracking(teamId: string, limit = 100) {
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: TEAM_QUERY_KEYS.latestTracking(teamId, limit),
+    queryFn: async () => {
+      if (!teamId) throw new Error('Team ID is required');
+      const response = await teamService.getTrackingPoints(teamId, limit);
+      return response.data;
+    },
+    enabled: !!teamId,
+  });
+
+  return {
+    trackingPoints: data || [],
+    isLoading,
+    isError,
+    refetch,
   };
 }
 
