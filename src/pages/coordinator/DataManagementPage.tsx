@@ -18,7 +18,8 @@ import { ReliefMap } from './components/ReliefMap';
 import { HEADQUARTERS, reliefLocationsData, teamsData } from './components/mockData';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
 
-const GOONG_API_KEY = import.meta.env.VITE_GOONG_MAP_KEY || 'YOUR_GOONG_MAP_KEY';
+const GOONG_MAP_KEY = import.meta.env.VITE_GOONG_MAP_KEY || 'YOUR_GOONG_MAP_KEY';
+const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY || '';
 
 interface GoodsItem {
   id: string;
@@ -418,7 +419,8 @@ export default function CoordinatorDataManagementPage() {
                 locations={reliefLocationsData}
                 headquarters={HEADQUARTERS}
                 onLocationSelect={() => {}}
-                apiKey={GOONG_API_KEY}
+                mapApiKey={GOONG_MAP_KEY}
+                goongApiKey={GOONG_API_KEY}
               />
             </div>
           </Card>

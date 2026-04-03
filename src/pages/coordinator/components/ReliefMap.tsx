@@ -5,14 +5,55 @@ import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import type { ReliefLocation, Headquarters } from './types';
 import { getUrgencyColor, getStatusColor } from './utils';
-import { getAdministrativeBoundary } from '@/services/goongService';
+import { getAdministrativeBoundary, getDirections } from '@/services/goongService';
+
+const ROUTE_SOURCE_ID = 'relief-route-source';
+const ROUTE_LAYER_ID = 'relief-route-layer';
+
+function decodePolyline(encoded: string): Array<[number, number]> {
+  const coordinates: Array<[number, number]> = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < encoded.length) {
+    let b: number;
+    let shift = 0;
+    let result = 0;
+
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+
+    const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+
+    const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+    lng += dlng;
+
+    coordinates.push([lng / 1e5, lat / 1e5]);
+  }
+
+  return coordinates;
+}
 
 interface ReliefMapProps {
   locations: ReliefLocation[];
   headquarters: Headquarters;
   onLocationSelect: (_location: ReliefLocation) => void;
   selectedLocationId?: string;
-  apiKey: string;
+  mapApiKey: string;
+  goongApiKey?: string;
 }
 
 export function ReliefMap({
@@ -20,7 +61,8 @@ export function ReliefMap({
   headquarters,
   onLocationSelect,
   selectedLocationId,
-  apiKey,
+  mapApiKey,
+  goongApiKey,
 }: ReliefMapProps) {
   const markersRef = useRef<Map<string, Marker>>(new Map());
   const headquartersMarkerRef = useRef<Marker | null>(null);
@@ -32,7 +74,7 @@ export function ReliefMap({
   const { map, mapRef, isLoading, error } = useGoongMap({
     center: headquarters.coordinates,
     zoom: 8,
-    apiKey,
+    apiKey: mapApiKey,
   });
 
   // Create relief location markers
@@ -188,6 +230,23 @@ export function ReliefMap({
     // setHighlightedArea(null);
   }, []);
 
+  const clearRoute = useCallback((mapInstance: GoongMap) => {
+    if ((mapInstance as any).getLayer(ROUTE_LAYER_ID)) {
+      try {
+        (mapInstance as any).removeLayer(ROUTE_LAYER_ID);
+      } catch (_error) {
+        // Ignore cleanup errors
+      }
+    }
+    if ((mapInstance as any).getSource(ROUTE_SOURCE_ID)) {
+      try {
+        (mapInstance as any).removeSource(ROUTE_SOURCE_ID);
+      } catch (_error) {
+        // Ignore cleanup errors
+      }
+    }
+  }, []);
+
   // Highlight area function
   const highlightLocationArea = useCallback(
     async (lat: number, lng: number, fallbackName?: string) => {
@@ -197,8 +256,24 @@ export function ReliefMap({
       try {
         const toastId = toast.loading('Đang tải boundary khu vực...');
 
+        if (!goongApiKey) {
+          const areaName = fallbackName || `Khu vực (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+          const radius = 0.01;
+          const points = 32;
+          const coordinates = [
+            Array.from({ length: points + 1 }, (_, i) => {
+              const angle = (i / points) * 2 * Math.PI;
+              return [lng + radius * Math.cos(angle), lat + radius * Math.sin(angle)];
+            }),
+          ];
+
+          drawAreaBoundary(map, coordinates, areaName);
+          toast.info('Thiếu VITE_GOONG_API_KEY, đang hiển thị vùng xấp xỉ', { id: toastId });
+          return;
+        }
+
         // Try to get real administrative boundary from Goong API
-        const boundaryData = await getAdministrativeBoundary(lat, lng, apiKey);
+        const boundaryData = await getAdministrativeBoundary(lat, lng, goongApiKey);
 
         if (boundaryData) {
           // Use real boundary from API
@@ -226,7 +301,7 @@ export function ReliefMap({
         toast.error('Có lỗi khi khoanh vùng', { id: 'boundary-loading' });
       }
     },
-    [apiKey, map, drawAreaBoundary],
+    [goongApiKey, map, drawAreaBoundary],
   );
 
   // Handle map click to highlight administrative area
@@ -265,6 +340,88 @@ export function ReliefMap({
       }
     }
   }, [map, selectedLocationId, locations, highlightLocationArea]);
+
+  useEffect(() => {
+    if (!map) return;
+
+    const drawRoute = async () => {
+      clearRoute(map);
+
+      if (!selectedLocationId || !goongApiKey) return;
+
+      const location = locations.find((l) => l.id === selectedLocationId);
+      if (!location) return;
+
+      const direction = await getDirections(
+        headquarters.coordinates,
+        location.coordinates,
+        'car',
+        goongApiKey,
+      );
+
+      const route = direction?.routes?.[0];
+      const overviewPoints = route?.overview_polyline?.points;
+
+      let coords: Array<[number, number]> = [];
+      if (overviewPoints) {
+        coords = decodePolyline(overviewPoints);
+      } else {
+        const stepPolylines = (route?.legs || [])
+          .flatMap((leg: any) => leg?.steps || [])
+          .map((step: any) => step?.polyline?.points)
+          .filter((p: unknown): p is string => typeof p === 'string' && p.length > 0);
+
+        for (const p of stepPolylines) {
+          const partial = decodePolyline(p);
+          if (!partial.length) continue;
+
+          if (
+            coords.length > 0 &&
+            partial.length > 0 &&
+            coords[coords.length - 1][0] === partial[0][0] &&
+            coords[coords.length - 1][1] === partial[0][1]
+          ) {
+            coords.push(...partial.slice(1));
+          } else {
+            coords.push(...partial);
+          }
+        }
+      }
+
+      if (coords.length < 2) return;
+
+      (map as any).addSource(ROUTE_SOURCE_ID, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'LineString', coordinates: coords },
+        },
+      });
+
+      (map as any).addLayer({
+        id: ROUTE_LAYER_ID,
+        type: 'line',
+        source: ROUTE_SOURCE_ID,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#2563eb', 'line-width': 4, 'line-opacity': 0.85 },
+      });
+    };
+
+    if ((map as any).isStyleLoaded()) {
+      void drawRoute();
+      return;
+    }
+
+    const onLoad = () => {
+      void drawRoute();
+    };
+    map.on('load', onLoad);
+    return () => {
+      map.off('load', onLoad);
+      clearRoute(map);
+    };
+  }, [map, selectedLocationId, locations, headquarters.coordinates, goongApiKey, clearRoute]);
 
   // Create all markers when map loads
   useEffect(() => {

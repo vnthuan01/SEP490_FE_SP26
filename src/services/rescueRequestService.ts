@@ -11,6 +11,7 @@ export interface RescueAttachmentItem {
   attachmentId?: string;
   fileUrl?: string | null;
   contentType?: string | null;
+  attachmentType?: number | string | null;
   uploadedAt?: string | null;
 }
 
@@ -156,6 +157,61 @@ export const normalizeRescueRequestListResponse = (payload: unknown): RescueRequ
   };
 };
 
+// ─── Types for Mission Tracking ───────────────────────────────────────────────
+
+export interface AssignedRescueTeamDto {
+  rescueOperationId?: string | null;
+  teamId?: string | null;
+  teamName?: string | null;
+  operationStatus?: string | null;
+  currentLatitude?: number | null;
+  currentLongitude?: number | null;
+  lastTrackedAt?: string | null;
+  estimatedMinutesToArrival?: number | null;
+  distanceKmToVictim?: number | null;
+  routePolyline?: string | null;
+  totalDistanceKm?: number | null;
+  totalEstimatedMinutes?: number | null;
+}
+
+export interface TeamLocationDto {
+  rescueOperationId?: string | null;
+  teamId?: string | null;
+  teamName?: string | null;
+  operationStatus?: string | null;
+  currentLatitude?: number | null;
+  currentLongitude?: number | null;
+  lastTrackedAt?: string | null;
+  estimatedMinutesToArrival?: number | null;
+  distanceKmToVictim?: number | null;
+}
+
+export interface RescueOperationDetail extends RescueOperationItem {
+  teamId?: string | null;
+  teamName?: string | null;
+  status?: string | null;
+  endedAt?: string | null;
+  completionNote?: string | null;
+  completionAttachments?: RescueAttachmentItem[];
+}
+
+export interface RescueRequestDetail extends RescueRequestItem {
+  rescueOperations?: RescueOperationDetail[];
+  assignedRescueTeam?: AssignedRescueTeamDto | null;
+}
+
+export interface UpdateOperationStatusPayload {
+  status: number;
+  note?: string;
+}
+
+export interface CompleteOperationPayload {
+  attachments: { fileUrl: string; contentType: string }[];
+  note?: string;
+}
+
+// ─── Service ──────────────────────────────────────────────────────────────────
+
 export const rescueRequestService = {
   getRequests: async (statusFilter: number | undefined, pageNumber = 1, pageSize = 10) => {
     const params: Record<string, number> = { pageNumber, pageSize };
@@ -175,6 +231,33 @@ export const rescueRequestService = {
 
     return normalizeRescueRequestListResponse(response.data);
   },
+
+  /** GET /api/RescueRequest/{id} — full detail with operations + assignedRescueTeam */
+  getById: async (id: string): Promise<RescueRequestDetail> => {
+    const response = await apiClient.get(`/RescueRequest/${id}`);
+    return (response.data?.data ?? response.data) as RescueRequestDetail;
+  },
+
+  /** GET /api/RescueRequest/{id}/team-location — realtime team location (AllowAnonymous) */
+  getTeamLocation: async (id: string): Promise<TeamLocationDto> => {
+    const response = await apiClient.get(`/RescueRequest/${id}/team-location`);
+    return (response.data?.data ?? response.data) as TeamLocationDto;
+  },
+
+  /** PATCH /api/RescueRequest/{requestId}/operations/{operationId}/status */
+  updateOperationStatus: (
+    requestId: string,
+    operationId: string,
+    payload: UpdateOperationStatusPayload,
+  ) => apiClient.patch(`/RescueRequest/${requestId}/operations/${operationId}/status`, payload),
+
+  /** POST /api/RescueRequest/{requestId}/operations/{operationId}/complete */
+  completeOperation: (requestId: string, operationId: string, payload: CompleteOperationPayload) =>
+    apiClient.post(`/RescueRequest/${requestId}/operations/${operationId}/complete`, payload),
+
+  /** POST /api/RescueRequest/teams/{teamId}/active-batch/recalculate-eta */
+  recalculateEta: (teamId: string) =>
+    apiClient.post(`/RescueRequest/teams/${teamId}/active-batch/recalculate-eta`),
 
   verifyRequest: (requestId: string, payload: VerifyRescueRequestPayload) =>
     apiClient.post(`/RescueRequest/${requestId}/verify`, payload),

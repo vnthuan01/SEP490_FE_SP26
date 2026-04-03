@@ -6,7 +6,8 @@
 export interface DirectionsRequest {
   origin: { lat: number; lng: number };
   destination: { lat: number; lng: number };
-  vehicle?: 'car' | 'bike' | 'foot';
+  vehicle?: 'car' | 'bike' | 'foot' | 'truck';
+  alternatives?: boolean;
 }
 
 export interface RouteLeg {
@@ -21,20 +22,34 @@ export interface RouteLeg {
   steps: Array<{
     distance: { value: number; text: string };
     duration: { value: number; text: string };
-    instruction: string;
+    html_instructions?: string;
+    instruction?: string;
+    maneuver?: string;
+    start_location?: { lat: number; lng: number };
+    end_location?: { lat: number; lng: number };
+    polyline?: { points: string };
+    travel_mode?: string;
   }>;
+  start_address?: string;
+  end_address?: string;
+  start_location?: { lat: number; lng: number };
+  end_location?: { lat: number; lng: number };
 }
 
 export interface DirectionsResponse {
   routes: Array<{
+    bounds?: unknown;
     legs: RouteLeg[];
     overview_polyline: {
       points: string;
     };
-    distance: { value: number; text: string };
-    duration: { value: number; text: string };
+    distance?: { value: number; text: string };
+    duration?: { value: number; text: string };
+    summary?: string;
+    warnings?: string[];
+    waypoint_order?: number[];
   }>;
-  geocoded_waypoints: Array<{
+  geocoded_waypoints?: Array<{
     geocoder_status: string;
     place_id: string;
   }>;
@@ -173,12 +188,21 @@ export interface PlaceDetailResponse {
 export async function getDirections(
   origin: { lat: number; lng: number },
   destination: { lat: number; lng: number },
-  vehicle: 'car' | 'bike' | 'foot' = 'car',
+  vehicle: 'car' | 'bike' | 'foot' | 'truck' = 'car',
   apiKey: string,
+  alternatives = false,
 ): Promise<DirectionsResponse | null> {
   try {
-    const vehicleParam = vehicle === 'bike' ? 'bike' : vehicle === 'foot' ? 'foot' : 'car';
-    const url = `https://rsapi.goong.io/Direction?origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}&vehicle=${vehicleParam}&api_key=${apiKey}`;
+    const vehicleParam =
+      vehicle === 'bike'
+        ? 'bike'
+        : vehicle === 'foot'
+          ? 'foot'
+          : vehicle === 'truck'
+            ? 'truck'
+            : 'car';
+
+    const url = `https://rsapi.goong.io/v2/direction?origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}&vehicle=${vehicleParam}&alternatives=${alternatives}&api_key=${apiKey}`;
 
     const response = await fetch(url);
     if (!response.ok) {
@@ -374,11 +398,17 @@ export async function getAdministrativeBoundary(
     if (!geocodeResult) return null;
 
     // Extract area name (commune/ward first, then district)
-    const commune = geocodeResult.address_components.find(
-      (comp) => comp.types.includes('commune') || comp.types.includes('sublocality'),
+    const addressComponents = Array.isArray(geocodeResult.address_components)
+      ? geocodeResult.address_components
+      : [];
+
+    const commune = addressComponents.find(
+      (comp) =>
+        Array.isArray(comp?.types) &&
+        (comp.types.includes('commune') || comp.types.includes('sublocality')),
     );
-    const district = geocodeResult.address_components.find((comp) =>
-      comp.types.includes('administrative_area_level_2'),
+    const district = addressComponents.find(
+      (comp) => Array.isArray(comp?.types) && comp.types.includes('administrative_area_level_2'),
     );
     const areaName = commune?.long_name || district?.long_name || 'Khu vực';
 
