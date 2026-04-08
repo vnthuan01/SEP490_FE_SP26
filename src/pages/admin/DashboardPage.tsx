@@ -180,7 +180,7 @@ export default function AdminDashboardPage() {
                 value={formatNumberVN(metrics.criticalStockCount)}
                 icon="inventory_2"
                 trend={`${formatNumberVN(metrics.totalInventorySlots)} điểm chứa đang theo dõi`}
-                variant="warning"
+                variant="danger"
               />
               <StatsCard
                 className="xl:col-span-3 h-[148px]"
@@ -188,7 +188,7 @@ export default function AdminDashboardPage() {
                 value={formatNumberVN(metrics.teamsCount)}
                 icon="groups_3"
                 trend={`${formatNumberVN(metrics.totalTeamMembers)} thành viên đã phân đội`}
-                variant="info"
+                variant="purple"
               />
               <StatsCard
                 className="xl:col-span-3 h-[148px]"
@@ -196,7 +196,7 @@ export default function AdminDashboardPage() {
                 value={formatNumberVN(metrics.transferCount + metrics.sessionCount)}
                 icon="local_shipping"
                 trend={`${formatNumberVN(metrics.pendingTransferCount)} phiếu chờ • ${formatNumberVN(metrics.inProgressSessionCount)} phiên đang chạy`}
-                variant="primary"
+                variant="teal"
               />
             </>
           )}
