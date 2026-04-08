@@ -1,77 +1,107 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-// import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-const TEAMS = [
+export interface TeamOverviewItem {
+  id: string;
+  name: string;
+  role: string;
+  statusLabel: string;
+  memberCount: number;
+  note?: string;
+  tone?: 'busy' | 'ready' | 'warning';
+}
+
+const DEFAULT_TEAMS: TeamOverviewItem[] = [
   {
+    id: 'team-1',
     name: 'Đội Cứu hộ 1',
     role: 'Tìm kiếm cứu nạn',
-    status: 'Busy',
-    members: [
-      'https://i.pravatar.cc/150?u=1',
-      'https://i.pravatar.cc/150?u=2',
-      'https://i.pravatar.cc/150?u=3',
-    ],
+    statusLabel: 'Đang điều phối',
+    memberCount: 12,
+    note: 'Cập nhật từ đội hiện trường',
+    tone: 'busy',
   },
   {
+    id: 'team-2',
     name: 'Đội Y tế Hà Nội',
     role: 'Sơ cứu & Y tế',
-    status: 'Available',
-    members: ['https://i.pravatar.cc/150?u=4', 'https://i.pravatar.cc/150?u=5'],
+    statusLabel: 'Sẵn sàng',
+    memberCount: 8,
+    note: 'Sẵn sàng tiếp nhận điều động',
+    tone: 'ready',
   },
   {
+    id: 'team-3',
     name: 'Đội Vận chuyển',
-    role: 'Logistics',
-    status: 'Busy',
-    members: [
-      'https://i.pravatar.cc/150?u=6',
-      'https://i.pravatar.cc/150?u=7',
-      'https://i.pravatar.cc/150?u=8',
-      'https://i.pravatar.cc/150?u=9',
-    ],
+    role: 'Hậu cần',
+    statusLabel: 'Cần theo dõi',
+    memberCount: 15,
+    note: 'Khối lượng điều phối cao',
+    tone: 'warning',
   },
 ];
 
-export function TeamOverview({ className }: { className?: string }) {
+const toneStyles: Record<NonNullable<TeamOverviewItem['tone']>, string> = {
+  busy: 'bg-red-500/10 text-red-500',
+  ready: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  warning: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+};
+
+export function TeamOverview({
+  className,
+  title = 'Đội phản ứng nhanh',
+  icon = 'groups_3',
+  teams = DEFAULT_TEAMS,
+}: {
+  className?: string;
+  title?: string;
+  icon?: string;
+  teams?: TeamOverviewItem[];
+}) {
   return (
-    <Card className={cn('bg-card border-border', className)}>
+    <Card className={cn('bg-card border-border h-full overflow-hidden', className)}>
       <CardHeader className="flex flex-row items-center justify-between pb-2 gap-2">
-        <CardTitle className="text-lg font-bold text-foreground">Đội phản ứng nhanh</CardTitle>
+        <CardTitle className="text-lg font-bold text-foreground flex items-center gap-2">
+          <span className="material-symbols-outlined text-violet-600">{icon}</span>
+          {title}
+        </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {TEAMS.map((team, idx) => (
-          <div
-            key={idx}
-            className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border"
-          >
-            <div className="flex flex-col gap-1">
-              <h4 className="text-sm font-bold text-foreground">{team.name}</h4>
-              <p className="text-xs text-muted-foreground">{team.role}</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex -space-x-2">
-                {team.members.map((src, i) => (
-                  <div
-                    key={i}
-                    className="size-6 rounded-full border border-card bg-muted overflow-hidden"
-                  >
-                    <img src={src} alt="Member" className="w-full h-full object-cover" />
-                  </div>
-                ))}
+      <CardContent className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-col gap-4 h-full overflow-y-auto pr-1 custom-scrollbar">
+          {teams.map((team) => (
+            <div
+              key={team.id}
+              className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3 rounded-lg bg-muted/50 border border-border"
+            >
+              <div className="flex flex-col gap-1 min-w-0">
+                <h4 className="text-sm font-bold text-foreground break-words line-clamp-2">
+                  {team.name}
+                </h4>
+                <p className="text-xs text-muted-foreground break-words line-clamp-1">
+                  {team.role}
+                </p>
+                {team.note ? (
+                  <p className="text-[11px] text-muted-foreground break-words line-clamp-2">
+                    {team.note}
+                  </p>
+                ) : null}
               </div>
-              <span
-                className={cn(
-                  'px-2 py-0.5 rounded text-[10px] font-bold uppercase',
-                  team.status === 'Busy'
-                    ? 'bg-red-500/10 text-red-500'
-                    : 'bg-primary/10 text-primary',
-                )}
-              >
-                {team.status}
-              </span>
+              <div className="flex flex-wrap items-center gap-3 shrink-0">
+                <div className="rounded-full bg-primary/10 text-primary px-2.5 py-1 text-[11px] font-semibold">
+                  {team.memberCount} thành viên
+                </div>
+                <span
+                  className={cn(
+                    'px-2 py-0.5 rounded text-[10px] font-bold uppercase',
+                    team.tone ? toneStyles[team.tone] : toneStyles.ready,
+                  )}
+                >
+                  {team.statusLabel}
+                </span>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </CardContent>
     </Card>
   );

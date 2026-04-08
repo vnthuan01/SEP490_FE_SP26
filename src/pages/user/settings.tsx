@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthContext } from '@/components/provider/auth/AuthProvider';
 import { useUserProfile } from '@/hooks/useUsers';
+import { useCloudinaryUpload } from '@/hooks/useCloudinaryUpload';
 
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { ChangePasswordDialog } from '@/pages/user/components/ChangePasswordDialog';
@@ -28,23 +29,25 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const { logout } = useAuthContext();
   const { profile, isLoading, updateProfile, updateProfileStatus } = useUserProfile();
+  const { uploadFile, isUploading } = useCloudinaryUpload();
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Form state
   const [displayName, setDisplayName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState('');
+  const [pictureUrl, setPictureUrl] = useState('');
 
-  // Sync form state when profile loads without triggering set-state-in-effect
-  const [prevProfile, setPrevProfile] = useState<any>(null);
-  if (profile && profile !== prevProfile) {
-    setPrevProfile(profile);
+  useEffect(() => {
+    if (!profile) return;
     setDisplayName(profile.displayName || '');
     setPhoneNumber(profile.phoneNumber || '');
     setDateOfBirth(profile.dateOfBirth ? profile.dateOfBirth.split('T')[0] : '');
     setGender(profile.gender || '');
-  }
+    setPictureUrl(profile.pictureUrl || '');
+  }, [profile]);
 
   const handleLogout = async () => {
     try {
@@ -63,6 +66,7 @@ export default function SettingsPage() {
       if (phoneNumber) formData.append('PhoneNumber', phoneNumber);
       if (dateOfBirth) formData.append('DateOfBirth', new Date(dateOfBirth).toISOString());
       if (gender) formData.append('Gender', gender);
+      if (pictureUrl) formData.append('PictureUrl', pictureUrl);
 
       await updateProfile(formData);
       toast.success('Cập nhật hồ sơ thành công!');
@@ -83,6 +87,34 @@ export default function SettingsPage() {
       setPhoneNumber(profile.phoneNumber || '');
       setDateOfBirth(profile.dateOfBirth ? profile.dateOfBirth.split('T')[0] : '');
       setGender(profile.gender || '');
+      setPictureUrl(profile.pictureUrl || '');
+    }
+  };
+
+  const handleChooseAvatar = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleAvatarFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Vui lòng chọn tệp ảnh hợp lệ.');
+      event.target.value = '';
+      return;
+    }
+
+    try {
+      const uploaded = await uploadFile({
+        file,
+        folder: 'reliefhub/avatars',
+        resourceType: 'image',
+      });
+      setPictureUrl(uploaded.secureUrl);
+      toast.success('Tải ảnh đại diện lên thành công. Hãy bấm Lưu thay đổi để cập nhật hồ sơ.');
+    } finally {
+      event.target.value = '';
     }
   };
 
@@ -126,9 +158,9 @@ export default function SettingsPage() {
                 {/* Avatar Section */}
                 <div className="flex flex-col items-center gap-3">
                   <div className="relative size-28 rounded-full border-2 border-dashed border-border flex items-center justify-center bg-muted/30">
-                    {profile?.pictureUrl ? (
+                    {pictureUrl ? (
                       <img
-                        src={profile.pictureUrl}
+                        src={pictureUrl}
                         alt="Avatar"
                         className="size-full rounded-full object-cover"
                       />
@@ -141,8 +173,20 @@ export default function SettingsPage() {
                       <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
                     </div>
                   </div>
-                  <button className="text-sm font-semibold text-primary hover:underline">
-                    Tải ảnh lên
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarFileChange}
+                  />
+                  <button
+                    type="button"
+                    className="text-sm font-semibold text-primary hover:underline disabled:opacity-60"
+                    onClick={handleChooseAvatar}
+                    disabled={isUploading}
+                  >
+                    {isUploading ? 'Đang tải ảnh...' : 'Tải ảnh lên'}
                   </button>
                 </div>
 
@@ -356,9 +400,13 @@ export default function SettingsPage() {
                   <Button
                     className="h-10 bg-primary flex-1 sm:flex-none"
                     onClick={handleSaveProfile}
-                    disabled={updateProfileStatus === 'pending'}
+                    disabled={updateProfileStatus === 'pending' || isUploading}
                   >
-                    {updateProfileStatus === 'pending' ? 'Đang lưu...' : 'Lưu thay đổi'}
+                    {updateProfileStatus === 'pending'
+                      ? 'Đang lưu...'
+                      : isUploading
+                        ? 'Đang tải ảnh...'
+                        : 'Lưu thay đổi'}
                   </Button>
                 </div>
               </CardContent>

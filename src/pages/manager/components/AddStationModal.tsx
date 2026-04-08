@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import {
   Dialog,
@@ -84,9 +84,17 @@ export function AddStationModal({
   const watchedLatitude = useWatch({ control: form.control, name: 'latitude' });
   const watchedLongitude = useWatch({ control: form.control, name: 'longitude' });
 
-  if (open && form.formState.defaultValues !== defaultValues) {
+  // Track previous defaultValues ref so we only reset when they actually change
+  const prevDefaultValuesRef = useRef(defaultValues);
+
+  useEffect(() => {
+    if (!open) return;
+    // Reset whenever the modal opens OR defaultLocationId changes while open
+    if (prevDefaultValuesRef.current !== defaultValues) {
+      prevDefaultValuesRef.current = defaultValues;
+    }
     form.reset(defaultValues);
-  }
+  }, [open, defaultValues, form]);
 
   const handleSubmitForm = async (formData: CreateStationFormData) => {
     await onSubmit({

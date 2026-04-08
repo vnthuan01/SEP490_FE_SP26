@@ -213,7 +213,18 @@ export default function ManagerDashboardPage() {
 
         <Card className="border-border bg-card overflow-hidden">
           <CardHeader>
-            <CardTitle>Bản đồ các trạm cứu trợ</CardTitle>
+            <div className="flex items-center gap-3">
+              <div className="size-11 rounded-2xl bg-violet-500/10 text-violet-600 dark:text-violet-300 flex items-center justify-center">
+                <span className="material-symbols-outlined text-[22px]">map</span>
+              </div>
+              <div>
+                <CardTitle>Bản đồ các trạm cứu trợ</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Theo dõi vị trí trụ sở khu vực, trạm tỉnh/thành và các trạm địa phương trên bản
+                  đồ.
+                </p>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
@@ -297,10 +308,20 @@ export default function ManagerDashboardPage() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_1fr] gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_1fr] gap-6">
           <Card className="border-border bg-card">
             <CardHeader>
-              <CardTitle>Tổng quan tài chính trung tâm</CardTitle>
+              <div className="flex items-center gap-3">
+                <div className="size-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[22px]">savings</span>
+                </div>
+                <div>
+                  <CardTitle>Tổng quan tài chính trung tâm</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Tổng hợp quỹ, nguồn đóng góp và các giao dịch tài chính gần đây.
+                  </p>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -416,7 +437,17 @@ export default function ManagerDashboardPage() {
 
           <Card className="border-border bg-card">
             <CardHeader>
-              <CardTitle>Thông số hàng hóa từng kho</CardTitle>
+              <div className="flex items-center gap-3">
+                <div className="size-11 rounded-2xl bg-sky-500/10 text-sky-600 dark:text-sky-300 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[22px]">inventory_2</span>
+                </div>
+                <div>
+                  <CardTitle>Thông số hàng hóa từng kho</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Theo dõi tổng kho hoặc chọn một kho cụ thể để xem chi tiết số lượng tồn.
+                  </p>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <Select value={selectedInventoryId} onValueChange={setSelectedInventoryId}>
@@ -465,7 +496,7 @@ export default function ManagerDashboardPage() {
                       {inventoryStocks.map((stock) => (
                         <TableRow key={stock.stockId}>
                           <TableCell className="font-mono text-xs text-muted-foreground">
-                            {stock.supplyItemId}
+                            {stock.supplyItemName}
                           </TableCell>
                           <TableCell>{formatNumberVN(stock.currentQuantity)}</TableCell>
                           <TableCell>{formatNumberVN(stock.minimumStockLevel)}</TableCell>
@@ -520,7 +551,18 @@ export default function ManagerDashboardPage() {
 
         <Card className="border-border bg-card">
           <CardHeader>
-            <CardTitle>Quản lý phương tiện điều phối</CardTitle>
+            <div className="flex items-center gap-3">
+              <div className="size-11 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-300 flex items-center justify-center">
+                <span className="material-symbols-outlined text-[22px]">local_shipping</span>
+              </div>
+              <div>
+                <CardTitle>Quản lý phương tiện điều phối</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Xem nhanh danh sách phương tiện và điều hướng sang trang quản lý phương tiện để
+                  CRUD.
+                </p>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">

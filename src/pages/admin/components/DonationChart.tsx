@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 type TimeRange = 'day' | 'week' | 'month' | 'year';
+type DonationChartPoint = { name: string; value: number };
 
 const DATA_GENERATORS = {
   day: () =>
@@ -41,12 +42,30 @@ const DATA_GENERATORS = {
 
 interface DonationChartProps {
   className?: string;
+  title?: string;
+  subtitle?: string;
+  icon?: string;
+  trendLabel?: string;
+  summaryLabel?: string;
+  dataByRange?: Partial<Record<TimeRange, DonationChartPoint[]>>;
 }
 
-export function DonationChart({ className }: DonationChartProps) {
+export function DonationChart({
+  className,
+  title = 'Xu hướng ủng hộ',
+  subtitle = 'Thống kê dòng tiền tài trợ theo thời gian',
+  icon = 'show_chart',
+  trendLabel = '+12.5%',
+  summaryLabel = 'Tổng tài trợ',
+  dataByRange,
+}: DonationChartProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>('week');
 
-  const data = useMemo(() => DATA_GENERATORS[timeRange](), [timeRange]);
+  const data = useMemo(() => {
+    const provided = dataByRange?.[timeRange];
+    if (provided && provided.length > 0) return provided;
+    return DATA_GENERATORS[timeRange]();
+  }, [dataByRange, timeRange]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -58,17 +77,18 @@ export function DonationChart({ className }: DonationChartProps) {
 
   return (
     <Card
-      className={cn('bg-surface-dark dark:bg-surface-light border-border shadow-md', className)}
+      className={cn(
+        'bg-surface-dark dark:bg-surface-light border-border shadow-md h-full overflow-hidden',
+        className,
+      )}
     >
       <CardHeader className="flex flex-col sm:flex-row items-center justify-between pb-4 border-b border-border/50">
         <div className="flex flex-col gap-1">
           <CardTitle className="text-foreground dark:text-foreground text-lg font-bold flex items-center gap-2">
-            <span className="material-symbols-outlined text-green-500">show_chart</span>
-            Xu hướng ủng hộ
+            <span className="material-symbols-outlined text-green-500">{icon}</span>
+            {title}
           </CardTitle>
-          <p className="text-sm text-muted-foreground dark:text-muted-foreground">
-            Thống kê dòng tiền tài trợ theo thời gian
-          </p>
+          <p className="text-sm text-muted-foreground dark:text-muted-foreground">{subtitle}</p>
         </div>
         <div className="flex bg-background-dark/50 dark:bg-background-light/50 p-1 rounded-lg mt-4 sm:mt-0">
           {(['day', 'week', 'month', 'year'] as TimeRange[]).map((range) => (
@@ -93,9 +113,9 @@ export function DonationChart({ className }: DonationChartProps) {
           ))}
         </div>
       </CardHeader>
-      <CardContent className="p-0 sm:p-6 pt-6">
-        <div className="h-[350px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
+      <CardContent className="p-0 sm:p-6 pt-6 flex flex-col min-h-0 h-full">
+        <div className="flex-1 min-h-0 h-[350px] w-full min-w-0">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorDonation" x1="0" y1="0" x2="0" y2="1">
@@ -145,7 +165,7 @@ export function DonationChart({ className }: DonationChartProps) {
         <div className="flex flex-end items-center justify-end px-6 mt-2">
           <div className="flex flex-col">
             <span className="text-primary dark:text-primary text-[10px] uppercase tracking-widest font-bold flex items-center gap-1">
-              Tổng tài trợ (
+              {summaryLabel} (
               {timeRange === 'day'
                 ? 'Hôm nay'
                 : timeRange === 'week'
@@ -158,9 +178,11 @@ export function DonationChart({ className }: DonationChartProps) {
             <span className="text-2xl font-black text-primary dark:text-primary mt-1">
               {formatCurrency(data.reduce((acc, curr) => acc + curr.value, 0))}
             </span>
-            <span className="text-green-400 dark:text-green-500 text-xs font-bold flex items-center gap-1 mt-1">
-              <span className="material-symbols-outlined text-xs">trending_up</span> +12.5%
-            </span>
+            {trendLabel ? (
+              <span className="text-green-400 dark:text-green-500 text-xs font-bold flex items-center gap-1 mt-1">
+                <span className="material-symbols-outlined text-xs">trending_up</span> {trendLabel}
+              </span>
+            ) : null}
           </div>
         </div>
       </CardContent>

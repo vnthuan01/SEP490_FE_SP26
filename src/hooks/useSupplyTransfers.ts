@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   supplyTransferService,
   type CreateSupplyTransferPayload,
@@ -43,6 +43,35 @@ export function useSupplyTransfer(id: string) {
   });
 }
 
+export function useSupplyTransferDetails(ids: string[]) {
+  const normalizedIds = Array.from(new Set(ids.filter(Boolean)));
+
+  const queries = useQueries({
+    queries: normalizedIds.map((id) => ({
+      queryKey: SUPPLY_TRANSFER_KEYS.detail(id),
+      queryFn: async () => {
+        const response = await supplyTransferService.getById(id);
+        return response.data;
+      },
+      enabled: !!id,
+    })),
+  });
+
+  const transferMap = new Map(
+    queries
+      .map((query, index) => [normalizedIds[index], query.data] as const)
+      .filter(
+        (entry): entry is [string, NonNullable<(typeof queries)[number]['data']>] => !!entry[1],
+      ),
+  );
+
+  return {
+    transferMap,
+    isLoading: queries.some((query) => query.isLoading),
+    isFetching: queries.some((query) => query.isFetching),
+  };
+}
+
 export function useSupplyTransfersByStatus(params?: SearchSupplyTransferByStatusParams) {
   return useQuery({
     queryKey: SUPPLY_TRANSFER_KEYS.byStatus(params),
@@ -75,15 +104,18 @@ export function useSupplyTransfersByDestinationStation(stationId: string) {
   });
 }
 
-function createStatusMutation(mutationFn: (id: string) => Promise<any>, successMessage: string) {
+function createStatusMutation<TPayload>(
+  mutationFn: (id: string, data: TPayload) => Promise<any>,
+  successMessage: string,
+) {
   return function useStatusMutation() {
     const queryClient = useQueryClient();
     return useMutation({
-      mutationFn: (id: string) => mutationFn(id),
-      onSuccess: (_, id) => {
+      mutationFn: ({ id, data }: { id: string; data: TPayload }) => mutationFn(id, data),
+      onSuccess: (_, variables) => {
         toast.success(successMessage);
         queryClient.invalidateQueries({ queryKey: SUPPLY_TRANSFER_KEYS.all });
-        queryClient.invalidateQueries({ queryKey: SUPPLY_TRANSFER_KEYS.detail(id) });
+        queryClient.invalidateQueries({ queryKey: SUPPLY_TRANSFER_KEYS.detail(variables.id) });
       },
       onError: (error: any) => {
         handleHookError(error, 'Không thể cập nhật trạng thái phiếu chuyển hàng');

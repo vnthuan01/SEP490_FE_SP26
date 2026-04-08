@@ -62,6 +62,8 @@ export interface SearchSupplyItemsParams {
 
 export interface SupplyAllocationItemPayload {
   supplyItemId: string;
+  supplyItemName: string;
+  supplyItemUnit: string;
   quantity: number;
 }
 

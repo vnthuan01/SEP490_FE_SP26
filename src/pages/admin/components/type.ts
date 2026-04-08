@@ -1,4 +1,13 @@
-export type Variant = 'default' | 'primary' | 'success' | 'warning' | 'info';
+export type Variant =
+  | 'default'
+  | 'primary'
+  | 'success'
+  | 'warning'
+  | 'info'
+  | 'danger'
+  | 'purple'
+  | 'pink'
+  | 'teal';
 
 export const variantStyles: Record<
   Variant,
@@ -44,5 +53,40 @@ export const variantStyles: Record<
     text: 'text-blue-600 dark:text-blue-400',
     badge: 'bg-blue-500/20 text-blue-600 dark:text-blue-400',
     hover: 'hover:bg-blue-500/25 dark:hover:bg-blue-500/20',
+  },
+  // 🔴 Danger (đỏ cảnh báo)
+  danger: {
+    card: 'bg-red-500/15 dark:bg-red-500/10',
+    icon: 'bg-red-500/20 text-red-500',
+    text: 'text-red-600 dark:text-red-400',
+    badge: 'bg-red-500/20 text-red-600 dark:text-red-400',
+    hover: 'hover:bg-red-500/25 dark:hover:bg-red-500/20',
+  },
+
+  // 🟣 Purple (modern dashboard)
+  purple: {
+    card: 'bg-violet-500/15 dark:bg-violet-500/10',
+    icon: 'bg-violet-500/20 text-violet-500',
+    text: 'text-violet-600 dark:text-violet-400',
+    badge: 'bg-violet-500/20 text-violet-600 dark:text-violet-400',
+    hover: 'hover:bg-violet-500/25 dark:hover:bg-violet-500/20',
+  },
+
+  // 🌸 Pink (highlight / marketing)
+  pink: {
+    card: 'bg-pink-500/15 dark:bg-pink-500/10',
+    icon: 'bg-pink-500/20 text-pink-500',
+    text: 'text-pink-600 dark:text-pink-400',
+    badge: 'bg-pink-500/20 text-pink-600 dark:text-pink-400',
+    hover: 'hover:bg-pink-500/25 dark:hover:bg-pink-500/20',
+  },
+
+  // 🟢 Teal (analytics / system)
+  teal: {
+    card: 'bg-teal-500/15 dark:bg-teal-500/10',
+    icon: 'bg-teal-500/20 text-teal-500',
+    text: 'text-teal-600 dark:text-teal-400',
+    badge: 'bg-teal-500/20 text-teal-600 dark:text-teal-400',
+    hover: 'hover:bg-teal-500/25 dark:hover:bg-teal-500/20',
   },
 };

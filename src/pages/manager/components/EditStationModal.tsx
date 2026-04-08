@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import {
   Dialog,
@@ -60,9 +60,10 @@ export function EditStationModal({ open, onClose, onSubmit, initialData }: EditS
   const watchedLatitude = useWatch({ control: form.control, name: 'latitude' });
   const watchedLongitude = useWatch({ control: form.control, name: 'longitude' });
 
-  if (open && form.formState.defaultValues !== defaultValues) {
+  useEffect(() => {
+    if (!open) return;
     form.reset(defaultValues);
-  }
+  }, [open, defaultValues, form]);
 
   const handleSubmitForm = async (formData: EditStationFormData) => {
     await onSubmit({

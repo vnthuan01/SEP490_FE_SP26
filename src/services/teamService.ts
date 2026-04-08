@@ -39,6 +39,23 @@ export interface AddTeamMemberPayload {
   volunteerId: string;
 }
 
+export interface AddTeamMembersBulkPayload {
+  volunteerIds: string[];
+}
+
+export interface TeamTrackingHeartbeatPayload {
+  latitude: number;
+  longitude: number;
+  accuracyMeters?: number;
+  speedKph?: number;
+  headingDegree?: number;
+  source: number;
+  capturedAtUtc: string;
+  rescueBatchId?: string;
+  rescueOperationId?: string;
+  note?: string;
+}
+
 export interface PagedResponse<T> {
   currentPage: number;
   totalPages: number;
@@ -47,6 +64,22 @@ export interface PagedResponse<T> {
   hasPrevious: boolean;
   hasNext: boolean;
   items: T[];
+}
+
+export interface TeamTrackingPoint {
+  teamTrackingPointId?: string;
+  teamId?: string;
+  rescueBatchId?: string;
+  rescueOperationId?: string;
+  latitude: number;
+  longitude: number;
+  accuracyMeters?: number;
+  speedKph?: number;
+  headingDegree?: number;
+  source?: number;
+  capturedAtUtc?: string;
+  createdAtUtc?: string;
+  note?: string;
 }
 
 export const teamService = {
@@ -62,7 +95,7 @@ export const teamService = {
       },
     }),
 
-  // Alias to avoid naming mismatches across hooks/components
+  // // Alias to avoid naming mismatches across hooks/components
   getTeamsInStation: (reliefStationId: string, pageIndex = 1, pageSize = 50) =>
     apiClient.get<PagedResponse<Team>>('/Team/in-station', {
       params: {
@@ -94,10 +127,19 @@ export const teamService = {
   addMember: (id: string, data: AddTeamMemberPayload) =>
     apiClient.post(`/Team/${id}/members`, data),
 
+  addMembersBulk: (id: string, data: AddTeamMembersBulkPayload) =>
+    apiClient.post(`/Team/${id}/members/bulk`, data),
+
   promoteToLeader: (id: string, userId: string) =>
     apiClient.patch(`/Team/${id}/members/${userId}/promote-to-leader`),
 
   removeMember: (id: string, userId: string) => apiClient.delete(`/Team/${id}/members/${userId}`),
+
+  /** GET /api/Team/{teamId}/tracking/latest?limit=N — list of GPS points for polyline */
+  getTrackingPoints: (teamId: string, limit = 200) =>
+    apiClient.get<TeamTrackingPoint[]>(`/Team/${teamId}/tracking/latest`, {
+      params: { limit },
+    }),
 };
 
 //Team Join Request Payload Interfaces

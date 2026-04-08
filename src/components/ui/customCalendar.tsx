@@ -17,7 +17,8 @@ export default function CustomCalendar({
 }) {
   const [month, setMonth] = React.useState<Date>(value || new Date());
 
-  const years = Array.from({ length: 80 }, (_, i) => new Date().getFullYear() - i);
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 200 }, (_, i) => currentYear - 160 + i);
   const months = Array.from({ length: 12 }, (_, i) => ({
     label: new Date(0, i).toLocaleString('default', { month: 'long' }),
     value: i,

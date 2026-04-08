@@ -45,25 +45,33 @@ export function FilterBar({
   isFullscreen,
   stats,
 }: FilterBarProps) {
+  const labelClassName =
+    'text-xs font-medium text-muted-foreground flex items-center gap-1 min-h-5';
+
   return (
     <div className={`border-b space-y-3 ${isFullscreen ? 'p-2' : ''}`}>
-      <div className="flex items-center justify-between">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold text-primary leading-tight">
-            Điều phối cứu trợ cả nước
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {stats.total} điểm cần cứu trợ • {stats.highUrgency} khẩn cấp cao
-          </p>
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-bold text-primary leading-tight">
+          Điều phối cứu trợ những yêu cầu gần trạm quản lý của bạn
+        </h1>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          <Badge variant="secondary">Tổng: {stats.total}</Badge>
+          <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+            Khẩn cấp: {stats.highUrgency}
+          </Badge>
+          <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+            Chưa xử lý: {stats.unassigned}
+          </Badge>
+          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+            Hoàn thành: {stats.completed}
+          </Badge>
         </div>
+      </div>
+      <div className="flex items-center justify-between">
         <div className="flex gap-2">
           <div className="flex flex-col gap-1">
             {/* Label */}
-            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-              <span className="material-symbols-outlined text-sm text-slate-500">search</span>
-              Tìm kiếm
-            </label>
-
+            <label className={labelClassName}>Tìm kiếm</label>
             {/* Input */}
             <div className="relative w-64">
               <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">
@@ -74,7 +82,7 @@ export function FilterBar({
                 placeholder="Tìm địa điểm..."
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
-                className="pl-8 pr-8"
+                className="pl-8 pr-8 h-9"
               />
 
               {/* Clear button */}
@@ -105,13 +113,13 @@ export function FilterBar({
           </div>
 
           {/* Filter mức độ khẩn cấp */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+          <div className="flex flex-col gap-1 h-16">
+            <label className={labelClassName}>
               <span className="material-symbols-outlined text-sm text-red-500">error</span>
               Mức độ
             </label>
             <Select value={urgencyFilter} onValueChange={onUrgencyFilterChange}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-[160px] ">
                 <SelectValue placeholder="Mức độ" />
               </SelectTrigger>
               <SelectContent>
@@ -146,7 +154,7 @@ export function FilterBar({
           </div>
           {/* Filter trạng thái */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+            <label className={labelClassName}>
               <span className="material-symbols-outlined text-sm text-blue-500">sync</span>
               Trạng thái
             </label>
@@ -194,7 +202,7 @@ export function FilterBar({
           </div>
           {/* Filter theo nhu cầu cần thiết */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+            <label className={labelClassName}>
               <span className="material-symbols-outlined text-sm text-indigo-500">inventory_2</span>
               Nhu cầu
             </label>
@@ -294,18 +302,6 @@ export function FilterBar({
       </div>
 
       {/* Stats */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        <Badge variant="secondary">Tổng: {stats.total}</Badge>
-        <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
-          Khẩn cấp: {stats.highUrgency}
-        </Badge>
-        <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
-          Chưa xử lý: {stats.unassigned}
-        </Badge>
-        <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
-          Hoàn thành: {stats.completed}
-        </Badge>
-      </div>
     </div>
   );
 }

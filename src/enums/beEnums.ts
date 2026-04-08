@@ -433,6 +433,20 @@ export const CampaignType = {
 
 export type CampaignType = (typeof CampaignType)[keyof typeof CampaignType];
 
+export const CampaignResourceType = {
+  Money: 1,
+  Supplies: 2,
+  People: 3,
+} as const;
+
+export type CampaignResourceType = (typeof CampaignResourceType)[keyof typeof CampaignResourceType];
+
+export const CampaignResourceTypeLabel: Record<number, string> = {
+  [CampaignResourceType.Money]: 'Tiền',
+  [CampaignResourceType.Supplies]: 'Vật tư',
+  [CampaignResourceType.People]: 'Người tình nguyện',
+};
+
 export const CampaignTeamStatus = {
   Invited: 0,
   Accepted: 1,
@@ -511,6 +525,202 @@ export const NeedType = {
 } as const;
 
 export type NeedType = (typeof NeedType)[keyof typeof NeedType];
+
+// ─── Attachment ────────────────────────────────────────────────────────────────
+
+export const AttachmentType = {
+  RequestEvidence: 0,
+  CompletionEvidence: 1,
+} as const;
+
+export type AttachmentType = (typeof AttachmentType)[keyof typeof AttachmentType];
+
+// ─── Relief Fulfillment ────────────────────────────────────────────────────────
+
+export const ReliefFulfillmentStatus = {
+  Planned: 0,
+  Delivered: 1,
+  Failed: 2,
+  Cancelled: 3,
+} as const;
+
+export type ReliefFulfillmentStatus =
+  (typeof ReliefFulfillmentStatus)[keyof typeof ReliefFulfillmentStatus];
+
+// ─── Distribution Session ─────────────────────────────────────────────────────
+
+export const DistributionSessionStatus = {
+  Draft: 0,
+  Ready: 1,
+  InProgress: 2,
+  Completed: 3,
+  Cancelled: 4,
+} as const;
+
+export type DistributionSessionStatus =
+  (typeof DistributionSessionStatus)[keyof typeof DistributionSessionStatus];
+
+export const DistributionSessionMode = {
+  Centralized: 0,
+  HomeDelivery: 1,
+} as const;
+
+export type DistributionSessionMode =
+  (typeof DistributionSessionMode)[keyof typeof DistributionSessionMode];
+
+// ─── Team Tracking ────────────────────────────────────────────────────────────
+
+/** ⚠ Bắt đầu từ 1 */
+export const TeamTrackingSource = {
+  MobileGps: 1,
+  DeviceNetwork: 2,
+  Manual: 3,
+  System: 4,
+} as const;
+
+export type TeamTrackingSource = (typeof TeamTrackingSource)[keyof typeof TeamTrackingSource];
+
+// ─── Campaign Volunteer ───────────────────────────────────────────────────────
+
+/** ⚠ Bắt đầu từ 1 */
+export const CampaignVolunteerRegistrationStatus = {
+  Registered: 1,
+  Cancelled: 2,
+} as const;
+
+export type CampaignVolunteerRegistrationStatus =
+  (typeof CampaignVolunteerRegistrationStatus)[keyof typeof CampaignVolunteerRegistrationStatus];
+
+// ─── OTP ──────────────────────────────────────────────────────────────────────
+
+/** ⚠ Bắt đầu từ 1 */
+export const OtpPurpose = {
+  EmailVerification: 1,
+  PasswordReset: 2,
+} as const;
+
+export type OtpPurpose = (typeof OtpPurpose)[keyof typeof OtpPurpose];
+
+// ─── Fund Transaction ─────────────────────────────────────────────────────────
+
+/** ⚠ Bắt đầu từ 1 */
+export const FundTransactionType = {
+  Credit: 1,
+  Debit: 2,
+} as const;
+
+export type FundTransactionType = (typeof FundTransactionType)[keyof typeof FundTransactionType];
+
+// ─── Campaign Completion Rule ─────────────────────────────────────────────────
+
+/** ⚠ Bắt đầu từ 1 */
+export const CampaignCompletionRule = {
+  AllGoalsMet: 1,
+  RequiredGoalsMet: 2,
+  ManualOnly: 3,
+} as const;
+
+export type CampaignCompletionRule =
+  (typeof CampaignCompletionRule)[keyof typeof CampaignCompletionRule];
+
+// ─── Notification ─────────────────────────────────────────────────────────────
+
+/** ⚠ Bắt đầu từ 1 */
+export const NotificationType = {
+  // RescueRequest events
+  RescueRequestCreated: 1,
+  RescueRequestVerified: 2,
+  RescueRequestAssigned: 3,
+  RescueRequestInProgress: 4,
+  RescueRequestCompleted: 5,
+  RescueRequestCancelled: 6,
+  // ReliefRequest events
+  ReliefRequestCreated: 11,
+  ReliefRequestVerified: 12,
+  ReliefRequestApproved: 13,
+  ReliefRequestAllocated: 14,
+  ReliefRequestDelivered: 15,
+  ReliefRequestCompleted: 16,
+  ReliefRequestRejected: 17,
+  // SupplyTransfer events
+  SupplyTransferCreated: 21,
+  SupplyTransferApproved: 22,
+  SupplyTransferReceived: 23,
+  SupplyTransferCancelled: 24,
+  // Khác
+  General: 99,
+} as const;
+
+export type NotificationType = (typeof NotificationType)[keyof typeof NotificationType];
+
+// ─── Relief Need Type ─────────────────────────────────────────────────────────
+
+/** ⚠ Bắt đầu từ 1 */
+export const ReliefNeedType = {
+  Food: 1,
+  Medical: 2,
+  Shelter: 3,
+  Other: 4,
+} as const;
+
+export type ReliefNeedType = (typeof ReliefNeedType)[keyof typeof ReliefNeedType];
+
+// ─── Location Level ───────────────────────────────────────────────────────────
+
+/** ⚠ Bắt đầu từ 1 */
+export const LocationLevel = {
+  Region: 1,
+  Province: 2,
+  Commune: 3,
+} as const;
+
+export type LocationLevel = (typeof LocationLevel)[keyof typeof LocationLevel];
+
+// ─── Group Size Level ─────────────────────────────────────────────────────────
+
+export const GroupSizeLevel = {
+  Single: 0,
+  Small: 1,
+  Medium: 2,
+  Large: 3,
+} as const;
+
+export type GroupSizeLevel = (typeof GroupSizeLevel)[keyof typeof GroupSizeLevel];
+
+// ─── Task Priority ────────────────────────────────────────────────────────────
+
+export const TaskPriority = {
+  Low: 0,
+  Medium: 1,
+  High: 2,
+  Critical: 3,
+} as const;
+
+export type TaskPriority = (typeof TaskPriority)[keyof typeof TaskPriority];
+
+// ─── Member Task Status ───────────────────────────────────────────────────────
+
+export const MemberTaskStatus = {
+  Assigned: 0,
+  InProgress: 1,
+  Completed: 2,
+  Failed: 3,
+  Cancelled: 4,
+} as const;
+
+export type MemberTaskStatus = (typeof MemberTaskStatus)[keyof typeof MemberTaskStatus];
+
+// ─── Inventory Status ─────────────────────────────────────────────────────────
+
+/** ⚠ Bắt đầu từ 1 */
+export const InventoryStatus = {
+  Critical: 1, // < 15% - Nguy cấp
+  NeedRestock: 2, // 15–50% - Cần bổ sung
+  Safe: 3, // 50–99% - An toàn
+  Full: 4, // 100% - Đầy kho
+} as const;
+
+export type InventoryStatus = (typeof InventoryStatus)[keyof typeof InventoryStatus];
 
 // ─── Label helpers ─────────────────────────────────────────────────────────────
 
@@ -663,6 +873,136 @@ export const VerificationStatusLabel: Record<VerificationStatus, string> = {
   [VerificationStatus.Pending]: 'Chờ duyệt',
   [VerificationStatus.Approved]: 'Đã duyệt',
   [VerificationStatus.Rejected]: 'Từ chối',
+};
+
+// ─── Labels cho enum mới ──────────────────────────────────────────────────────
+
+export const AttachmentTypeLabel: Record<AttachmentType, string> = {
+  [AttachmentType.RequestEvidence]: 'Bằng chứng yêu cầu',
+  [AttachmentType.CompletionEvidence]: 'Bằng chứng hoàn thành',
+};
+
+export const ReliefFulfillmentStatusLabel: Record<ReliefFulfillmentStatus, string> = {
+  [ReliefFulfillmentStatus.Planned]: 'Đã lên kế hoạch',
+  [ReliefFulfillmentStatus.Delivered]: 'Đã giao',
+  [ReliefFulfillmentStatus.Failed]: 'Thất bại',
+  [ReliefFulfillmentStatus.Cancelled]: 'Đã hủy',
+};
+
+export const DistributionSessionStatusLabel: Record<DistributionSessionStatus, string> = {
+  [DistributionSessionStatus.Draft]: 'Nháp',
+  [DistributionSessionStatus.Ready]: 'Sẵn sàng',
+  [DistributionSessionStatus.InProgress]: 'Đang thực hiện',
+  [DistributionSessionStatus.Completed]: 'Hoàn thành',
+  [DistributionSessionStatus.Cancelled]: 'Đã hủy',
+};
+
+export const DistributionSessionModeLabel: Record<DistributionSessionMode, string> = {
+  [DistributionSessionMode.Centralized]: 'Tập trung',
+  [DistributionSessionMode.HomeDelivery]: 'Giao tận nhà',
+};
+
+export const TeamTrackingSourceLabel: Record<TeamTrackingSource, string> = {
+  [TeamTrackingSource.MobileGps]: 'GPS điện thoại',
+  [TeamTrackingSource.DeviceNetwork]: 'Mạng thiết bị',
+  [TeamTrackingSource.Manual]: 'Nhập tay',
+  [TeamTrackingSource.System]: 'Hệ thống',
+};
+
+export const CampaignVolunteerRegistrationStatusLabel: Record<
+  CampaignVolunteerRegistrationStatus,
+  string
+> = {
+  [CampaignVolunteerRegistrationStatus.Registered]: 'Đã đăng ký',
+  [CampaignVolunteerRegistrationStatus.Cancelled]: 'Đã hủy',
+};
+
+export const OtpPurposeLabel: Record<OtpPurpose, string> = {
+  [OtpPurpose.EmailVerification]: 'Xác minh email',
+  [OtpPurpose.PasswordReset]: 'Đặt lại mật khẩu',
+};
+
+export const FundTransactionTypeLabel: Record<FundTransactionType, string> = {
+  [FundTransactionType.Credit]: 'Nạp quỹ',
+  [FundTransactionType.Debit]: 'Rút quỹ',
+};
+
+export const CampaignCompletionRuleLabel: Record<CampaignCompletionRule, string> = {
+  [CampaignCompletionRule.AllGoalsMet]: 'Đạt tất cả mục tiêu',
+  [CampaignCompletionRule.RequiredGoalsMet]: 'Đạt mục tiêu bắt buộc',
+  [CampaignCompletionRule.ManualOnly]: 'Chỉ kết thúc thủ công',
+};
+
+export const NotificationTypeLabel: Record<NotificationType, string> = {
+  [NotificationType.RescueRequestCreated]: 'Yêu cầu cứu hộ mới',
+  [NotificationType.RescueRequestVerified]: 'Xác minh yêu cầu cứu hộ',
+  [NotificationType.RescueRequestAssigned]: 'Phân công đội cứu hộ',
+  [NotificationType.RescueRequestInProgress]: 'Đang cứu hộ',
+  [NotificationType.RescueRequestCompleted]: 'Hoàn thành cứu hộ',
+  [NotificationType.RescueRequestCancelled]: 'Hủy yêu cầu cứu hộ',
+  [NotificationType.ReliefRequestCreated]: 'Yêu cầu cứu trợ mới',
+  [NotificationType.ReliefRequestVerified]: 'Xác minh yêu cầu cứu trợ',
+  [NotificationType.ReliefRequestApproved]: 'Duyệt yêu cầu cứu trợ',
+  [NotificationType.ReliefRequestAllocated]: 'Phân bổ hàng hóa cứu trợ',
+  [NotificationType.ReliefRequestDelivered]: 'Đã giao hàng cứu trợ',
+  [NotificationType.ReliefRequestCompleted]: 'Hoàn thành cứu trợ',
+  [NotificationType.ReliefRequestRejected]: 'Từ chối yêu cầu cứu trợ',
+  [NotificationType.SupplyTransferCreated]: 'Phiếu chuyển kho mới',
+  [NotificationType.SupplyTransferApproved]: 'Duyệt phiếu chuyển kho',
+  [NotificationType.SupplyTransferReceived]: 'Nhận hàng chuyển kho',
+  [NotificationType.SupplyTransferCancelled]: 'Hủy phiếu chuyển kho',
+  [NotificationType.General]: 'Thông báo chung',
+};
+
+export const ReliefNeedTypeLabel: Record<ReliefNeedType, string> = {
+  [ReliefNeedType.Food]: 'Thực phẩm',
+  [ReliefNeedType.Medical]: 'Y tế',
+  [ReliefNeedType.Shelter]: 'Chỗ ở',
+  [ReliefNeedType.Other]: 'Khác',
+};
+
+export const LocationLevelLabel: Record<LocationLevel, string> = {
+  [LocationLevel.Region]: 'Vùng / Khu vực',
+  [LocationLevel.Province]: 'Tỉnh / Thành phố',
+  [LocationLevel.Commune]: 'Xã / Phường',
+};
+
+export const GroupSizeLevelLabel: Record<GroupSizeLevel, string> = {
+  [GroupSizeLevel.Single]: 'Cá nhân',
+  [GroupSizeLevel.Small]: 'Nhóm nhỏ',
+  [GroupSizeLevel.Medium]: 'Nhóm vừa',
+  [GroupSizeLevel.Large]: 'Nhóm lớn',
+};
+
+export const TaskPriorityLabel: Record<TaskPriority, string> = {
+  [TaskPriority.Low]: 'Thấp',
+  [TaskPriority.Medium]: 'Trung bình',
+  [TaskPriority.High]: 'Cao',
+  [TaskPriority.Critical]: 'Khẩn cấp',
+};
+
+export const MemberTaskStatusLabel: Record<MemberTaskStatus, string> = {
+  [MemberTaskStatus.Assigned]: 'Đã giao',
+  [MemberTaskStatus.InProgress]: 'Đang thực hiện',
+  [MemberTaskStatus.Completed]: 'Hoàn thành',
+  [MemberTaskStatus.Failed]: 'Không hoàn thành',
+  [MemberTaskStatus.Cancelled]: 'Đã hủy',
+};
+
+export const InventoryStatusLabel: Record<InventoryStatus, string> = {
+  [InventoryStatus.Critical]: 'Nguy cấp',
+  [InventoryStatus.NeedRestock]: 'Cần bổ sung',
+  [InventoryStatus.Safe]: 'An toàn',
+  [InventoryStatus.Full]: 'Đầy kho',
+};
+
+export const InventoryStatusClass: Record<InventoryStatus, string> = {
+  [InventoryStatus.Critical]: 'border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-300',
+  [InventoryStatus.NeedRestock]:
+    'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-300',
+  [InventoryStatus.Safe]:
+    'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
+  [InventoryStatus.Full]: 'border-sky-500/20 bg-sky-500/10 text-sky-600 dark:text-sky-300',
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -851,6 +1191,37 @@ export function getSupplyCategoryClass(value: unknown): string {
     if (normalized === 'dungcuvaleutrai')
       return SupplyCategoryClass[SupplyCategory.DungCuVaLeuTrai];
     if (normalized === 'khac') return SupplyCategoryClass[SupplyCategory.Khac];
+  }
+
+  return 'border-border bg-muted text-muted-foreground';
+}
+
+export function getInventoryStatusLabel(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in InventoryStatusLabel) return InventoryStatusLabel[n as InventoryStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'critical') return InventoryStatusLabel[InventoryStatus.Critical];
+    if (normalized === 'needrestock') return InventoryStatusLabel[InventoryStatus.NeedRestock];
+    if (normalized === 'safe') return InventoryStatusLabel[InventoryStatus.Safe];
+    if (normalized === 'full') return InventoryStatusLabel[InventoryStatus.Full];
+    return value;
+  }
+
+  return 'Không rõ';
+}
+
+export function getInventoryStatusClass(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in InventoryStatusClass) return InventoryStatusClass[n as InventoryStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'critical') return InventoryStatusClass[InventoryStatus.Critical];
+    if (normalized === 'needrestock') return InventoryStatusClass[InventoryStatus.NeedRestock];
+    if (normalized === 'safe') return InventoryStatusClass[InventoryStatus.Safe];
+    if (normalized === 'full') return InventoryStatusClass[InventoryStatus.Full];
   }
 
   return 'border-border bg-muted text-muted-foreground';
