@@ -1,6 +1,7 @@
 import axios, { type AxiosRequestHeaders, type InternalAxiosRequestConfig } from 'axios';
 import Cookies from 'js-cookie';
-import { getAuthToken, setAuthToken } from './cookies';
+import { getAuthToken, setAuthToken, setRefreshToken } from './cookies';
+import { notifyTokenUpdate } from './tokenBridge';
 
 const BASE_URL = import.meta.env.VITE_BASE_API_URI || import.meta.env.VITE_API_BASE_URL;
 
@@ -74,7 +75,15 @@ apiClient.interceptors.response.use(
         );
 
         const newAccessToken = data.data.accessToken;
+        const newRefreshToken: string | undefined = data.data.refreshToken;
+
         setAuthToken(newAccessToken);
+        if (newRefreshToken) {
+          setRefreshToken(newRefreshToken);
+        }
+
+        // Thông báo cho AuthContext cập nhật React state
+        notifyTokenUpdate(newAccessToken, newRefreshToken);
 
         processQueue(null, newAccessToken);
 

@@ -496,7 +496,7 @@ export default function ManagerDashboardPage() {
                       {inventoryStocks.map((stock) => (
                         <TableRow key={stock.stockId}>
                           <TableCell className="font-mono text-xs text-muted-foreground">
-                            {stock.supplyItemId}
+                            {stock.supplyItemName}
                           </TableCell>
                           <TableCell>{formatNumberVN(stock.currentQuantity)}</TableCell>
                           <TableCell>{formatNumberVN(stock.minimumStockLevel)}</TableCell>

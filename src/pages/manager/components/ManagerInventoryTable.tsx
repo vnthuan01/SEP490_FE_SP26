@@ -36,7 +36,10 @@ export function ManagerInventoryTable({
   inventories,
   isLoading,
   isUpdating,
-  onManageStock,
+  onCreateStock,
+  onImportStock,
+  onUpdateStock,
+  onViewStockDetail,
   onCreateTransfer,
   onViewTransfers,
   onViewTransactions,
@@ -45,7 +48,14 @@ export function ManagerInventoryTable({
   inventories: InventoryItem[];
   isLoading: boolean;
   isUpdating: boolean;
-  onManageStock: (inventoryId: string, inventoryName: string) => void;
+  /** Mở dialog tạo tồn kho mới (chỉ addStock cho vật phẩm chưa có trong kho) */
+  onCreateStock: (inventoryId: string, inventoryName: string) => void;
+  /** Mở dialog nhập bổ sung tồn kho (chỉ POST createTransaction import) */
+  onImportStock: (inventoryId: string, inventoryName: string) => void;
+  /** Mở dialog cập nhật min/max tồn kho (chỉ PUT updateStock) */
+  onUpdateStock: (inventoryId: string, inventoryName: string) => void;
+  /** Mở dialog xem chi tiết tồn kho (chỉ đọc) */
+  onViewStockDetail: (inventoryId: string, inventoryName: string) => void;
   onCreateTransfer: (inventoryId: string, reliefStationId: string, inventoryName: string) => void;
   onViewTransfers: (inventoryId: string, reliefStationId: string, inventoryName: string) => void;
   onViewTransactions: (inventoryId: string, inventoryName: string) => void;
@@ -149,11 +159,32 @@ export function ManagerInventoryTable({
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
+                          className="gap-2 text-sky-600"
+                          onClick={() => onViewStockDetail(inv.inventoryId, inv.reliefStationName)}
+                        >
+                          <span className="material-symbols-outlined text-lg">visibility</span>
+                          Xem chi tiết tồn kho
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="gap-2 text-emerald-600"
+                          onClick={() => onCreateStock(inv.inventoryId, inv.reliefStationName)}
+                        >
+                          <span className="material-symbols-outlined text-lg">add_box</span>
+                          Tạo tồn kho mới
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="gap-2 text-blue-600"
+                          onClick={() => onImportStock(inv.inventoryId, inv.reliefStationName)}
+                        >
+                          <span className="material-symbols-outlined text-lg">move_to_inbox</span>
+                          Nhập bổ sung tồn kho
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
                           className="gap-2 text-primary"
-                          onClick={() => onManageStock(inv.inventoryId, inv.reliefStationName)}
+                          onClick={() => onUpdateStock(inv.inventoryId, inv.reliefStationName)}
                         >
                           <span className="material-symbols-outlined text-lg">inventory</span>
-                          Nhập hoặc cập nhật tồn kho
+                          Cập nhật tồn kho
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="gap-2 text-primary"

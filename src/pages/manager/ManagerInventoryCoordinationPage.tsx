@@ -82,6 +82,7 @@ import {
   normalizeNumberInput,
   parseFormattedNumber,
 } from '@/lib/utils';
+import type { Stock } from '@/services/inventoryService';
 import { toast } from 'sonner';
 import CustomCalendar from '@/components/ui/customCalendar';
 
@@ -140,6 +141,19 @@ const DANH_MUC_VAT_PHAM = [
   SupplyCategory.DungCuVaLeuTrai,
   SupplyCategory.Khac,
 ] as const;
+
+const NEW_STOCK_LOT_OPTION = '__new_stock_lot__';
+
+const groupStocksBySupplyItemId = (stocks: Stock[]) => {
+  const grouped = new Map<string, Stock[]>();
+
+  for (const stock of stocks) {
+    const currentLots = grouped.get(stock.supplyItemId) ?? [];
+    grouped.set(stock.supplyItemId, [...currentLots, stock]);
+  }
+
+  return grouped;
+};
 
 const taoDongVatPham = (): DongVatPham => ({
   id: crypto.randomUUID(),
@@ -226,7 +240,14 @@ export default function ManagerInventoryCoordinationPage() {
   const [openTransferHistory, setOpenTransferHistory] = useState(false);
   const [openTransactionHistory, setOpenTransactionHistory] = useState(false);
   const [openTransferPdfWorkflow, setOpenTransferPdfWorkflow] = useState(false);
-  const [openStockDialog, setOpenStockDialog] = useState(false);
+  /** Dialog tạo tồn kho mới – chỉ cho vật phẩm chưa có trong kho */
+  const [openCreateStockDialog, setOpenCreateStockDialog] = useState(false);
+  /** Dialog nhập bổ sung tồn kho – chỉ POST createTransaction import */
+  const [openImportStockDialog, setOpenImportStockDialog] = useState(false);
+  /** Dialog cập nhật min/max tồn kho – chỉ PUT updateStock */
+  const [openUpdateStockDialog, setOpenUpdateStockDialog] = useState(false);
+  /** Dialog xem chi tiết tồn kho – chỉ đọc */
+  const [openViewStockDialog, setOpenViewStockDialog] = useState(false);
   const [openExpirationDateCalendarDialog, setOpenExpirationDateCalendarDialog] = useState(false);
   const [selectedExpirationDateId, setSelectedExpirationDateId] = useState('');
   const [selectedInventoryForStock, setSelectedInventoryForStock] = useState<{
@@ -289,7 +310,7 @@ export default function ManagerInventoryCoordinationPage() {
   });
   const { data: inventoryStocksResponse, isLoading: isLoadingInventoryStocks } = useInventoryStocks(
     selectedInventoryForStock?.id || '',
-    { pageIndex: 1, pageSize: 200 },
+    { pageIndex: 1, pageSize: 500 },
   );
   const { data: transferInventoryStocksResponse } = useInventoryStocks(
     transferForm.sourceInventoryId || '',
@@ -359,12 +380,12 @@ export default function ManagerInventoryCoordinationPage() {
     () => inventories.filter((inv) => inv.status === EntityStatus.Active),
     [inventories],
   );
-  const stockMapBySupplyItemId = useMemo(
-    () => new Map(inventoryStocks.map((stock) => [stock.supplyItemId, stock])),
+  const stockLotsBySupplyItemId = useMemo(
+    () => groupStocksBySupplyItemId(inventoryStocks),
     [inventoryStocks],
   );
-  const allocationStockMapBySupplyItemId = useMemo(
-    () => new Map(allocationInventoryStocks.map((stock) => [stock.supplyItemId, stock])),
+  const allocationStockLotsBySupplyItemId = useMemo(
+    () => groupStocksBySupplyItemId(allocationInventoryStocks),
     [allocationInventoryStocks],
   );
   const filteredInventories = useMemo(() => {
@@ -678,10 +699,27 @@ export default function ManagerInventoryCoordinationPage() {
     setOpenCreateAllocation(false);
   };
 
-  const openStockManagement = (inventoryId: string, inventoryName: string) => {
+  const openCreateStockManagement = (inventoryId: string, inventoryName: string) => {
     setSelectedInventoryForStock({ id: inventoryId, name: inventoryName });
     setStockDrafts([taoDongCapNhatTonKho()]);
-    setOpenStockDialog(true);
+    setOpenCreateStockDialog(true);
+  };
+
+  const openStockImportManagement = (inventoryId: string, inventoryName: string) => {
+    setSelectedInventoryForStock({ id: inventoryId, name: inventoryName });
+    setStockDrafts([taoDongCapNhatTonKho()]);
+    setOpenImportStockDialog(true);
+  };
+
+  const openStockUpdateManagement = (inventoryId: string, inventoryName: string) => {
+    setSelectedInventoryForStock({ id: inventoryId, name: inventoryName });
+    setStockDrafts([taoDongCapNhatTonKho()]);
+    setOpenUpdateStockDialog(true);
+  };
+
+  const openViewStockDetail = (inventoryId: string, inventoryName: string) => {
+    setSelectedInventoryForStock({ id: inventoryId, name: inventoryName });
+    setOpenViewStockDialog(true);
   };
 
   const addStockDraft = () => setStockDrafts((prev) => [...prev, taoDongCapNhatTonKho()]);
@@ -696,17 +734,42 @@ export default function ManagerInventoryCoordinationPage() {
         if (item.id !== id) return item;
 
         if (key === 'supplyItemId') {
-          const existingStock = stockMapBySupplyItemId.get(value);
+          const existingLots = stockLotsBySupplyItemId.get(value) ?? [];
+          const existingStock = existingLots[0];
+
           return {
             ...item,
             supplyItemId: value,
-            stockId: existingStock?.stockId,
-            isExisting: !!existingStock,
-            minimumStockLevel: existingStock
-              ? String(existingStock.minimumStockLevel)
+            stockId: existingLots.length === 1 ? existingStock?.stockId : undefined,
+            isExisting: existingLots.length > 0,
+            minimumStockLevel: existingStock ? String(existingStock.minimumStockLevel) : '0',
+            maximumStockLevel: existingStock ? String(existingStock.maximumStockLevel) : '0',
+            expirationDate: existingLots.length > 0 ? null : item.expirationDate,
+          };
+        }
+
+        if (key === 'stockId') {
+          if (value === NEW_STOCK_LOT_OPTION) {
+            return {
+              ...item,
+              stockId: undefined,
+              isExisting: false,
+              minimumStockLevel: item.minimumStockLevel || '0',
+              maximumStockLevel: item.maximumStockLevel || '0',
+            };
+          }
+
+          const selectedLot = inventoryStocks.find((stock) => stock.stockId === value);
+
+          return {
+            ...item,
+            stockId: value,
+            isExisting: !!selectedLot,
+            minimumStockLevel: selectedLot
+              ? String(selectedLot.minimumStockLevel)
               : item.minimumStockLevel,
-            maximumStockLevel: existingStock
-              ? String(existingStock.maximumStockLevel)
+            maximumStockLevel: selectedLot
+              ? String(selectedLot.maximumStockLevel)
               : item.maximumStockLevel,
           };
         }
@@ -716,9 +779,14 @@ export default function ManagerInventoryCoordinationPage() {
     );
   };
 
-  const handleSaveStocks = async () => {
+  const handleCreateNewStock = async () => {
     if (!selectedInventoryForStock?.id) {
-      toast.error('Không tìm thấy kho để cập nhật tồn kho.');
+      toast.error('Không tìm thấy kho để tạo tồn kho.');
+      return;
+    }
+
+    if (isLoadingInventoryStocks) {
+      toast.error('Dữ liệu tồn kho đang được tải. Vui lòng thử lại sau ít giây.');
       return;
     }
 
@@ -728,12 +796,25 @@ export default function ManagerInventoryCoordinationPage() {
       return;
     }
 
+    // Chặn vật phẩm đã có trong kho
+    for (const item of validDrafts) {
+      const existingLots = stockLotsBySupplyItemId.get(item.supplyItemId) ?? [];
+      if (existingLots.length > 0) {
+        const supplyName =
+          supplyItems.find((s) => s.id === item.supplyItemId)?.name || item.supplyItemId;
+        toast.error(
+          `Vật phẩm "${supplyName}" đã có trong kho. Dùng chức năng "Cập nhật / nhập bổ sung tồn kho" để thao tác.`,
+        );
+        return;
+      }
+    }
+
     for (const item of validDrafts) {
       const minimumStockLevel = parseFormattedNumber(item.minimumStockLevel);
       const maximumStockLevel = parseFormattedNumber(item.maximumStockLevel);
-      const importQuantity = parseFormattedNumber(item.importQuantity);
+      const currentQuantity = parseFormattedNumber(item.importQuantity);
 
-      if (minimumStockLevel < 0 || maximumStockLevel < 0 || importQuantity < 0) {
+      if (minimumStockLevel < 0 || maximumStockLevel < 0 || currentQuantity < 0) {
         toast.error('Số lượng tồn kho không được nhỏ hơn 0.');
         return;
       }
@@ -747,54 +828,158 @@ export default function ManagerInventoryCoordinationPage() {
     for (const item of validDrafts) {
       const minimumStockLevel = parseFormattedNumber(item.minimumStockLevel);
       const maximumStockLevel = parseFormattedNumber(item.maximumStockLevel);
-      const importQuantity = parseFormattedNumber(item.importQuantity);
+      const currentQuantity = parseFormattedNumber(item.importQuantity);
 
-      if (item.isExisting && item.stockId) {
-        await updateStock({
-          stockId: item.stockId,
-          inventoryId: selectedInventoryForStock.id,
-          data: {
-            minimumStockLevel,
-            maximumStockLevel,
-          },
-        });
-
-        if (importQuantity > 0) {
-          await createTransaction({
-            inventoryId: selectedInventoryForStock.id,
-            type: TransactionType.Import,
-            reason: TransactionReason.Other,
-            notes: `Nhập bổ sung vật phẩm cho kho ${selectedInventoryForStock.name}`,
-            items: [
-              {
-                supplyItemId: item.supplyItemId,
-                supplyItemName:
-                  supplyItems.find((supply) => supply.id === item.supplyItemId)?.name ||
-                  item.supplyItemId,
-                supplyItemUnit:
-                  supplyItems.find((supply) => supply.id === item.supplyItemId)?.unit || '',
-                quantity: importQuantity,
-                notes: 'Nhập hoặc cập nhật tồn kho từ trang điều phối kho',
-              },
-            ],
-          });
-        }
-      } else {
-        await addStock({
-          id: selectedInventoryForStock.id,
-          data: {
-            supplyItemId: item.supplyItemId,
-            currentQuantity: importQuantity,
-            minimumStockLevel,
-            maximumStockLevel,
-            ...(item.expirationDate ? { expirationDate: item.expirationDate } : {}),
-          },
-        });
-      }
+      await addStock({
+        id: selectedInventoryForStock.id,
+        data: {
+          supplyItemId: item.supplyItemId,
+          currentQuantity,
+          minimumStockLevel,
+          maximumStockLevel,
+          ...(item.expirationDate ? { expirationDate: item.expirationDate } : {}),
+        },
+      });
     }
 
     setStockDrafts([taoDongCapNhatTonKho()]);
-    setOpenStockDialog(false);
+    setOpenCreateStockDialog(false);
+  };
+
+  /** Nhập bổ sung – chỉ POST createTransaction import, không updateStock */
+  const handleImportStock = async () => {
+    if (!selectedInventoryForStock?.id) {
+      toast.error('Không tìm thấy kho để nhập bổ sung.');
+      return;
+    }
+
+    if (isLoadingInventoryStocks) {
+      toast.error('Dữ liệu tồn kho đang được tải. Vui lòng thử lại sau ít giây.');
+      return;
+    }
+
+    const validDrafts = stockDrafts.filter((item) => item.supplyItemId);
+    if (validDrafts.length === 0) {
+      toast.error('Vui lòng chọn ít nhất một vật phẩm.');
+      return;
+    }
+
+    // Chỉ cho phép nhập vào vật phẩm đã có trong kho
+    for (const item of validDrafts) {
+      const existingLots = stockLotsBySupplyItemId.get(item.supplyItemId) ?? [];
+      if (existingLots.length === 0) {
+        const supplyName =
+          supplyItems.find((s) => s.id === item.supplyItemId)?.name || item.supplyItemId;
+        toast.error(
+          `Vật phẩm "${supplyName}" chưa có trong kho. Dùng "Tạo tồn kho mới" để thêm vào kho trước.`,
+        );
+        return;
+      }
+    }
+
+    for (const item of validDrafts) {
+      const importQuantity = parseFormattedNumber(item.importQuantity);
+      if (importQuantity <= 0) {
+        toast.error('Số lượng nhập phải lớn hơn 0.');
+        return;
+      }
+    }
+
+    for (const item of validDrafts) {
+      const importQuantity = parseFormattedNumber(item.importQuantity);
+
+      await createTransaction({
+        inventoryId: selectedInventoryForStock.id,
+        type: TransactionType.Import,
+        reason: TransactionReason.Other,
+        notes: `Nhập bổ sung vật phẩm cho kho ${selectedInventoryForStock.name}`,
+        items: [
+          {
+            supplyItemId: item.supplyItemId,
+            supplyItemName:
+              supplyItems.find((supply) => supply.id === item.supplyItemId)?.name ||
+              item.supplyItemId,
+            supplyItemUnit:
+              supplyItems.find((supply) => supply.id === item.supplyItemId)?.unit || '',
+            quantity: importQuantity,
+            notes: 'Nhập bổ sung tồn kho từ trang điều phối kho',
+          },
+        ],
+      });
+    }
+
+    setStockDrafts([taoDongCapNhatTonKho()]);
+    setOpenImportStockDialog(false);
+  };
+
+  /** Cập nhật tồn kho – chỉ PUT updateStock min/max, không createTransaction */
+  const handleUpdateStock = async () => {
+    if (!selectedInventoryForStock?.id) {
+      toast.error('Không tìm thấy kho để cập nhật tồn kho.');
+      return;
+    }
+
+    if (isLoadingInventoryStocks) {
+      toast.error('Dữ liệu tồn kho đang được tải. Vui lòng thử lại sau ít giây.');
+      return;
+    }
+
+    const validDrafts = stockDrafts.filter((item) => item.supplyItemId);
+    if (validDrafts.length === 0) {
+      toast.error('Vui lòng chọn ít nhất một vật phẩm.');
+      return;
+    }
+
+    // Chỉ cho phép thao tác trên vật phẩm đã có trong kho
+    for (const item of validDrafts) {
+      const existingLots = stockLotsBySupplyItemId.get(item.supplyItemId) ?? [];
+      if (existingLots.length === 0) {
+        const supplyName =
+          supplyItems.find((s) => s.id === item.supplyItemId)?.name || item.supplyItemId;
+        toast.error(
+          `Vật phẩm "${supplyName}" chưa có trong kho. Dùng "Tạo tồn kho mới" để thêm vào kho.`,
+        );
+        return;
+      }
+    }
+
+    for (const item of validDrafts) {
+      const minimumStockLevel = parseFormattedNumber(item.minimumStockLevel);
+      const maximumStockLevel = parseFormattedNumber(item.maximumStockLevel);
+
+      if (minimumStockLevel < 0 || maximumStockLevel < 0) {
+        toast.error('Ngưỡng tồn kho không được nhỏ hơn 0.');
+        return;
+      }
+
+      if (maximumStockLevel > 0 && minimumStockLevel > maximumStockLevel) {
+        toast.error('Mức tồn tối thiểu không được lớn hơn mức tồn tối đa.');
+        return;
+      }
+    }
+
+    for (const item of validDrafts) {
+      const minimumStockLevel = parseFormattedNumber(item.minimumStockLevel);
+      const maximumStockLevel = parseFormattedNumber(item.maximumStockLevel);
+      const resolvedStockId = item.stockId;
+
+      if (!resolvedStockId) {
+        toast.error('Vui lòng chọn lô hàng cần cập nhật.');
+        return;
+      }
+
+      await updateStock({
+        stockId: resolvedStockId,
+        inventoryId: selectedInventoryForStock.id,
+        data: {
+          minimumStockLevel,
+          maximumStockLevel,
+        },
+      });
+    }
+
+    setStockDrafts([taoDongCapNhatTonKho()]);
+    setOpenUpdateStockDialog(false);
   };
 
   const openTransferDialog = (
@@ -1029,7 +1214,10 @@ export default function ManagerInventoryCoordinationPage() {
                     inventories={filteredInventories}
                     isLoading={isLoadingInventories}
                     isUpdating={updateInventoryStatus === 'pending'}
-                    onManageStock={openStockManagement}
+                    onCreateStock={openCreateStockManagement}
+                    onImportStock={openStockImportManagement}
+                    onUpdateStock={openStockUpdateManagement}
+                    onViewStockDetail={openViewStockDetail}
                     onCreateTransfer={openTransferDialog}
                     onViewTransfers={openTransferHistoryDialog}
                     onViewTransactions={openTransactionHistoryDialog}
@@ -1589,8 +1777,9 @@ export default function ManagerInventoryCoordinationPage() {
                                 <div className="text-xs text-muted-foreground shrink-0">
                                   Tồn:{' '}
                                   {formatNumberVN(
-                                    allocationStockMapBySupplyItemId.get(supplyItem.id)
-                                      ?.currentQuantity || 0,
+                                    (
+                                      allocationStockLotsBySupplyItemId.get(supplyItem.id) || []
+                                    ).reduce((sum, stock) => sum + stock.currentQuantity, 0),
                                   )}
                                 </div>
                               </div>
@@ -1624,8 +1813,10 @@ export default function ManagerInventoryCoordinationPage() {
                         Tồn kho trung tâm hiện có:{' '}
                         <span className="font-semibold text-foreground">
                           {formatNumberVN(
-                            allocationStockMapBySupplyItemId.get(item.supplyItemId)
-                              ?.currentQuantity || 0,
+                            (allocationStockLotsBySupplyItemId.get(item.supplyItemId) || []).reduce(
+                              (sum, stock) => sum + stock.currentQuantity,
+                              0,
+                            ),
                           )}
                         </span>
                         /
@@ -1670,41 +1861,48 @@ export default function ManagerInventoryCoordinationPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={openStockDialog} onOpenChange={setOpenStockDialog}>
+      {/* ===== Dialog Tạo tồn kho mới ===== */}
+      <Dialog open={openCreateStockDialog} onOpenChange={setOpenCreateStockDialog}>
         <DialogContent className="!max-w-none w-[94vw] max-w-5xl h-[88vh] overflow-hidden p-0 flex flex-col">
           <DialogHeader className="px-6 py-4 border-b border-border">
-            <DialogTitle>Nhập hoặc cập nhật tồn kho</DialogTitle>
+            <DialogTitle>Tạo tồn kho mới</DialogTitle>
             <DialogDescription>
               {selectedInventoryForStock
-                ? `Kho đang chọn: ${selectedInventoryForStock.name}`
-                : 'Chọn vật phẩm để thêm mới hoặc cập nhật mức tồn kho hiện có.'}
+                ? `Kho: ${selectedInventoryForStock.name} — Chỉ dùng để thêm vật phẩm chưa có trong kho. Nếu vật phẩm đã tồn tại, hệ thống sẽ báo lỗi.`
+                : 'Chọn vật phẩm chưa có trong kho để tạo tồn kho mới.'}
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
-            <div className="rounded-xl border border-border bg-yellow-500/10 p-4 text-sm text-yellow-600 font-bold">
+            <div className="rounded-xl border border-border bg-emerald-500/10 p-4 text-sm text-emerald-700 font-medium">
               {isLoadingInventoryStocks
                 ? 'Đang tải tồn kho hiện tại của kho...'
-                : `Kho này hiện có ${inventoryStocks.length} Hàng Hóa/Vật Phẩm trong tồn kho.`}
+                : `Kho hiện có ${inventoryStocks.length} vật phẩm. Chỉ có thể thêm vật phẩm chưa có trong danh sách này.`}
             </div>
 
             {stockDrafts.map((item, index) => {
               const selectedSupply = supplyItems.find((supply) => supply.id === item.supplyItemId);
-              const existingStock = item.supplyItemId
-                ? stockMapBySupplyItemId.get(item.supplyItemId)
-                : undefined;
+              const existingLots = item.supplyItemId
+                ? stockLotsBySupplyItemId.get(item.supplyItemId) || []
+                : [];
+              const alreadyExists = existingLots.length > 0;
 
               return (
                 <Card key={item.id} className="border-border bg-card">
                   <CardContent className="p-5 space-y-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="font-semibold text-foreground">Dòng tồn kho #{index + 1}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {existingStock
-                            ? 'Vật phẩm này đã có trong kho. Có thể cập nhật ngưỡng tồn và nhập bổ sung.'
-                            : 'Vật phẩm này chưa có trong kho. Hệ thống sẽ tạo mới tồn kho cho vật phẩm.'}
-                        </p>
+                        <p className="font-semibold text-foreground">Vật phẩm mới #{index + 1}</p>
+                        {alreadyExists ? (
+                          <p className="text-xs text-destructive font-medium">
+                            ⚠ Vật phẩm này đã có trong kho – không thể tạo mới. Hãy chọn vật phẩm
+                            khác.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-destructive">
+                            Vật phẩm chưa có trong kho – có thể tạo tồn kho mới.
+                          </p>
+                        )}
                       </div>
                       <Button
                         variant="ghost"
@@ -1728,7 +1926,7 @@ export default function ManagerInventoryCoordinationPage() {
                             updateStockDraft(item.id, 'supplyItemId', value)
                           }
                         >
-                          <SelectTrigger>
+                          <SelectTrigger className={alreadyExists ? 'border-destructive' : ''}>
                             <SelectValue placeholder="Chọn vật phẩm" />
                           </SelectTrigger>
                           <SelectContent>
@@ -1747,7 +1945,9 @@ export default function ManagerInventoryCoordinationPage() {
                       </div>
 
                       <div className="grid gap-2">
-                        <Label>Số lượng nhập thêm</Label>
+                        <Label>
+                          Số lượng ban đầu <RequiredMark />
+                        </Label>
                         <Input
                           inputMode="numeric"
                           value={formatNumberInputVN(item.importQuantity)}
@@ -1795,95 +1995,77 @@ export default function ManagerInventoryCoordinationPage() {
                       </div>
 
                       <div className="grid gap-2 md:col-span-2">
-                        <Label htmlFor={`expiration-date-${item.id}`}>
-                          Ngày hết hạn (tùy chọn)
-                        </Label>
-                        {existingStock ? (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <span className="material-symbols-outlined text-[16px]">info</span>
-                            <span>
-                              Ngày hết hạn chỉ áp dụng khi thêm vật phẩm mới vào kho. Để cập nhật
-                              hạn sử dụng cho hàng hiện có, vui lòng chỉnh sửa trực tiếp trong tồn
-                              kho.
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="space-y-3">
-                            <Button
-                              variant="outline"
-                              className="gap-2"
-                              onClick={() => {
-                                if (
-                                  openExpirationDateCalendarDialog &&
-                                  selectedExpirationDateId === item.id
-                                ) {
-                                  closeExpirationDateCalendarDialogAction();
-                                  return;
-                                }
-
-                                openExpirationDateCalendarDialogAction(item.id);
-                              }}
-                            >
-                              <span className="material-symbols-outlined text-[16px]">
-                                calendar
+                        <Label>Ngày hết hạn (tùy chọn)</Label>
+                        <div className="space-y-3">
+                          <Button
+                            variant="outline"
+                            className="gap-2"
+                            onClick={() => {
+                              if (
+                                openExpirationDateCalendarDialog &&
+                                selectedExpirationDateId === item.id
+                              ) {
+                                closeExpirationDateCalendarDialogAction();
+                                return;
+                              }
+                              openExpirationDateCalendarDialogAction(item.id);
+                            }}
+                          >
+                            <span className="material-symbols-outlined text-[16px]">calendar</span>
+                            {item.expirationDate ? (
+                              parseLocalDateFromYmd(item.expirationDate)?.toLocaleDateString(
+                                'vi-VN',
+                              )
+                            ) : (
+                              <span className="text-muted-foreground text-xs">
+                                Chọn ngày hết hạn
                               </span>
-                              {item.expirationDate ? (
-                                parseLocalDateFromYmd(item.expirationDate)?.toLocaleDateString(
-                                  'vi-VN',
-                                )
-                              ) : (
-                                <span className="text-muted-foreground text-xs">
-                                  Chọn ngày hết hạn
-                                </span>
-                              )}
-                            </Button>
+                            )}
+                          </Button>
 
-                            {openExpirationDateCalendarDialog &&
-                              selectedExpirationDateId === item.id && (
-                                <div className="rounded-xl border border-border bg-muted/20 p-3 w-fit">
-                                  <CustomCalendar
-                                    disabledDays={{ before: new Date() }}
-                                    value={parseLocalDateFromYmd(item.expirationDate)}
-                                    onChange={(date) => {
-                                      if (date) {
-                                        updateStockDraft(
-                                          item.id,
-                                          'expirationDate',
-                                          toUtcIsoFromDate(date),
-                                        );
-                                      } else {
-                                        updateStockDraft(item.id, 'expirationDate', '');
-                                      }
-
+                          {openExpirationDateCalendarDialog &&
+                            selectedExpirationDateId === item.id && (
+                              <div className="rounded-xl border border-border bg-muted/20 p-3 w-fit">
+                                <CustomCalendar
+                                  disabledDays={{ before: new Date() }}
+                                  value={parseLocalDateFromYmd(item.expirationDate)}
+                                  onChange={(date) => {
+                                    if (date) {
+                                      updateStockDraft(
+                                        item.id,
+                                        'expirationDate',
+                                        toUtcIsoFromDate(date),
+                                      );
+                                    } else {
+                                      updateStockDraft(item.id, 'expirationDate', '');
+                                    }
+                                    closeExpirationDateCalendarDialogAction();
+                                  }}
+                                />
+                                <div className="mt-3 flex justify-end gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      updateStockDraft(item.id, 'expirationDate', '');
                                       closeExpirationDateCalendarDialogAction();
                                     }}
-                                  />
-
-                                  <div className="mt-3 flex justify-end gap-2">
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => {
-                                        updateStockDraft(item.id, 'expirationDate', '');
-                                        closeExpirationDateCalendarDialogAction();
-                                      }}
-                                    >
-                                      Xóa ngày
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={closeExpirationDateCalendarDialogAction}
-                                    >
-                                      Đóng
-                                    </Button>
-                                  </div>
+                                  >
+                                    Xóa ngày
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={closeExpirationDateCalendarDialogAction}
+                                  >
+                                    Đóng
+                                  </Button>
                                 </div>
-                              )}
-                          </div>
-                        )}
+                              </div>
+                            )}
+                        </div>
                       </div>
                     </div>
 
@@ -1891,11 +2073,480 @@ export default function ManagerInventoryCoordinationPage() {
                       <div className="rounded-xl border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
                         <p className="font-medium text-foreground">{selectedSupply.name}</p>
                         <p>Đơn vị: {selectedSupply.unit}</p>
-                        {existingStock && (
+                        <p>Danh mục: {getSupplyCategoryLabel(selectedSupply.category)}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            <Button variant="outline" className="gap-2" onClick={addStockDraft}>
+              <span className="material-symbols-outlined text-lg">add</span>
+              Thêm dòng vật phẩm
+            </Button>
+          </div>
+
+          <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
+            <Button variant="destructive" onClick={() => setOpenCreateStockDialog(false)}>
+              <span className="material-symbols-outlined text-lg">close</span>
+              Hủy
+            </Button>
+            <Button
+              variant="primary"
+              className="gap-2"
+              onClick={handleCreateNewStock}
+              disabled={addStockStatus === 'pending'}
+            >
+              <span className="material-symbols-outlined text-lg">add_box</span>
+              {addStockStatus === 'pending' ? 'Đang tạo...' : 'Tạo tồn kho'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== Dialog Xem chi tiết tồn kho (chỉ đọc) ===== */}
+      <Dialog open={openViewStockDialog} onOpenChange={setOpenViewStockDialog}>
+        <DialogContent className="!max-w-none w-[94vw] max-w-5xl h-[88vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border">
+            <DialogTitle>Chi tiết tồn kho</DialogTitle>
+            <DialogDescription>
+              {selectedInventoryForStock
+                ? `Kho: ${selectedInventoryForStock.name}`
+                : 'Thông tin tồn kho theo từng vật phẩm.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-5">
+            {/* Summary */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <div className="rounded-xl border border-border bg-sky-500/10 p-4 text-center">
+                <p className="text-2xl font-black text-sky-600 dark:text-sky-300">
+                  {isLoadingInventoryStocks ? '...' : inventoryStocks.length}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Số dòng tồn kho</p>
+              </div>
+              <div className="rounded-xl border border-border bg-emerald-500/10 p-4 text-center">
+                <p className="text-2xl font-black text-emerald-600 dark:text-emerald-300">
+                  {isLoadingInventoryStocks
+                    ? '...'
+                    : new Set(inventoryStocks.map((s) => s.supplyItemId)).size}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Loại vật phẩm</p>
+              </div>
+              <div className="rounded-xl border border-border bg-amber-500/10 p-4 text-center">
+                <p className="text-2xl font-black text-amber-600 dark:text-amber-300">
+                  {isLoadingInventoryStocks
+                    ? '...'
+                    : formatNumberVN(
+                        inventoryStocks.reduce((sum, s) => sum + s.currentQuantity, 0),
+                      )}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Tổng số lượng tồn</p>
+              </div>
+            </div>
+
+            {/* Stock table */}
+            {isLoadingInventoryStocks ? (
+              <div className="flex items-center justify-center py-12 text-muted-foreground">
+                <span className="material-symbols-outlined text-4xl animate-spin text-primary">
+                  progress_activity
+                </span>
+              </div>
+            ) : inventoryStocks.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-3">
+                <span className="material-symbols-outlined text-4xl">inventory_2</span>
+                <p>Kho này hiện chưa có vật phẩm nào trong tồn kho.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40 text-left">
+                      <th className="px-4 py-3 font-semibold">Vật phẩm</th>
+                      <th className="px-4 py-3 font-semibold">Danh mục</th>
+                      <th className="px-4 py-3 font-semibold text-right">Số lượng hiện có</th>
+                      <th className="px-4 py-3 font-semibold text-right">Min / Max</th>
+                      <th className="px-4 py-3 font-semibold text-right">Dung tích</th>
+                      <th className="px-4 py-3 font-semibold">Trạng thái</th>
+                      <th className="px-4 py-3 font-semibold">Hạn dùng</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inventoryStocks.map((stock, idx) => (
+                      <tr
+                        key={stock.stockId}
+                        className={`border-b border-border/60 hover:bg-muted/30 ${idx % 2 === 0 ? '' : 'bg-muted/10'}`}
+                      >
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-foreground">{stock.supplyItemName}</p>
+                          <p className="text-xs text-muted-foreground">{stock.supplyItemUnit}</p>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">
+                          {stock.supplyItemCategoryName}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold">
+                          {formatNumberVN(stock.currentQuantity)}{' '}
+                          <span className="text-xs text-muted-foreground font-normal">
+                            {stock.supplyItemUnit}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-muted-foreground text-xs">
+                          {formatNumberVN(stock.minimumStockLevel)} /{' '}
+                          {formatNumberVN(stock.maximumStockLevel)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span
+                            className={`font-semibold ${
+                              stock.fillPercentage >= 80
+                                ? 'text-emerald-600'
+                                : stock.fillPercentage >= 40
+                                  ? 'text-amber-600'
+                                  : 'text-destructive'
+                            }`}
+                          >
+                            {stock.fillPercentage.toFixed(1)}%
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge
+                            variant="outline"
+                            appearance="outline"
+                            size="xs"
+                            className="text-xs"
+                          >
+                            {stock.stockStatusName}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                          {stock.expirationDate
+                            ? (parseLocalDateFromYmd(stock.expirationDate)?.toLocaleDateString(
+                                'vi-VN',
+                              ) ?? '—')
+                            : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
+            <Button variant="outline" onClick={() => setOpenViewStockDialog(false)}>
+              <span className="material-symbols-outlined text-lg">close</span>
+              Đóng
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={openImportStockDialog} onOpenChange={setOpenImportStockDialog}>
+        <DialogContent className="!max-w-none w-[94vw] max-w-5xl h-[88vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border">
+            <DialogTitle>Nhập bổ sung tồn kho</DialogTitle>
+            <DialogDescription>
+              {selectedInventoryForStock
+                ? `Kho: ${selectedInventoryForStock.name} — Chỉ nhập bổ sung số lượng cho vật phẩm đã có trong kho. Không thể thêm vật phẩm mới ở đây.`
+                : 'Chọn vật phẩm đã có trong kho và nhập số lượng bổ sung.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+            <div className="rounded-xl border border-border bg-blue-500/10 p-4 text-sm text-blue-700 font-bold">
+              {isLoadingInventoryStocks
+                ? 'Đang tải tồn kho hiện tại của kho...'
+                : `Kho này hiện có ${inventoryStocks.length} Hàng Hóa/Vật Phẩm trong tồn kho.`}
+            </div>
+
+            {stockDrafts.map((item, index) => {
+              const selectedSupply = supplyItems.find((supply) => supply.id === item.supplyItemId);
+              const existingLots = item.supplyItemId
+                ? stockLotsBySupplyItemId.get(item.supplyItemId) || []
+                : [];
+              const notInStock = item.supplyItemId && existingLots.length === 0;
+
+              return (
+                <Card key={item.id} className="border-border bg-card">
+                  <CardContent className="p-5 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-foreground">Dòng nhập #{index + 1}</p>
+                        {notInStock ? (
+                          <p className="text-xs text-destructive font-medium">
+                            ⚠ Vật phẩm này chưa có trong kho – không thể nhập bổ sung. Dùng "Tạo tồn
+                            kho mới" thay thế.
+                          </p>
+                        ) : existingLots.length > 0 ? (
+                          <p className="text-xs text-green-700">
+                            Vật phẩm đã có trong kho – có thể nhập bổ sung số lượng.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Chọn vật phẩm để nhập.</p>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive"
+                        disabled={stockDrafts.length === 1}
+                        onClick={() => removeStockDraft(item.id)}
+                      >
+                        <span className="material-symbols-outlined text-lg">delete</span>
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid gap-2">
+                        <Label>
+                          Vật phẩm <RequiredMark />
+                        </Label>
+                        <Select
+                          value={item.supplyItemId}
+                          onValueChange={(value) =>
+                            updateStockDraft(item.id, 'supplyItemId', value)
+                          }
+                        >
+                          <SelectTrigger className={notInStock ? 'border-destructive' : ''}>
+                            <SelectValue placeholder="Chọn vật phẩm" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {supplyItems.map((supplyItem) => (
+                              <SelectItem key={supplyItem.id} value={supplyItem.id}>
+                                {supplyItem.iconUrl && (
+                                  <span className="material-symbols-outlined text-[18px] text-green-500">
+                                    {supplyItem.iconUrl}
+                                  </span>
+                                )}
+                                {supplyItem.name} - {getSupplyCategoryLabel(supplyItem.category)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label>
+                          Số lượng nhập bổ sung <RequiredMark />
+                        </Label>
+                        <Input
+                          inputMode="numeric"
+                          value={formatNumberInputVN(item.importQuantity)}
+                          onChange={(e) =>
+                            updateStockDraft(
+                              item.id,
+                              'importQuantity',
+                              normalizeNumberInput(e.target.value),
+                            )
+                          }
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+
+                    {selectedSupply && (
+                      <div className="rounded-xl border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground">{selectedSupply.name}</p>
+                        <p>Đơn vị: {selectedSupply.unit}</p>
+                        {existingLots[0] && (
                           <p>
-                            Hiện có trong kho: {formatNumberVN(existingStock.currentQuantity)} •
-                            Ngưỡng hiện tại: {formatNumberVN(existingStock.minimumStockLevel)} -{' '}
-                            {formatNumberVN(existingStock.maximumStockLevel)}
+                            Tồn kho hiện có:{' '}
+                            {formatNumberVN(
+                              existingLots.reduce((sum, lot) => sum + lot.currentQuantity, 0),
+                            )}{' '}
+                            {selectedSupply.unit}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            <Button variant="outline" className="gap-2" onClick={addStockDraft}>
+              <span className="material-symbols-outlined text-lg">add</span>
+              Thêm dòng nhập
+            </Button>
+          </div>
+
+          <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
+            <Button variant="destructive" onClick={() => setOpenImportStockDialog(false)}>
+              <span className="material-symbols-outlined text-lg">close</span>
+              Hủy
+            </Button>
+            <Button
+              variant="primary"
+              className="gap-2"
+              onClick={handleImportStock}
+              disabled={createTransactionStatus === 'pending'}
+            >
+              <span className="material-symbols-outlined text-lg">move_to_inbox</span>
+              {createTransactionStatus === 'pending' ? 'Đang nhập...' : 'Xác nhận nhập bổ sung'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== Dialog Cập nhật tồn kho (chỉ PUT updateStock min/max) ===== */}
+      <Dialog open={openUpdateStockDialog} onOpenChange={setOpenUpdateStockDialog}>
+        <DialogContent className="!max-w-none w-[94vw] max-w-5xl h-[88vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border">
+            <DialogTitle>Cập nhật thông tin tồn kho hiện có</DialogTitle>
+            <DialogDescription>
+              {selectedInventoryForStock
+                ? `Kho: ${selectedInventoryForStock.name} — Chỉ cập nhật ngưỡng tồn tối thiểu/tối đa cho vật phẩm đã có trong kho.`
+                : 'Chọn vật phẩm đã có trong kho để cập nhật ngưỡng tồn (min/max).'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+            <div className="rounded-xl border border-border bg-yellow-500/10 p-4 text-sm text-yellow-700 font-bold">
+              {isLoadingInventoryStocks
+                ? 'Đang tải tồn kho hiện tại của kho...'
+                : `Kho này hiện có ${inventoryStocks.length} Hàng Hóa/Vật Phẩm trong tồn kho.`}
+            </div>
+
+            {stockDrafts.map((item, index) => {
+              const selectedSupply = supplyItems.find((supply) => supply.id === item.supplyItemId);
+              const existingLots = item.supplyItemId
+                ? stockLotsBySupplyItemId.get(item.supplyItemId) || []
+                : [];
+              const existingStock = existingLots.find((stock) => stock.stockId === item.stockId);
+              const displayStock = existingStock || existingLots[0];
+              const notInStock = item.supplyItemId && existingLots.length === 0;
+
+              return (
+                <Card key={item.id} className="border-border bg-card">
+                  <CardContent className="p-5 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-foreground">Dòng cập nhật #{index + 1}</p>
+                        {notInStock ? (
+                          <p className="text-xs text-destructive font-medium">
+                            ⚠ Vật phẩm này chưa có trong kho – không thể cập nhật ở đây. Dùng "Tạo
+                            tồn kho mới" thay thế.
+                          </p>
+                        ) : existingLots.length > 0 ? (
+                          <p className="text-xs text-green-700">
+                            Vật phẩm đã có trong kho – có thể cập nhật ngưỡng tồn.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Chọn vật phẩm.</p>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive"
+                        disabled={stockDrafts.length === 1}
+                        onClick={() => removeStockDraft(item.id)}
+                      >
+                        <span className="material-symbols-outlined text-lg">delete</span>
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid gap-2">
+                        <Label>
+                          Vật phẩm <RequiredMark />
+                        </Label>
+                        <Select
+                          value={item.supplyItemId}
+                          onValueChange={(value) =>
+                            updateStockDraft(item.id, 'supplyItemId', value)
+                          }
+                        >
+                          <SelectTrigger className={notInStock ? 'border-destructive' : ''}>
+                            <SelectValue placeholder="Chọn vật phẩm" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {supplyItems.map((supplyItem) => (
+                              <SelectItem key={supplyItem.id} value={supplyItem.id}>
+                                {supplyItem.iconUrl && (
+                                  <span className="material-symbols-outlined text-[18px] text-green-500">
+                                    {supplyItem.iconUrl}
+                                  </span>
+                                )}
+                                {supplyItem.name} - {getSupplyCategoryLabel(supplyItem.category)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {item.supplyItemId && existingLots.length > 1 && (
+                        <div className="grid gap-2">
+                          <Label>
+                            Chọn lô hàng cần cập nhật <RequiredMark />
+                          </Label>
+                          <Select
+                            value={item.stockId || ''}
+                            onValueChange={(value) => updateStockDraft(item.id, 'stockId', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Chọn lô hàng" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {existingLots.map((lot, lotIndex) => (
+                                <SelectItem key={lot.stockId} value={lot.stockId}>
+                                  {`Lô #${lotIndex + 1} • Tồn ${formatNumberVN(lot.currentQuantity)}${selectedSupply?.unit ? ` ${selectedSupply.unit}` : ''}${lot.expirationDate ? ` • HSD ${parseLocalDateFromYmd(lot.expirationDate)?.toLocaleDateString('vi-VN') || ''}` : ''}`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      <div className="grid gap-2">
+                        <Label>Mức tồn tối thiểu</Label>
+                        <Input
+                          inputMode="numeric"
+                          value={formatNumberInputVN(item.minimumStockLevel)}
+                          onChange={(e) =>
+                            updateStockDraft(
+                              item.id,
+                              'minimumStockLevel',
+                              normalizeNumberInput(e.target.value),
+                            )
+                          }
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label>Mức tồn tối đa</Label>
+                        <Input
+                          inputMode="numeric"
+                          value={formatNumberInputVN(item.maximumStockLevel)}
+                          onChange={(e) =>
+                            updateStockDraft(
+                              item.id,
+                              'maximumStockLevel',
+                              normalizeNumberInput(e.target.value),
+                            )
+                          }
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+
+                    {selectedSupply && (
+                      <div className="rounded-xl border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground">{selectedSupply.name}</p>
+                        <p>Đơn vị: {selectedSupply.unit}</p>
+                        {displayStock && (
+                          <p>
+                            Hiện có trong kho: {formatNumberVN(displayStock.currentQuantity)} •
+                            Ngưỡng hiện tại: {formatNumberVN(displayStock.minimumStockLevel)} -{' '}
+                            {formatNumberVN(displayStock.maximumStockLevel)}
+                          </p>
+                        )}
+                        {existingLots.length > 1 && (
+                          <p>
+                            Vật phẩm này đang có {existingLots.length} lô trong kho. Hãy chọn đúng
+                            lô cần cập nhật ngưỡng tồn.
                           </p>
                         )}
                       </div>
@@ -1907,27 +2558,23 @@ export default function ManagerInventoryCoordinationPage() {
 
             <Button variant="warning" className="gap-2" onClick={addStockDraft}>
               <span className="material-symbols-outlined text-lg">add</span>
-              Thêm dòng tồn kho
+              Thêm dòng cập nhật
             </Button>
           </div>
 
           <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
-            <Button variant="destructive" onClick={() => setOpenStockDialog(false)}>
+            <Button variant="destructive" onClick={() => setOpenUpdateStockDialog(false)}>
               <span className="material-symbols-outlined text-lg">close</span>
               Hủy
             </Button>
             <Button
               variant="primary"
               className="gap-2"
-              onClick={handleSaveStocks}
-              disabled={
-                addStockStatus === 'pending' ||
-                updateStockStatus === 'pending' ||
-                createTransactionStatus === 'pending'
-              }
+              onClick={handleUpdateStock}
+              disabled={updateStockStatus === 'pending'}
             >
               <span className="material-symbols-outlined text-lg">inventory</span>
-              Lưu tồn kho
+              {updateStockStatus === 'pending' ? 'Đang cập nhật...' : 'Lưu cập nhật'}
             </Button>
           </DialogFooter>
         </DialogContent>
