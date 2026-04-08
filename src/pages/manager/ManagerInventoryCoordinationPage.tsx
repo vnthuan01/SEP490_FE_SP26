@@ -45,6 +45,7 @@ import {
   useReceiveSupplyTransfer,
   useShipSupplyTransfer,
   useSupplyTransferDetails,
+  useSupplyTransfersByDestinationStation,
   useSupplyTransfersBySourceStation,
 } from '@/hooks/useSupplyTransfers';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
@@ -294,6 +295,10 @@ export default function ManagerInventoryCoordinationPage() {
   );
   const { data: transferHistoryResponse, isLoading: isLoadingTransferHistory } =
     useSupplyTransfersBySourceStation(selectedInventoryForHistory?.stationId || '');
+  const {
+    data: transferHistoryDestinationResponse,
+    isLoading: isLoadingTransferHistoryDestination,
+  } = useSupplyTransfersByDestinationStation(selectedInventoryForHistory?.stationId || '');
   const { data: transactionHistoryResponse, isLoading: isLoadingTransactionHistory } =
     useInventoryTransactions(selectedInventoryForHistory?.id || '', {
       pageIndex: 1,
@@ -332,9 +337,17 @@ export default function ManagerInventoryCoordinationPage() {
     () => inventoryStocksFilterResponse?.items || [],
     [inventoryStocksFilterResponse],
   );
-  const transferHistory = Array.isArray(transferHistoryResponse)
+  const transferHistorySource = Array.isArray(transferHistoryResponse)
     ? transferHistoryResponse
     : (transferHistoryResponse as any)?.items || [];
+  const transferHistoryDestination = Array.isArray(transferHistoryDestinationResponse)
+    ? transferHistoryDestinationResponse
+    : (transferHistoryDestinationResponse as any)?.items || [];
+  const transferHistory = useMemo(() => {
+    const merged = [...transferHistorySource, ...transferHistoryDestination];
+    const uniqueTransfers = new Map(merged.map((transfer: any) => [transfer.id, transfer]));
+    return Array.from(uniqueTransfers.values());
+  }, [transferHistorySource, transferHistoryDestination]);
   const { transferMap: transferHistoryDetailMap, isLoading: isLoadingTransferHistoryDetails } =
     useSupplyTransferDetails(transferHistory.map((transfer: any) => transfer.id));
   const detailedTransferHistory = transferHistory.map(
@@ -2480,7 +2493,11 @@ export default function ManagerInventoryCoordinationPage() {
         open={openTransferHistory}
         onOpenChange={setOpenTransferHistory}
         transfers={detailedTransferHistory}
-        isLoading={isLoadingTransferHistory || isLoadingTransferHistoryDetails}
+        isLoading={
+          isLoadingTransferHistory ||
+          isLoadingTransferHistoryDestination ||
+          isLoadingTransferHistoryDetails
+        }
         onApprove={(id) => approveSupplyTransfer({ id, data: {} })}
         onShip={(id) => shipSupplyTransfer({ id, data: {} })}
         onReceive={(id) =>

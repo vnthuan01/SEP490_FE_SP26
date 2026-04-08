@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -48,6 +48,7 @@ import {
 } from '@/hooks/useSupplyTransfers';
 import { useCampaigns } from '@/hooks/useCampaigns';
 import { formatNumberVN } from '@/lib/utils';
+import { clearDialogDraft, readDialogDraft, writeDialogDraft } from '@/lib/dialogDraft';
 import {
   getSupplyCategoryClass,
   getSupplyCategoryIcon,
@@ -146,6 +147,29 @@ const TRANSFER_STATUS_CLASS: Record<number, string> = {
   [SupplyTransferStatus.Cancelled]: 'bg-red-500/10 text-red-600 border-red-500/20',
 };
 
+const TRANSACTION_TYPE_UI: Record<
+  number,
+  {
+    label: string;
+    icon: string;
+    badge: string;
+    iconWrap: string;
+  }
+> = {
+  [TransactionType.Import]: {
+    label: 'Nhập kho',
+    icon: 'south',
+    badge: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600',
+    iconWrap: 'bg-emerald-500/10 text-emerald-500',
+  },
+  [TransactionType.Export]: {
+    label: 'Xuất kho',
+    icon: 'north',
+    badge: 'border-amber-500/20 bg-amber-500/10 text-amber-600',
+    iconWrap: 'bg-amber-500/10 text-amber-500',
+  },
+};
+
 function getInventoryCardStatus(
   current: number,
   maximum: number,
@@ -201,6 +225,8 @@ function parseTransferNotes(note?: string | null): {
 // ─── Page Component ──────────────────────────────────────────────────────────
 
 export default function CoordinatorInventoryPage() {
+  const TRANSFER_REQUEST_DRAFT_KEY = 'coordinator-transfer-request-draft';
+  const EDIT_STOCK_DRAFT_KEY = 'coordinator-edit-stock-draft';
   const TRANSFER_PAGE_SIZE = 5;
   const [filter, setFilter] = useState<'all' | InventoryStatus>('all');
   const [search, setSearch] = useState('');
@@ -222,12 +248,14 @@ export default function CoordinatorInventoryPage() {
 
   const [selectedQuickImportSupplyItemId, setSelectedQuickImportSupplyItemId] = useState('');
   const [transferNewItemSupplyId, setTransferNewItemSupplyId] = useState('');
-  const [transferForm, setTransferForm] = useState({
-    sourceStationId: '',
-    reason: '',
-    notes: '',
-    items: [] as Array<{ supplyItemId: string; quantity: number; notes: string }>,
-  });
+  const [transferForm, setTransferForm] = useState(() =>
+    readDialogDraft(TRANSFER_REQUEST_DRAFT_KEY, {
+      sourceStationId: '',
+      reason: '',
+      notes: '',
+      items: [] as Array<{ supplyItemId: string; quantity: number; notes: string }>,
+    }),
+  );
 
   // ── Lot detail panel state ──────────────────────────────────────────────────
   const [expandedSupplyItemId, setExpandedSupplyItemId] = useState<string | null>(null);
@@ -239,7 +267,15 @@ export default function CoordinatorInventoryPage() {
     supplyName: string;
     minValue: string;
     maxValue: string;
-  }>({ open: false, stock: null, supplyName: '', minValue: '', maxValue: '' });
+  }>(() =>
+    readDialogDraft(EDIT_STOCK_DRAFT_KEY, {
+      open: false,
+      stock: null,
+      supplyName: '',
+      minValue: '',
+      maxValue: '',
+    }),
+  );
 
   // ── Data hooks ──────────────────────────────────────────────────────────────
 
@@ -582,10 +618,11 @@ export default function CoordinatorInventoryPage() {
       if (!transaction.createdAt) return;
       if (new Date(transaction.createdAt).toDateString() !== todayKey) return;
 
-      const totalQuantity = (transaction.items || []).reduce(
+      const totalQuantityFromItems = (transaction.items || []).reduce(
         (sum: number, item: any) => sum + Number(item.quantity || 0),
         0,
       );
+      const totalQuantity = Number(transaction.totalItems || 0) || totalQuantityFromItems;
 
       if (transaction.type === TransactionType.Import) importToday += totalQuantity;
       if (transaction.type === TransactionType.Export) exportToday += totalQuantity;
@@ -598,6 +635,17 @@ export default function CoordinatorInventoryPage() {
     () => (showAllTransactions ? transactions : transactions.slice(0, 3)),
     [showAllTransactions, transactions],
   );
+
+  useEffect(() => {
+    writeDialogDraft(TRANSFER_REQUEST_DRAFT_KEY, transferForm);
+  }, [transferForm]);
+
+  useEffect(() => {
+    writeDialogDraft(EDIT_STOCK_DRAFT_KEY, {
+      ...editStockDialog,
+      open: false,
+    });
+  }, [editStockDialog]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -672,18 +720,10 @@ export default function CoordinatorInventoryPage() {
   };
 
   const handleOpenTransferRequest = () => {
-    setTransferForm({
-      sourceStationId: upstreamSourceStations[0]?.stationId || '',
-      reason: '',
-      notes: '',
-      items: inventoryItems
-        .filter((item) => item.status === 'critical' || item.status === 'warning')
-        .map((item) => ({
-          supplyItemId: item.supplyItemId,
-          quantity: 1,
-          notes: `Yêu cầu tiếp tế cho ${item.name}`,
-        })),
-    });
+    setTransferForm((prev) => ({
+      ...prev,
+      sourceStationId: prev.sourceStationId || upstreamSourceStations[0]?.stationId || '',
+    }));
     setTransferNewItemSupplyId('');
     setOpenTransferRequest(true);
   };
@@ -785,6 +825,8 @@ export default function CoordinatorInventoryPage() {
     });
 
     await Promise.all([refetchStocks(), refetchTransactions()]);
+    clearDialogDraft(TRANSFER_REQUEST_DRAFT_KEY);
+    setTransferForm({ sourceStationId: '', reason: '', notes: '', items: [] });
     setOpenTransferRequest(false);
   };
 
@@ -965,10 +1007,31 @@ export default function CoordinatorInventoryPage() {
         data: { minimumStockLevel: min, maximumStockLevel: max },
       });
       await refetchStocks();
+      clearDialogDraft(EDIT_STOCK_DRAFT_KEY);
       setEditStockDialog({ open: false, stock: null, supplyName: '', minValue: '', maxValue: '' });
     } catch {
       // errors handled by hook
     }
+  };
+
+  const handleClearTransferDraft = () => {
+    clearDialogDraft(TRANSFER_REQUEST_DRAFT_KEY);
+    setTransferForm({
+      sourceStationId: upstreamSourceStations[0]?.stationId || '',
+      reason: '',
+      notes: '',
+      items: [],
+    });
+    setTransferNewItemSupplyId('');
+  };
+
+  const handleClearEditStockDraft = () => {
+    clearDialogDraft(EDIT_STOCK_DRAFT_KEY);
+    setEditStockDialog((prev) => ({
+      ...prev,
+      minValue: prev.stock ? String(prev.stock.minimumStockLevel) : '',
+      maxValue: prev.stock ? String(prev.stock.maximumStockLevel) : '',
+    }));
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -989,7 +1052,7 @@ export default function CoordinatorInventoryPage() {
           )}
         </div>
       </div>
-      <div className="flex justify-between mb-6">
+      <div className="flex justify-between mb-6 wrap">
         <div className="flex gap-3">
           <div className="relative w-72">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-muted-foreground text-lg">
@@ -1290,7 +1353,7 @@ export default function CoordinatorInventoryPage() {
       )}
 
       {/* ── Transfer sections ── */}
-      <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <div className="mt-6 grid grid-cols-1 gap-6">
         <Card>
           <CardContent className="p-5 space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -1643,10 +1706,38 @@ export default function CoordinatorInventoryPage() {
                   key={transaction.transactionId || `${transaction.createdAt || 'tx'}-${index}`}
                   className="rounded-xl border border-border bg-card px-4 py-3 flex items-center justify-between gap-4"
                 >
+                  {(() => {
+                    const transactionTypeUi =
+                      TRANSACTION_TYPE_UI[parseEnumValue(transaction.type)] ||
+                      TRANSACTION_TYPE_UI[TransactionType.Import];
+
+                    return (
+                      <div
+                        className={`size-11 rounded-xl border border-border flex items-center justify-center shrink-0 ${transactionTypeUi.iconWrap}`}
+                      >
+                        <span className="material-symbols-outlined">{transactionTypeUi.icon}</span>
+                      </div>
+                    );
+                  })()}
                   <div>
-                    <p className="font-medium text-foreground">
-                      {transaction.type === TransactionType.Import ? 'Nhập kho' : 'Xuất kho'}
-                    </p>
+                    {(() => {
+                      const transactionTypeUi =
+                        TRANSACTION_TYPE_UI[parseEnumValue(transaction.type)] ||
+                        TRANSACTION_TYPE_UI[TransactionType.Import];
+
+                      return (
+                        <div className="flex items-center gap-2 mb-1">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${transactionTypeUi.badge}`}
+                          >
+                            <span className="material-symbols-outlined text-[14px]">
+                              {transactionTypeUi.icon}
+                            </span>
+                            {transactionTypeUi.label}
+                          </span>
+                        </div>
+                      );
+                    })()}
                     <p className="text-xs text-muted-foreground">
                       {transaction.createdAt
                         ? new Date(transaction.createdAt).toLocaleString('vi-VN')
@@ -1681,7 +1772,13 @@ export default function CoordinatorInventoryPage() {
                   <div className="text-right">
                     {(() => {
                       const firstItem = transaction.items?.[0];
-                      const totalQuantity = formatNumberVN(transaction.totalItems || '0');
+                      const totalQuantity = formatNumberVN(
+                        Number(transaction.totalItems || 0) ||
+                          (transaction.items || []).reduce(
+                            (sum: number, item: any) => sum + Number(item.quantity || 0),
+                            0,
+                          ),
+                      );
 
                       return (
                         <p className="text-sm font-semibold text-foreground">
@@ -1738,8 +1835,8 @@ export default function CoordinatorInventoryPage() {
 
       {/* Transfer Request Dialog */}
       <Dialog open={openTransferRequest} onOpenChange={setOpenTransferRequest}>
-        <DialogContent className="w-[96vw] max-w-[1024px] p-0 overflow-hidden">
-          <DialogHeader className="px-6 py-4 border-b border-border">
+        <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle className="text-xl font-bold text-foreground">
               Tạo phiếu yêu cầu điều phối lên Manager
             </DialogTitle>
@@ -1749,7 +1846,7 @@ export default function CoordinatorInventoryPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="max-h-[78vh] overflow-y-auto p-6">
+          <div className="flex-1 min-h-0 overflow-y-auto p-6">
             <div className="space-y-6">
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <div className="space-y-2">
@@ -1768,7 +1865,7 @@ export default function CoordinatorInventoryPage() {
                         .filter((item) => !!item.stationId)
                         .map((item) => (
                           <SelectItem key={item.stationId} value={item.stationId}>
-                            {item.stationName} • Cấp {item.inventoryLevel}
+                            {item.stationName}
                           </SelectItem>
                         ))}
                     </SelectContent>
@@ -1788,7 +1885,8 @@ export default function CoordinatorInventoryPage() {
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Lý do điều phối</label>
-                  <Input
+                  <Textarea
+                    rows={3}
                     placeholder="Ví dụ: Kho đang thiếu nước uống và thuốc y tế"
                     value={transferForm.reason}
                     onChange={(e) =>
@@ -1812,13 +1910,13 @@ export default function CoordinatorInventoryPage() {
 
               <div className="space-y-3 rounded-2xl border border-border bg-muted/10 p-4">
                 <p className="font-semibold text-foreground">Danh sách vật phẩm cần điều phối</p>
-                <div className="rounded-xl border border-border bg-background/70 p-3 text-sm text-muted-foreground">
+                <div className="rounded-xl border border-border bg-yellow-500 p-3 text-sm text-white/80">
                   {isLoadingSelectedSourceStocks
                     ? 'Đang tải tồn kho kho nguồn...'
                     : selectedSourceInventoryId
                       ? selectedSourceStocks.length > 0
                         ? `Kho nguồn hiện có ${selectedSourceStocks.length} dòng tồn kho khả dụng để chọn.`
-                        : 'Kho nguồn hiện không có stocks nào.'
+                        : 'Kho nguồn hiện không có vật phẩm nào.'
                       : 'Vui lòng chọn kho nguồn để xem vật phẩm khả dụng.'}
                 </div>
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
@@ -1975,8 +2073,13 @@ export default function CoordinatorInventoryPage() {
             </div>
           </div>
 
-          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setOpenTransferRequest(false)}>
+          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2 shrink-0">
+            <Button variant="outline" onClick={handleClearTransferDraft}>
+              <span className="material-symbols-outlined mr-1">remove_done</span>
+              Xóa nháp
+            </Button>
+            <Button variant="destructive" onClick={() => setOpenTransferRequest(false)}>
+              <span className="material-symbols-outlined mr-1">close</span>
               Hủy
             </Button>
             <Button
@@ -1994,8 +2097,8 @@ export default function CoordinatorInventoryPage() {
 
       {/* Approve Transfer Confirmation Dialog */}
       <Dialog open={openApproveTransfer} onOpenChange={setOpenApproveTransfer}>
-        <DialogContent className="w-[96vw] max-w-[1024px] p-0 overflow-hidden">
-          <DialogHeader className="px-6 py-4 border-b border-border">
+        <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle className="text-xl font-bold text-foreground">
               Phê duyệt phiếu điều phối
             </DialogTitle>
@@ -2005,7 +2108,7 @@ export default function CoordinatorInventoryPage() {
           </DialogHeader>
 
           {selectedTransfer && (
-            <div className="p-6 space-y-4">
+            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
               <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2 text-sm">
                 <p>
                   <span className="text-muted-foreground">Mã phiếu:</span>{' '}
@@ -2050,7 +2153,7 @@ export default function CoordinatorInventoryPage() {
             </div>
           )}
 
-          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2">
+          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2 shrink-0">
             <Button
               variant="outline"
               onClick={() => {
@@ -2074,14 +2177,20 @@ export default function CoordinatorInventoryPage() {
       </Dialog>
 
       <Dialog open={openShipTransfer} onOpenChange={setOpenShipTransfer}>
-        <DialogContent className="w-[96vw] max-w-[1024px] p-0 overflow-hidden">
-          <DialogHeader className="px-6 py-4 border-b border-border">
+        <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle>Đánh dấu đang giao</DialogTitle>
             <DialogDescription>
               Xác nhận phiếu đã được xuất kho và đang vận chuyển.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2">
+          <div className="flex-1 min-h-0 overflow-y-auto p-6">
+            <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+              Phiếu sẽ được chuyển sang trạng thái{' '}
+              <span className="font-semibold text-foreground">Đang vận chuyển</span>.
+            </div>
+          </div>
+          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2 shrink-0">
             <Button variant="outline" onClick={() => setOpenShipTransfer(false)}>
               Hủy
             </Button>
@@ -2097,14 +2206,21 @@ export default function CoordinatorInventoryPage() {
       </Dialog>
 
       <Dialog open={openReceiveTransfer} onOpenChange={setOpenReceiveTransfer}>
-        <DialogContent className="w-[96vw] max-w-[1024px] p-0 overflow-hidden">
-          <DialogHeader className="px-6 py-4 border-b border-border">
+        <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle>Xác nhận nhận hàng</DialogTitle>
             <DialogDescription>
               Xác nhận trạm đích đã nhận hàng. Hệ thống sẽ tạo giao dịch nhập kho tương ứng.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2">
+          <div className="flex-1 min-h-0 overflow-y-auto p-6">
+            <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+              Hệ thống sẽ tạo giao dịch{' '}
+              <span className="font-semibold text-foreground">nhập kho</span> theo số lượng thực tế
+              đã nhận.
+            </div>
+          </div>
+          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2 shrink-0">
             <Button variant="outline" onClick={() => setOpenReceiveTransfer(false)}>
               Hủy
             </Button>
@@ -2120,12 +2236,18 @@ export default function CoordinatorInventoryPage() {
       </Dialog>
 
       <Dialog open={openCancelTransfer} onOpenChange={setOpenCancelTransfer}>
-        <DialogContent className="w-[96vw] max-w-[1024px] p-0 overflow-hidden">
-          <DialogHeader className="px-6 py-4 border-b border-border">
+        <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle>Hủy phiếu điều phối</DialogTitle>
             <DialogDescription>Xác nhận hủy phiếu điều phối này.</DialogDescription>
           </DialogHeader>
-          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2">
+          <div className="flex-1 min-h-0 overflow-y-auto p-6">
+            <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+              Thao tác này sẽ cập nhật phiếu sang trạng thái{' '}
+              <span className="font-semibold text-destructive">Đã hủy</span>.
+            </div>
+          </div>
+          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2 shrink-0">
             <Button variant="outline" onClick={() => setOpenCancelTransfer(false)}>
               Hủy
             </Button>
@@ -2141,8 +2263,8 @@ export default function CoordinatorInventoryPage() {
       </Dialog>
 
       <Dialog open={openTransferDetail} onOpenChange={setOpenTransferDetail}>
-        <DialogContent className="w-[96vw] max-w-[1024px] p-0 overflow-hidden">
-          <DialogHeader className="px-6 py-4 border-b border-border">
+        <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle>Chi tiết phiếu điều phối</DialogTitle>
             <DialogDescription>
               {isLoadingTransferDetails
@@ -2152,7 +2274,7 @@ export default function CoordinatorInventoryPage() {
           </DialogHeader>
 
           {selectedTransfer ? (
-            <div className="max-h-[78vh] overflow-y-auto p-6 space-y-5">
+            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
               <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-5 space-y-3 text-sm shadow-sm">
                 <p>
                   <span className="text-muted-foreground font-medium">Mã phiếu:</span>{' '}
@@ -2281,7 +2403,7 @@ export default function CoordinatorInventoryPage() {
             <div className="p-6 text-sm text-muted-foreground">Chưa chọn phiếu điều phối.</div>
           )}
 
-          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2">
+          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2 shrink-0">
             <Button variant="outline" onClick={() => setOpenTransferDetail(false)}>
               Đóng
             </Button>
@@ -2303,8 +2425,8 @@ export default function CoordinatorInventoryPage() {
             });
         }}
       >
-        <DialogContent className="max-w-sm p-0 overflow-hidden">
-          <DialogHeader className="px-6 py-4 border-b border-border">
+        <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle className="text-lg font-bold text-foreground">
               Chỉnh ngưỡng tồn kho
             </DialogTitle>
@@ -2314,7 +2436,7 @@ export default function CoordinatorInventoryPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="p-6 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Ngưỡng tối thiểu (Min)</label>
               <Input
@@ -2342,7 +2464,10 @@ export default function CoordinatorInventoryPage() {
             </div>
           </div>
 
-          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2">
+          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2 shrink-0">
+            <Button variant="outline" onClick={handleClearEditStockDraft}>
+              Xóa nháp
+            </Button>
             <Button
               variant="outline"
               onClick={() =>
