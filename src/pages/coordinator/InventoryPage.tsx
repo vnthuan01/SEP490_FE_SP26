@@ -316,8 +316,12 @@ export default function CoordinatorInventoryPage() {
     pageSize: 300,
   });
 
-  // Campaigns for this station (graceful fallback: all campaigns if no stationId filter)
-  const { campaigns: allCampaigns } = useCampaigns({ pageIndex: 1, pageSize: 200 });
+  // Campaigns for this station's province/location
+  const { campaigns: allCampaigns } = useCampaigns({
+    pageIndex: 1,
+    pageSize: 200,
+    locationId: station?.locationId || undefined,
+  });
 
   // Supply transfers where this station is the SOURCE (requests FROM upstream come to us as source)
   const { data: sourceTransfers = [], refetch: refetchSourceTransfers } =
@@ -594,10 +598,9 @@ export default function CoordinatorInventoryPage() {
     [selectedSourceStocks],
   );
 
-  /** Campaigns filtered by current station if reliefStationId is available in CampaignSummary.
-   *  CampaignSummary does not expose reliefStationId; fall back to all campaigns. */
+  /** Campaigns filtered by current station locationId.
+   * If backend returns nearby campaigns in the same location/province, show them here. */
   const stationCampaigns = useMemo(() => {
-    // Future: if backend adds reliefStationId to CampaignSummary, filter here.
     return allCampaigns.map((c) => ({ id: c.campaignId, name: c.name }));
   }, [allCampaigns]);
 

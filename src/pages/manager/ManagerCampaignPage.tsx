@@ -26,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Sheet,
   SheetContent,
@@ -51,8 +52,16 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useForm, useWatch, useFieldArray } from 'react-hook-form';
-import { useQueryClient } from '@tanstack/react-query';
-import { useCampaigns, useCreateCampaign, useUpdateCampaignStatus } from '@/hooks/useCampaigns';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
+import {
+  useAssignStationToCampaign,
+  useCampaign,
+  useCampaigns,
+  useCreateCampaign,
+  useRemoveStationFromCampaign,
+  useUpdateCampaign,
+  useUpdateCampaignStatus,
+} from '@/hooks/useCampaigns';
 import { useSupplyAllocationsByCampaign } from '@/hooks/useSupplies';
 import { useProvinces } from '@/hooks/useLocations';
 import {
@@ -63,11 +72,19 @@ import {
 import { AddStationModal, type CreateStationFormData } from './components/AddStationModal';
 import { StationAddressLookup } from './components/StationAddressLookup';
 import CustomCalendar from '@/components/ui/customCalendar';
-import type { CampaignSummary, CreateCampaignPayload } from '@/services/campaignService';
+import type {
+  Campaign,
+  CampaignSummary,
+  CreateCampaignPayload,
+  UpdateCampaignPayload,
+} from '@/services/campaignService';
+import { campaignService } from '@/services/campaignService';
 import { toast } from 'sonner';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
-import { formatNumberVN } from '@/lib/utils';
+import { formatNumberInputVN, formatNumberVN, normalizeNumberInput } from '@/lib/utils';
 import {
+  CampaignCompletionRule,
+  CampaignCompletionRuleLabel,
   CampaignStatus,
   CampaignStatusLabel,
   CampaignType,
@@ -100,6 +117,17 @@ const formatDateVN = (isoString?: string): string => {
   const d = parseIsoToDate(isoString);
   if (!d) return '';
   return d.toLocaleDateString('vi-VN');
+};
+
+const normalizeLocationText = (value?: string | null) => {
+  if (!value) return '';
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .trim();
 };
 
 // ─── Badge helpers ────────────────────────────────────────────────────────────
@@ -174,9 +202,42 @@ interface CreateCampaignFormValues {
   goals: Array<{ resourceType: number; targetAmount: number; isRequired: boolean }>;
 }
 
+interface UpdateCampaignFormValues {
+  name: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  latitude: number;
+  longitude: number;
+  areaRadiusKm: number;
+  addressDetail: string;
+  allowOverTarget: boolean;
+  completionRule: number;
+}
+
 // ─── Page Component ───────────────────────────────────────────────────────────
 
 const CAMPAIGN_DRAFT_KEY = 'campaign_create_draft';
+
+const getCampaignIdentity = (
+  campaign?: Partial<CampaignSummary> & Partial<Campaign> & { id?: string | null },
+) => {
+  const rawId = campaign?.campaignId ?? campaign?.id;
+  return typeof rawId === 'string' && rawId.trim().length > 0 ? rawId : null;
+};
+
+const buildUpdateFormDefaults = (campaign?: Campaign | null): UpdateCampaignFormValues => ({
+  name: campaign?.name ?? '',
+  description: campaign?.description ?? '',
+  startDate: campaign?.startDate ?? '',
+  endDate: campaign?.endDate ?? '',
+  latitude: Number(campaign?.latitude ?? 10.762622),
+  longitude: Number(campaign?.longitude ?? 106.660172),
+  areaRadiusKm: Number(campaign?.areaRadiusKm ?? 10),
+  addressDetail: campaign?.addressDetail ?? '',
+  allowOverTarget: Boolean(campaign?.allowOverTarget),
+  completionRule: Number(campaign?.completionRule ?? CampaignCompletionRule.AllGoalsMet),
+});
 
 export default function ManagerCampaignPage() {
   const [pageIndex, setPageIndex] = useState(1);
@@ -185,9 +246,21 @@ export default function ManagerCampaignPage() {
   const [statusFilter, setStatusFilter] = useState<number | undefined>(undefined);
   const [openCreateModal, setOpenCreateModal] = useState(false);
   const [openAllocationModal, setOpenAllocationModal] = useState(false);
+  const [openDetailModal, setOpenDetailModal] = useState(false);
   const [selectedCampaignForAllocations, setSelectedCampaignForAllocations] = useState<{
     id: string;
     name: string;
+  } | null>(null);
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const [stationToAttach, setStationToAttach] = useState<{
+    campaignId: string;
+    reliefStationId: string;
+    stationName: string;
+  } | null>(null);
+  const [stationToDetach, setStationToDetach] = useState<{
+    campaignId: string;
+    reliefStationId: string;
+    stationName: string;
   } | null>(null);
   const [openAddStationModal, setOpenAddStationModal] = useState(false);
 
@@ -205,9 +278,29 @@ export default function ManagerCampaignPage() {
   });
 
   const { mutateAsync: createCampaign, status: createStatus } = useCreateCampaign();
+  const { mutateAsync: updateCampaign, status: updateCampaignStatus } = useUpdateCampaign();
   const { mutateAsync: updateStatus } = useUpdateCampaignStatus();
+  const { mutateAsync: assignStation, status: assignStationStatus } = useAssignStationToCampaign();
+  const { mutateAsync: removeStation, status: removeStationStatus } =
+    useRemoveStationFromCampaign();
   const { data: allocationsByCampaign = [], isLoading: isLoadingAllocations } =
     useSupplyAllocationsByCampaign(selectedCampaignForAllocations?.id || '');
+  const {
+    campaign: selectedCampaign,
+    isLoading: isLoadingCampaignDetail,
+    refetch: refetchCampaignDetail,
+  } = useCampaign(selectedCampaignId);
+  const campaignDetailQueries = useQueries({
+    queries: campaigns.map((campaign) => ({
+      queryKey: ['campaigns', 'detail', campaign.campaignId, 'manager-list-area'],
+      queryFn: async () => {
+        const response = await campaignService.getById(campaign.campaignId);
+        return response.data;
+      },
+      enabled: !!campaign.campaignId,
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
 
   const { data: provinces } = useProvinces();
   const { data: stationsData, isLoading: isLoadingStations } = useProvincialStations({
@@ -256,6 +349,10 @@ export default function ManagerCampaignPage() {
     },
   });
 
+  const updateForm = useForm<UpdateCampaignFormValues>({
+    defaultValues: buildUpdateFormDefaults(null),
+  });
+
   const {
     fields: goalFields,
     append: appendGoal,
@@ -299,12 +396,20 @@ export default function ManagerCampaignPage() {
     };
   }, [form]);
 
+  useEffect(() => {
+    if (!selectedCampaign) return;
+    updateForm.reset(buildUpdateFormDefaults(selectedCampaign));
+  }, [selectedCampaign, updateForm]);
+
   // Watch form values needed for derived UI
   const watchedStationId = useWatch({ control: form.control, name: 'reliefStationId' });
   const watchedAddressDetail = useWatch({ control: form.control, name: 'addressDetail' });
   const watchedLatitude = useWatch({ control: form.control, name: 'latitude' });
   const watchedLongitude = useWatch({ control: form.control, name: 'longitude' });
   const watchedType = useWatch({ control: form.control, name: 'type' });
+  const watchedEditAddressDetail = useWatch({ control: updateForm.control, name: 'addressDetail' });
+  const watchedEditLatitude = useWatch({ control: updateForm.control, name: 'latitude' });
+  const watchedEditLongitude = useWatch({ control: updateForm.control, name: 'longitude' });
 
   // For Fundraising: only Money(1) and People(3) are allowed; Supplies(2) blocked
   const isFundraising = Number(watchedType) === CampaignType.Fundraising;
@@ -387,9 +492,150 @@ export default function ManagerCampaignPage() {
     }
   };
 
+  const openCampaignDetails = (campaignId: string) => {
+    setSelectedCampaignId(campaignId);
+    setOpenDetailModal(true);
+  };
+
+  const handleUpdateCampaign = async (values: UpdateCampaignFormValues) => {
+    if (!selectedCampaignId) {
+      toast.error('Không tìm thấy mã chiến dịch để cập nhật');
+      return;
+    }
+
+    try {
+      const payload: UpdateCampaignPayload = {
+        ...values,
+        latitude: Number(values.latitude),
+        longitude: Number(values.longitude),
+        areaRadiusKm: Number(values.areaRadiusKm),
+        allowOverTarget: Boolean(values.allowOverTarget),
+        completionRule: Number(values.completionRule),
+      };
+
+      await updateCampaign({ id: selectedCampaignId, data: payload });
+      await refetchCampaignDetail();
+    } catch {
+      // handled by hook
+    }
+  };
+
+  const handleAssignSelectedStation = async (reliefStationId: string) => {
+    if (!selectedCampaignId) {
+      toast.error('Không tìm thấy mã chiến dịch để gán trạm');
+      return;
+    }
+
+    const station = stations.find((item) => getStationId(item) === reliefStationId);
+    if (!station) {
+      toast.error('Không tìm thấy trạm đã chọn');
+      return;
+    }
+
+    setStationToAttach({
+      campaignId: selectedCampaignId,
+      reliefStationId,
+      stationName: station.name,
+    });
+  };
+
+  const handleConfirmAttachStation = async () => {
+    if (!stationToAttach) return;
+
+    try {
+      await assignStation({
+        id: stationToAttach.campaignId,
+        data: { reliefStationId: stationToAttach.reliefStationId },
+      });
+      setStationToAttach(null);
+      await refetchCampaignDetail();
+    } catch {
+      // handled by hook
+    }
+  };
+
+  const handleConfirmDetachStation = async () => {
+    if (!stationToDetach) return;
+
+    try {
+      await removeStation({
+        id: stationToDetach.campaignId,
+        reliefStationId: stationToDetach.reliefStationId,
+      });
+      setStationToDetach(null);
+      await refetchCampaignDetail();
+    } catch {
+      // handled by hook
+    }
+  };
+
   const openCampaignAllocations = (campaignId: string, campaignName: string) => {
     setSelectedCampaignForAllocations({ id: campaignId, name: campaignName });
     setOpenAllocationModal(true);
+  };
+
+  const activeStationIds = new Set(
+    (selectedCampaign?.stations || [])
+      .filter((station) => station.isActive)
+      .map((station) => station.reliefStationId),
+  );
+
+  const assignedStationIds = new Set(
+    (selectedCampaign?.stations || []).map((station) => station.reliefStationId),
+  );
+
+  const selectedCampaignLocationId = selectedCampaign?.locationId || '';
+  const selectedCampaignLocationName =
+    provinces?.find((province) => province.id === selectedCampaignLocationId)?.fullName || '';
+
+  const availableStationsForAssignment = stations.filter((station) => {
+    const stationId = getStationId(station);
+    if (!stationId) return false;
+    if (assignedStationIds.has(stationId)) return false;
+
+    const stationLocationName =
+      provinces?.find((province) => province.id === station.locationId)?.fullName || '';
+
+    if (selectedCampaignLocationName && stationLocationName) {
+      if (
+        normalizeLocationText(stationLocationName) !==
+        normalizeLocationText(selectedCampaignLocationName)
+      ) {
+        return false;
+      }
+    } else if (selectedCampaignLocationId && station.locationId !== selectedCampaignLocationId) {
+      return false;
+    }
+
+    return !activeStationIds.has(stationId);
+  });
+
+  const activeStations = (selectedCampaign?.stations || []).filter((station) => station.isActive);
+  const inactiveStations = (selectedCampaign?.stations || []).filter(
+    (station) => !station.isActive,
+  );
+
+  const campaignDetailMap = campaigns.reduce<Record<string, Campaign | undefined>>(
+    (acc, campaign, index) => {
+      acc[campaign.campaignId] = campaignDetailQueries[index]?.data as Campaign | undefined;
+      return acc;
+    },
+    {},
+  );
+
+  const getCampaignAreaLabel = (campaign: CampaignSummary) => {
+    const detail = campaignDetailMap[campaign.campaignId];
+    const activeStation = detail?.stations?.find((station) => station.isActive);
+    if (activeStation?.reliefStationName) return activeStation.reliefStationName;
+
+    const matchedProvince = provinces?.find((province) => province.id === detail?.locationId);
+    if (matchedProvince?.fullName) return matchedProvince.fullName;
+
+    if (detail?.addressDetail) return detail.addressDetail;
+
+    return typeof campaign.overallProgressPercent === 'number'
+      ? `${Math.round(campaign.overallProgressPercent)}% tiến độ`
+      : '—';
   };
 
   const allocationSummary = allocationsByCampaign.reduce(
@@ -546,9 +792,7 @@ export default function ManagerCampaignPage() {
                           </TableCell>
                           <TableCell>
                             <span className="text-foreground text-sm truncate max-w-[150px] inline-block">
-                              {typeof c.overallProgressPercent === 'number'
-                                ? `${Math.round(c.overallProgressPercent)}% tiến độ`
-                                : '—'}
+                              {getCampaignAreaLabel(c)}
                             </span>
                           </TableCell>
                           <TableCell>
@@ -574,7 +818,7 @@ export default function ManagerCampaignPage() {
                               <DropdownMenuContent align="end">
                                 {c.status === 0 && (
                                   <DropdownMenuItem
-                                    className="gap-2 text-success"
+                                    className="gap-2 text-green-700"
                                     onClick={() =>
                                       campaignId
                                         ? handleUpdateStatus(campaignId, 1)
@@ -589,7 +833,7 @@ export default function ManagerCampaignPage() {
                                 )}
                                 {c.status === 1 && (
                                   <DropdownMenuItem
-                                    className="gap-2 text-warning"
+                                    className="gap-2 text-orange-600"
                                     onClick={() =>
                                       campaignId
                                         ? handleUpdateStatus(campaignId, 2)
@@ -602,7 +846,7 @@ export default function ManagerCampaignPage() {
                                 )}
                                 {c.status === 2 && (
                                   <DropdownMenuItem
-                                    className="gap-2 text-success"
+                                    className="gap-2 text-primary"
                                     onClick={() =>
                                       campaignId
                                         ? handleUpdateStatus(campaignId, 1)
@@ -628,6 +872,19 @@ export default function ManagerCampaignPage() {
                                     Kết thúc chiến dịch
                                   </DropdownMenuItem>
                                 )}
+                                <DropdownMenuItem
+                                  className="gap-2 text-primary/80"
+                                  onClick={() =>
+                                    campaignId
+                                      ? openCampaignDetails(campaignId)
+                                      : toast.error('Không tìm thấy mã chiến dịch để xem chi tiết')
+                                  }
+                                >
+                                  <span className="material-symbols-outlined text-lg">
+                                    edit_square
+                                  </span>
+                                  Xem / chỉnh sửa
+                                </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="gap-2 text-primary"
                                   onClick={() =>
@@ -1160,11 +1417,14 @@ export default function ManagerCampaignPage() {
                                     <FormLabel className="text-xs">Mục tiêu</FormLabel>
                                     <FormControl>
                                       <Input
-                                        type="number"
-                                        min={1}
-                                        placeholder="Vd: 10000000"
+                                        type="text"
+                                        inputMode="numeric"
+                                        placeholder="Vd: 10.000.000"
                                         className="h-9"
-                                        {...field}
+                                        value={formatNumberInputVN(field.value)}
+                                        onChange={(e) =>
+                                          field.onChange(normalizeNumberInput(e.target.value))
+                                        }
                                       />
                                     </FormControl>
                                     <FormMessage />
@@ -1449,6 +1709,597 @@ export default function ManagerCampaignPage() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <Dialog
+        open={openDetailModal}
+        onOpenChange={(open) => {
+          setOpenDetailModal(open);
+          if (!open) {
+            setSelectedCampaignId('');
+            updateForm.reset(buildUpdateFormDefaults(null));
+          }
+        }}
+      >
+        <DialogContent className="w-[98vw] !max-w-[1024px] max-h-[92vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+            <DialogTitle>Chi tiết chiến dịch</DialogTitle>
+            <DialogDescription>
+              Manager có thể xem thông tin, chỉnh sửa chiến dịch và gán chiến dịch vào trạm.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+            {isLoadingCampaignDetail ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="flex flex-col items-center gap-3">
+                  <span className="material-symbols-outlined text-4xl text-primary animate-spin">
+                    progress_activity
+                  </span>
+                  <p className="text-muted-foreground text-sm">Đang tải chi tiết chiến dịch...</p>
+                </div>
+              </div>
+            ) : !selectedCampaign ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <span className="material-symbols-outlined text-4xl text-muted-foreground">
+                    campaign
+                  </span>
+                  <p className="text-muted-foreground text-sm">
+                    Không tải được dữ liệu chiến dịch.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <Card className="border-border bg-card md:col-span-2">
+                    <CardContent className="p-5">
+                      <p className="text-sm text-muted-foreground">Tên chiến dịch</p>
+                      <p className="mt-2 text-lg font-bold text-foreground">
+                        {selectedCampaign.name}
+                      </p>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Mã chiến dịch: {getCampaignIdentity(selectedCampaign) || '—'}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-border bg-card">
+                    <CardContent className="p-5">
+                      <p className="text-sm text-muted-foreground">Loại</p>
+                      <p className="mt-2 font-semibold text-foreground">
+                        {getCampaignTypeLabel(selectedCampaign.type)}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-border bg-card">
+                    <CardContent className="p-5">
+                      <p className="text-sm text-muted-foreground">Trạng thái</p>
+                      <Badge
+                        className={`mt-2 border ${getCampaignStatusClass(selectedCampaign.status)}`}
+                      >
+                        {getCampaignStatusLabel(selectedCampaign.status)}
+                      </Badge>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-6">
+                  <Card className="border-border bg-card">
+                    <CardHeader>
+                      <CardTitle>Cập nhật thông tin chiến dịch</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Form {...updateForm}>
+                        <form
+                          className="space-y-4"
+                          onSubmit={updateForm.handleSubmit(handleUpdateCampaign)}
+                        >
+                          <FormField
+                            control={updateForm.control}
+                            name="name"
+                            rules={{ required: 'Vui lòng nhập tên chiến dịch' }}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Tên chiến dịch</FormLabel>
+                                <FormControl>
+                                  <Input {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={updateForm.control}
+                            name="description"
+                            rules={{ required: 'Vui lòng nhập mô tả' }}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Mô tả</FormLabel>
+                                <FormControl>
+                                  <Textarea rows={3} className="resize-none" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <FormField
+                              control={updateForm.control}
+                              name="startDate"
+                              rules={{ required: 'Vui lòng chọn ngày bắt đầu' }}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Ngày bắt đầu</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="datetime-local"
+                                      value={field.value ? field.value.slice(0, 16) : ''}
+                                      onChange={(event) =>
+                                        field.onChange(
+                                          event.target.value
+                                            ? new Date(event.target.value).toISOString()
+                                            : '',
+                                        )
+                                      }
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={updateForm.control}
+                              name="endDate"
+                              rules={{ required: 'Vui lòng chọn ngày kết thúc' }}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Ngày kết thúc</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="datetime-local"
+                                      value={field.value ? field.value.slice(0, 16) : ''}
+                                      onChange={(event) =>
+                                        field.onChange(
+                                          event.target.value
+                                            ? new Date(event.target.value).toISOString()
+                                            : '',
+                                        )
+                                      }
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <FormField
+                              control={updateForm.control}
+                              name="completionRule"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Quy tắc hoàn thành</FormLabel>
+                                  <Select
+                                    value={String(field.value)}
+                                    onValueChange={(value) => field.onChange(Number(value))}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Chọn quy tắc" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      {Object.entries(CampaignCompletionRuleLabel).map(
+                                        ([key, label]) => (
+                                          <SelectItem key={key} value={key}>
+                                            {label}
+                                          </SelectItem>
+                                        ),
+                                      )}
+                                    </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={updateForm.control}
+                              name="areaRadiusKm"
+                              rules={{ required: 'Vui lòng nhập bán kính', min: 1 }}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Bán kính khu vực (km)</FormLabel>
+                                  <FormControl>
+                                    <Input type="number" min={1} {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <FormField
+                              control={updateForm.control}
+                              name="latitude"
+                              rules={{ required: 'Vui lòng nhập vĩ độ' }}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Vĩ độ</FormLabel>
+                                  <FormControl>
+                                    <Input type="number" step="0.000001" {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={updateForm.control}
+                              name="longitude"
+                              rules={{ required: 'Vui lòng nhập kinh độ' }}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Kinh độ</FormLabel>
+                                  <FormControl>
+                                    <Input type="number" step="0.000001" {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
+                          <FormField
+                            control={updateForm.control}
+                            name="addressDetail"
+                            rules={{ required: 'Vui lòng chọn địa điểm chiến dịch' }}
+                            render={() => (
+                              <FormItem>
+                                <StationAddressLookup
+                                  label="Địa điểm chiến dịch"
+                                  address={watchedEditAddressDetail || ''}
+                                  latitude={Number(watchedEditLatitude || 0)}
+                                  longitude={Number(watchedEditLongitude || 0)}
+                                  onPickAddress={({ address, latitude, longitude }) => {
+                                    updateForm.setValue('addressDetail', address);
+                                    updateForm.setValue('latitude', latitude);
+                                    updateForm.setValue('longitude', longitude);
+                                  }}
+                                />
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={updateForm.control}
+                            name="allowOverTarget"
+                            render={({ field }) => (
+                              <FormItem className="flex items-center gap-2 rounded-lg border border-border px-3 py-3">
+                                <FormControl>
+                                  <input
+                                    type="checkbox"
+                                    checked={field.value}
+                                    onChange={(event) => field.onChange(event.target.checked)}
+                                    className="h-4 w-4 rounded border-border"
+                                  />
+                                </FormControl>
+                                <FormLabel className="cursor-pointer font-normal m-0">
+                                  Cho phép vượt mục tiêu chiến dịch
+                                </FormLabel>
+                              </FormItem>
+                            )}
+                          />
+
+                          <div className="flex justify-end">
+                            <Button type="submit" disabled={updateCampaignStatus === 'pending'}>
+                              {updateCampaignStatus === 'pending'
+                                ? 'Đang cập nhật...'
+                                : 'Lưu thay đổi'}
+                            </Button>
+                          </div>
+                        </form>
+                      </Form>
+                    </CardContent>
+                  </Card>
+
+                  <div className="space-y-6">
+                    <Card className="border-border bg-card">
+                      <CardHeader>
+                        <CardTitle>Trạm được gán</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {(selectedCampaign.stations || []).length === 0 ? (
+                          <div className="rounded-lg border border-dashed border-border px-4 py-5 text-sm text-muted-foreground text-center">
+                            Chiến dịch chưa được gán vào trạm nào.
+                          </div>
+                        ) : (
+                          <div className="space-y-5">
+                            <div className="space-y-3">
+                              <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-emerald-600 text-base">
+                                  check_circle
+                                </span>
+                                <p className="text-sm font-semibold text-foreground">
+                                  Trạm đang hoạt động ({activeStations.length})
+                                </p>
+                              </div>
+
+                              {activeStations.length === 0 ? (
+                                <div className="rounded-lg border border-dashed border-border px-4 py-4 text-sm text-muted-foreground">
+                                  Chưa có trạm nào đang hoạt động.
+                                </div>
+                              ) : (
+                                activeStations.map((station) => (
+                                  <div
+                                    key={station.reliefStationId}
+                                    className="rounded-xl border border-emerald-200/70 bg-emerald-50/40 dark:bg-emerald-950/10 dark:border-emerald-900/60 p-4 flex items-start justify-between gap-3"
+                                  >
+                                    <div>
+                                      <p className="font-semibold text-foreground">
+                                        {station.reliefStationName}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        Gán lúc: {getCampaignDateText(station.assignedAt)}
+                                      </p>
+                                      <Badge variant="success" size="sm" className="mt-2">
+                                        Đang hoạt động
+                                      </Badge>
+                                    </div>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="text-destructive"
+                                      onClick={() =>
+                                        setStationToDetach({
+                                          campaignId: selectedCampaign.campaignId,
+                                          reliefStationId: station.reliefStationId,
+                                          stationName: station.reliefStationName,
+                                        })
+                                      }
+                                      disabled={removeStationStatus === 'pending'}
+                                    >
+                                      Gỡ trạm
+                                    </Button>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+
+                            <div className="space-y-3">
+                              <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-amber-600 text-base">
+                                  pause_circle
+                                </span>
+                                <p className="text-sm font-semibold text-foreground">
+                                  Trạm đã ngưng ({inactiveStations.length})
+                                </p>
+                              </div>
+
+                              {inactiveStations.length === 0 ? (
+                                <div className="rounded-lg border border-dashed border-border px-4 py-4 text-sm text-muted-foreground">
+                                  Không có trạm nào đã ngưng.
+                                </div>
+                              ) : (
+                                inactiveStations.map((station) => (
+                                  <div
+                                    key={station.reliefStationId}
+                                    className="rounded-xl border border-amber-200/70 bg-amber-50/40 dark:bg-amber-950/10 dark:border-amber-900/60 p-4 flex items-start justify-between gap-3"
+                                  >
+                                    <div>
+                                      <p className="font-semibold text-foreground">
+                                        {station.reliefStationName}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        Gán lúc: {getCampaignDateText(station.assignedAt)}
+                                      </p>
+                                      <Badge variant="destructive" size="sm" className="mt-2">
+                                        Ngưng hoạt động
+                                      </Badge>
+                                    </div>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="text-destructive"
+                                      onClick={() =>
+                                        setStationToDetach({
+                                          campaignId: selectedCampaign.campaignId,
+                                          reliefStationId: station.reliefStationId,
+                                          stationName: station.reliefStationName,
+                                        })
+                                      }
+                                      disabled={removeStationStatus === 'pending'}
+                                    >
+                                      Gỡ trạm
+                                    </Button>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-foreground">
+                            Gán thêm trạm vào chiến dịch
+                          </p>
+                          {selectedCampaignLocationId ? (
+                            <p className="text-xs text-muted-foreground">
+                              {selectedCampaignLocationName
+                                ? `Chỉ hiển thị trạm cùng khu vực ${selectedCampaignLocationName}.`
+                                : 'Chỉ hiển thị trạm có cùng tỉnh/thành với chiến dịch.'}
+                            </p>
+                          ) : null}
+                          {availableStationsForAssignment.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                              Không còn trạm nào khả dụng để gán thêm.
+                            </p>
+                          ) : (
+                            <Select onValueChange={handleAssignSelectedStation}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Chọn trạm cứu trợ" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableStationsForAssignment.map((station) => {
+                                  const stationId = getStationId(station);
+                                  if (!stationId) return null;
+                                  return (
+                                    <SelectItem key={stationId} value={stationId}>
+                                      {station.name}
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                          )}
+                          {assignStationStatus === 'pending' && (
+                            <p className="text-xs text-muted-foreground">Đang gán trạm...</p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+                <Card className="border-border bg-card w-full">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary">flag</span>
+                      Mục tiêu chiến dịch
+                    </CardTitle>
+                  </CardHeader>
+
+                  <CardContent className="space-y-3">
+                    {(selectedCampaign.goals || []).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Chưa có mục tiêu nào.</p>
+                    ) : (
+                      selectedCampaign.goals.map((goal, index) => {
+                        const percent = Math.round(Number(goal.progressPercent || 0));
+
+                        // chọn icon theo trạng thái
+                        let icon = 'radio_button_unchecked';
+                        let iconColor = 'text-gray-400';
+
+                        if (percent === 100 || goal.isMet) {
+                          icon = 'check_circle';
+                          iconColor = 'text-green-600';
+                        } else if (percent > 0) {
+                          icon = 'hourglass_top';
+                          iconColor = 'text-amber-500';
+                        }
+
+                        return (
+                          <div
+                            key={goal.campaignResourceGoalId || `${goal.resourceType}-${index}`}
+                            className="rounded-xl border border-border p-4"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              {/* LEFT */}
+                              <div>
+                                <p className="font-semibold text-foreground flex items-center gap-2">
+                                  {/* ICON */}
+                                  <span
+                                    className={`material-symbols-outlined text-base ${iconColor}`}
+                                  >
+                                    {icon}
+                                  </span>
+
+                                  {CampaignResourceTypeLabel[goal.resourceType] || 'Nguồn lực'}
+                                </p>
+
+                                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                                  <span className="material-symbols-outlined text-[14px]">
+                                    inventory_2
+                                  </span>
+                                  Đã nhận {formatNumberVN(goal.receivedAmount || 0)} / mục tiêu{' '}
+                                  {formatNumberVN(goal.targetAmount || 0)}
+                                </p>
+                              </div>
+
+                              {/* RIGHT */}
+                              <Badge variant={goal.isMet ? 'success' : 'destructive'} size="sm">
+                                <span className="flex items-center gap-1">
+                                  <span className="material-symbols-outlined text-[14px]">
+                                    {goal.isRequired ? 'priority_high' : 'low_priority'}
+                                  </span>
+                                  {goal.isRequired ? 'Bắt buộc' : 'Không bắt buộc'}
+                                </span>
+                              </Badge>
+                            </div>
+
+                            {/* PROGRESS BAR */}
+                            <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden">
+                              <div
+                                className="h-full bg-primary rounded-full"
+                                style={{
+                                  width: `${Math.max(
+                                    0,
+                                    Math.min(Number(goal.progressPercent || 0), 100),
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+
+                            {/* FOOTER */}
+                            <p className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[14px]">
+                                monitoring
+                              </span>
+                              Tiến độ: {percent}%
+                            </p>
+                          </div>
+                        );
+                      })
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </div>
+
+          <DialogFooter className="px-6 py-4 border-t border-border shrink-0">
+            <Button variant="outline" onClick={() => setOpenDetailModal(false)}>
+              Đóng
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!stationToAttach}
+        onOpenChange={(open) => {
+          if (!open) setStationToAttach(null);
+        }}
+        title="Gán chiến dịch vào trạm"
+        description={
+          stationToAttach
+            ? `Xác nhận gán chiến dịch này vào ${stationToAttach.stationName}.`
+            : 'Xác nhận gán chiến dịch vào trạm đã chọn.'
+        }
+        confirmText={assignStationStatus === 'pending' ? 'Đang gán...' : 'Xác nhận gán'}
+        cancelText="Hủy"
+        variant="success"
+        onConfirm={handleConfirmAttachStation}
+      />
+
+      <ConfirmDialog
+        open={!!stationToDetach}
+        onOpenChange={(open) => {
+          if (!open) setStationToDetach(null);
+        }}
+        title="Gỡ trạm khỏi chiến dịch"
+        description={
+          stationToDetach
+            ? `Bạn có chắc muốn gỡ trạm ${stationToDetach.stationName} khỏi chiến dịch này?`
+            : 'Bạn có chắc muốn gỡ trạm khỏi chiến dịch này?'
+        }
+        confirmText={removeStationStatus === 'pending' ? 'Đang gỡ...' : 'Xác nhận gỡ'}
+        cancelText="Hủy"
+        variant="destructive"
+        onConfirm={handleConfirmDetachStation}
+      />
     </DashboardLayout>
   );
 }

@@ -1,9 +1,16 @@
 import { apiClient } from '@/lib/apiClients';
 
-export interface CampaignGoal {
+export interface CampaignGoalPayload {
   resourceType: number;
   targetAmount: number;
   isRequired: boolean;
+}
+
+export interface CampaignGoal extends CampaignGoalPayload {
+  campaignResourceGoalId?: string;
+  receivedAmount?: number;
+  isMet?: boolean;
+  progressPercent?: number;
 }
 
 export interface CreateCampaignPayload {
@@ -19,7 +26,7 @@ export interface CreateCampaignPayload {
   type: number;
   completionRule: number;
   allowOverTarget: boolean;
-  goals: CampaignGoal[];
+  goals: CampaignGoalPayload[];
   availablePeopleCount: number;
   reliefStationId: string;
 }
@@ -70,23 +77,64 @@ export interface UpdateStatusPayload {
   status: number;
 }
 
+export interface CampaignStation {
+  reliefStationId: string;
+  reliefStationName: string;
+  isActive: boolean;
+  assignedAt: string;
+}
+
+export interface CampaignTeam {
+  campaignTeamId: string;
+  campaignId: string;
+  teamId: string;
+  teamName: string;
+  role: number;
+  status: number;
+  assignedAt: string;
+  memberCount: number;
+}
+
 export interface Campaign {
-  id: string;
-  name: string;
-  description: string;
+  campaignId: string;
   locationId: string;
+  createdBy: string;
+  name: string;
+  description?: string | null;
   startDate: string;
   endDate: string;
   latitude: number;
   longitude: number;
   areaRadiusKm: number;
-  addressDetail: string;
+  addressDetail?: string | null;
+  status: number;
   type: number;
   completionRule: number;
   allowOverTarget: boolean;
+  createdAt: string;
+  goals: CampaignGoal[];
+  stations: CampaignStation[];
+}
+
+export interface PublicCampaignSummary {
+  campaignId: string;
+  name: string;
+  description?: string | null;
+  type: number;
   status: number;
-  availablePeopleCount: number;
-  reliefStationId: string;
+  startDate: string;
+  endDate: string;
+  totalMoneyReceived: number;
+  totalMoneySpent: number;
+  remainingBudget: number;
+  peopleTarget: number;
+  peopleReached: number;
+  procurementOrderCount: number;
+  procurementReceivedCount: number;
+  procurementEstimatedTotal: number;
+  procurementActualTotal: number;
+  totalSuppliesPurchasedUnits: number;
+  totalSuppliesAllocatedUnits: number;
   goals: CampaignGoal[];
 }
 
@@ -118,7 +166,7 @@ export const campaignService = {
     apiClient.put<Campaign>(`/campaigns/${id}`, data),
 
   // Get campaign summary
-  getSummary: (id: string) => apiClient.get<any>(`/campaigns/${id}/summary`),
+  getSummary: (id: string) => apiClient.get<PublicCampaignSummary>(`/campaigns/${id}/summary`),
 
   // Update campaign status
   updateStatus: (id: string, data: UpdateStatusPayload) =>
@@ -126,7 +174,7 @@ export const campaignService = {
 
   // Assign station
   assignStation: (id: string, data: AssignStationPayload) =>
-    apiClient.post(`/campaigns/${id}/stations`, data),
+    apiClient.post<CampaignStation>(`/campaigns/${id}/stations`, data),
 
   // Remove station
   removeStation: (id: string, reliefStationId: string) =>
@@ -134,10 +182,10 @@ export const campaignService = {
 
   // Assign team
   assignTeam: (id: string, data: AssignTeamPayload) =>
-    apiClient.post(`/campaigns/${id}/teams`, data),
+    apiClient.post<CampaignTeam>(`/campaigns/${id}/teams`, data),
 
   // Get campaign teams
-  getTeams: (id: string) => apiClient.get<any>(`/campaigns/${id}/teams`),
+  getTeams: (id: string) => apiClient.get<CampaignTeam[]>(`/campaigns/${id}/teams`),
 
   // Update team status
   updateTeamStatus: (id: string, teamId: string, data: UpdateStatusPayload) =>
