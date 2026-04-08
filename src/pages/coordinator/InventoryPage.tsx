@@ -1706,19 +1706,6 @@ export default function CoordinatorInventoryPage() {
                   key={transaction.transactionId || `${transaction.createdAt || 'tx'}-${index}`}
                   className="rounded-xl border border-border bg-card px-4 py-3 flex items-center justify-between gap-4"
                 >
-                  {(() => {
-                    const transactionTypeUi =
-                      TRANSACTION_TYPE_UI[parseEnumValue(transaction.type)] ||
-                      TRANSACTION_TYPE_UI[TransactionType.Import];
-
-                    return (
-                      <div
-                        className={`size-11 rounded-xl border border-border flex items-center justify-center shrink-0 ${transactionTypeUi.iconWrap}`}
-                      >
-                        <span className="material-symbols-outlined">{transactionTypeUi.icon}</span>
-                      </div>
-                    );
-                  })()}
                   <div>
                     {(() => {
                       const transactionTypeUi =
