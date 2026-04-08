@@ -12,6 +12,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import {
   Table,
   TableBody,
   TableCell,
@@ -46,6 +54,8 @@ import {
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import goongjs from '@goongmaps/goong-js';
+import { useGoongMap } from '@/hooks/useGoongMap';
 
 const getStationId = (station: {
   id?: string | null;
@@ -73,6 +83,90 @@ const getStationBadgeVariant = (status: number): 'success' | 'outline' | 'destru
   }
 };
 
+const hasValidCoordinates = (latitude?: number | null, longitude?: number | null) => {
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') return false;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+  return !(latitude === 0 && longitude === 0);
+};
+
+function StationMapPreview({
+  latitude,
+  longitude,
+  stationName,
+  heightClass = 'h-[320px]',
+}: {
+  latitude?: number | null;
+  longitude?: number | null;
+  stationName?: string | null;
+  heightClass?: string;
+}) {
+  const canShowMap = hasValidCoordinates(latitude ?? null, longitude ?? null);
+
+  const {
+    mapRef,
+    isLoading: isLoadingMap,
+    error: mapError,
+  } = useGoongMap({
+    center: canShowMap
+      ? { lat: Number(latitude), lng: Number(longitude) }
+      : { lat: 10.7769, lng: 106.7009 },
+    zoom: canShowMap ? 14 : 6,
+    apiKey: import.meta.env.VITE_GOONG_MAP_KEY || '',
+    enabled: canShowMap,
+    onMapLoad: (map) => {
+      if (!canShowMap) return;
+
+      new goongjs.Marker({ color: '#ef4444' })
+        .setLngLat([Number(longitude), Number(latitude)])
+        .addTo(map);
+
+      (map as any).flyTo({
+        center: [Number(longitude), Number(latitude)],
+        zoom: 14,
+        speed: 1.05,
+      });
+    },
+  });
+
+  if (!canShowMap) {
+    return (
+      <div
+        className={`${heightClass} rounded-2xl border border-dashed border-border bg-muted/20 flex flex-col items-center justify-center text-center px-6`}
+      >
+        <span className="material-symbols-outlined text-4xl text-muted-foreground">
+          location_off
+        </span>
+        <p className="mt-3 font-semibold text-foreground">Chưa có tọa độ bản đồ</p>
+        <p className="mt-1 text-sm text-muted-foreground max-w-sm">
+          {stationName
+            ? `${stationName} chưa có dữ liệu vị trí hợp lệ để hiển thị trên bản đồ.`
+            : 'Trạm chưa có dữ liệu vị trí hợp lệ để hiển thị trên bản đồ.'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`${heightClass} rounded-2xl border border-border overflow-hidden bg-muted/20 relative`}
+    >
+      <div ref={mapRef} className="h-full w-full" />
+
+      {isLoadingMap && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/75 backdrop-blur-[1px] text-sm text-muted-foreground">
+          Đang tải bản đồ trạm...
+        </div>
+      )}
+
+      {mapError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/85 text-sm text-destructive px-6 text-center">
+          {mapError}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ManagerStationPage() {
   const [pageIndex, setPageIndex] = useState(1);
   const [pageSize] = useState(10);
@@ -91,6 +185,20 @@ export default function ManagerStationPage() {
     latitude: number;
     coverageRadiusKm: number;
   } | null>(null);
+  const [viewingStation, setViewingStation] = useState<{
+    id: string | null;
+    name: string;
+    address: string;
+    contactNumber: string;
+    longitude: number;
+    latitude: number;
+    coverageRadiusKm: number;
+    locationId?: string | null;
+    locationName?: string | null;
+    status?: number;
+  } | null>(null);
+  const [openViewModal, setOpenViewModal] = useState(false);
+  const [openMapModal, setOpenMapModal] = useState(false);
   const [selectedStation, setSelectedStation] = useState<{ id: string | null; name: string }>({
     id: null,
     name: '',
@@ -162,6 +270,24 @@ export default function ManagerStationPage() {
       coverageRadiusKm: Number(station.coverageRadiusKm || 1),
     });
     setOpenEditModal(true);
+  };
+
+  const openStationMapModal = (station: any) => {
+    const stationId = getStationId(station);
+
+    setViewingStation({
+      id: stationId,
+      name: station.name || '',
+      address: station.address || '',
+      contactNumber: station.contactNumber || '',
+      longitude: Number(station.longitude || 0),
+      latitude: Number(station.latitude || 0),
+      coverageRadiusKm: Number(station.coverageRadiusKm || 0),
+      locationId: station.locationId || null,
+      locationName: station.locationName || null,
+      status: station.status,
+    });
+    setOpenMapModal(true);
   };
 
   const handleUpdateStation = async (data: EditStationFormData) => {
@@ -371,7 +497,14 @@ export default function ManagerStationPage() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem
-                                  className="gap-2"
+                                  className="gap-2 text-primary"
+                                  onClick={() => openStationMapModal(station)}
+                                >
+                                  <span className="material-symbols-outlined text-lg">map</span>
+                                  Xem thông tin trên bản đồ
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="gap-2 text-orange-500"
                                   onClick={() => openEditStationModal(station)}
                                 >
                                   <span className="material-symbols-outlined text-lg">edit</span>
@@ -475,6 +608,425 @@ export default function ManagerStationPage() {
         onSubmit={handleUpdateStation}
         initialData={editingStation}
       />
+
+      <Dialog
+        open={openViewModal}
+        onOpenChange={(open) => {
+          setOpenViewModal(open);
+          if (!open) setViewingStation(null);
+        }}
+      >
+        <DialogContent className="w-[95vw] max-w-5xl max-h-[90vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border bg-gradient-to-r from-primary/10 via-sky-500/5 to-emerald-500/10">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex items-center gap-3">
+                  <div className="size-12 rounded-2xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-[24px]">storefront</span>
+                  </div>
+                  <div className="min-w-0">
+                    <DialogTitle className="text-xl truncate">
+                      {viewingStation?.name || 'Thông tin trạm cứu trợ'}
+                    </DialogTitle>
+                    <DialogDescription className="mt-1">
+                      Mã trạm: {viewingStation?.id || '—'}
+                    </DialogDescription>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Badge
+                  variant={getStationBadgeVariant(Number(viewingStation?.status || 0))}
+                  appearance="outline"
+                  size="sm"
+                  className={`gap-1 border ${getReliefStationStatusClass(Number(viewingStation?.status || 0))}`}
+                >
+                  <span className="material-symbols-outlined text-xs">
+                    {Number(viewingStation?.status || 0) === ReliefStationStatus.Active
+                      ? 'check_circle'
+                      : Number(viewingStation?.status || 0) === ReliefStationStatus.Closed
+                        ? 'cancel'
+                        : 'pause_circle'}
+                  </span>
+                  {ReliefStationStatusLabel[
+                    Number(viewingStation?.status || 0) as ReliefStationStatus
+                  ] || 'Không rõ'}
+                </Badge>
+                <Badge variant="info" appearance="outline" size="sm" className="gap-1">
+                  <span className="material-symbols-outlined text-xs">location_city</span>
+                  {viewingStation?.locationName || 'Chưa có khu vực'}
+                </Badge>
+                <Badge variant="success" appearance="outline" size="sm" className="gap-1">
+                  <span className="material-symbols-outlined text-xs">radius</span>
+                  {typeof viewingStation?.coverageRadiusKm === 'number'
+                    ? `${viewingStation.coverageRadiusKm} km`
+                    : '—'}
+                </Badge>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_0.95fr] gap-6">
+              <div className="space-y-6">
+                <Card className="border-border bg-card">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary">info</span>
+                      Tổng quan trạm
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Tên trạm
+                      </p>
+                      <p className="font-semibold text-foreground">{viewingStation?.name || '—'}</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Mã trạm
+                      </p>
+                      <p className="font-mono text-sm text-foreground break-all">
+                        {viewingStation?.id || '—'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2 md:col-span-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Địa chỉ
+                      </p>
+                      <p className="text-foreground leading-6">{viewingStation?.address || '—'}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border bg-card">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <span className="material-symbols-outlined text-sky-600">call</span>
+                      Liên hệ & phạm vi hoạt động
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Số điện thoại
+                      </p>
+                      <p className="text-foreground">{viewingStation?.contactNumber || '—'}</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Khu vực
+                      </p>
+                      <p className="text-foreground">{viewingStation?.locationName || '—'}</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Bán kính bao phủ
+                      </p>
+                      <p className="text-foreground">
+                        {typeof viewingStation?.coverageRadiusKm === 'number'
+                          ? `${viewingStation.coverageRadiusKm} km`
+                          : '—'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Trạng thái
+                      </p>
+                      <Badge
+                        variant={getStationBadgeVariant(Number(viewingStation?.status || 0))}
+                        appearance="outline"
+                        size="sm"
+                        className={`gap-1 border ${getReliefStationStatusClass(Number(viewingStation?.status || 0))}`}
+                      >
+                        {ReliefStationStatusLabel[
+                          Number(viewingStation?.status || 0) as ReliefStationStatus
+                        ] || 'Không rõ'}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border bg-card">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <span className="material-symbols-outlined text-amber-600">pin_drop</span>
+                      Tọa độ vị trí
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">Vĩ độ</p>
+                      <p className="font-mono text-sm text-foreground">
+                        {hasValidCoordinates(viewingStation?.latitude, viewingStation?.longitude)
+                          ? Number(viewingStation?.latitude).toFixed(6)
+                          : 'Chưa cập nhật'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Kinh độ
+                      </p>
+                      <p className="font-mono text-sm text-foreground">
+                        {hasValidCoordinates(viewingStation?.latitude, viewingStation?.longitude)
+                          ? Number(viewingStation?.longitude).toFixed(6)
+                          : 'Chưa cập nhật'}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="space-y-6">
+                <Card className="border-border bg-card overflow-hidden">
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <span className="material-symbols-outlined text-emerald-600">map</span>
+                      Vị trí trên bản đồ
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <StationMapPreview
+                      latitude={viewingStation?.latitude}
+                      longitude={viewingStation?.longitude}
+                      stationName={viewingStation?.name}
+                      heightClass="h-[340px]"
+                    />
+
+                    <div className="rounded-xl border border-border bg-muted/20 p-4">
+                      <p className="text-sm font-medium text-foreground">Gợi ý sử dụng</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Dùng chế độ xem bản đồ lớn để kiểm tra chính xác vị trí trạm và đối chiếu
+                        khu vực phụ trách.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
+            <Button
+              variant="primary"
+              onClick={() => {
+                setOpenViewModal(false);
+                setOpenMapModal(true);
+              }}
+              disabled={!hasValidCoordinates(viewingStation?.latitude, viewingStation?.longitude)}
+            >
+              <span className="material-symbols-outlined text-lg">map</span>
+              Xem trên bản đồ
+            </Button>
+            <Button variant="outline" onClick={() => setOpenViewModal(false)}>
+              Đóng
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Sheet
+        open={openMapModal}
+        onOpenChange={(open) => {
+          setOpenMapModal(open);
+          if (!open) {
+            setOpenViewModal(false);
+            setViewingStation(null);
+          }
+        }}
+      >
+        <SheetContent side="right" className="w-full sm:max-w-[96vw] p-0 overflow-hidden">
+          <div className="h-full min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1.65fr)_420px] xl:grid-cols-[minmax(0,1.8fr)_460px]">
+            <div className="relative min-h-[45vh] lg:min-h-0 border-b lg:border-b-0 lg:border-r border-border bg-background p-4 lg:p-5">
+              <div className="absolute left-8 top-8 z-10 max-w-[calc(100%-4rem)] rounded-2xl border border-border bg-background/92 backdrop-blur-md shadow-xl px-4 py-3">
+                <div className="flex flex-wrap items-start gap-3 justify-between">
+                  <div className="min-w-0">
+                    <p className="text-lg font-bold text-foreground truncate">
+                      {viewingStation?.name || 'Trạm cứu trợ'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1 break-all">
+                      Mã trạm: {viewingStation?.id || '—'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge
+                      variant={getStationBadgeVariant(Number(viewingStation?.status || 0))}
+                      appearance="outline"
+                      size="sm"
+                      className={`gap-1 border ${getReliefStationStatusClass(Number(viewingStation?.status || 0))}`}
+                    >
+                      {ReliefStationStatusLabel[
+                        Number(viewingStation?.status || 0) as ReliefStationStatus
+                      ] || 'Không rõ'}
+                    </Badge>
+                    <Badge variant="info" appearance="outline" size="sm" className="gap-1">
+                      <span className="material-symbols-outlined text-xs">location_city</span>
+                      {viewingStation?.locationName || 'Chưa có khu vực'}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              <div className="absolute right-8 bottom-8 z-10 rounded-2xl border border-border bg-background/92 backdrop-blur-md shadow-xl px-4 py-3 max-w-[320px]">
+                <p className="text-xs uppercase font-semibold text-muted-foreground">
+                  Tổng quan nhanh
+                </p>
+                <div className="mt-2 space-y-1.5 text-sm">
+                  <p className="text-foreground">
+                    <span className="text-muted-foreground">Liên hệ:</span>{' '}
+                    {viewingStation?.contactNumber || '—'}
+                  </p>
+                  <p className="text-foreground">
+                    <span className="text-muted-foreground">Bán kính:</span>{' '}
+                    {typeof viewingStation?.coverageRadiusKm === 'number'
+                      ? `${viewingStation.coverageRadiusKm} km`
+                      : '—'}
+                  </p>
+                  <p className="text-foreground font-mono text-xs break-all">
+                    {hasValidCoordinates(viewingStation?.latitude, viewingStation?.longitude)
+                      ? `${Number(viewingStation?.latitude).toFixed(6)}, ${Number(viewingStation?.longitude).toFixed(6)}`
+                      : 'Chưa có tọa độ'}
+                  </p>
+                </div>
+              </div>
+
+              <StationMapPreview
+                latitude={viewingStation?.latitude}
+                longitude={viewingStation?.longitude}
+                stationName={viewingStation?.name}
+                heightClass="h-full min-h-[420px] lg:min-h-0"
+              />
+            </div>
+
+            <div className="min-h-0 flex flex-col bg-card">
+              <SheetHeader className="px-6 py-5 border-b border-border">
+                <SheetTitle>Thông tin đầy đủ của trạm</SheetTitle>
+                <SheetDescription>
+                  Xem tổng quát vị trí trên bản đồ và toàn bộ thông tin vận hành của trạm.
+                </SheetDescription>
+              </SheetHeader>
+
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+                <Card className="border-border bg-card">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary">storefront</span>
+                      Hồ sơ trạm
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Tên trạm
+                      </p>
+                      <p className="font-semibold text-foreground">{viewingStation?.name || '—'}</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Mã trạm
+                      </p>
+                      <p className="font-mono text-sm text-foreground break-all">
+                        {viewingStation?.id || '—'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Khu vực
+                      </p>
+                      <p className="text-foreground">{viewingStation?.locationName || '—'}</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Trạng thái
+                      </p>
+                      <Badge
+                        variant={getStationBadgeVariant(Number(viewingStation?.status || 0))}
+                        appearance="outline"
+                        size="sm"
+                        className={`gap-1 border ${getReliefStationStatusClass(Number(viewingStation?.status || 0))}`}
+                      >
+                        {ReliefStationStatusLabel[
+                          Number(viewingStation?.status || 0) as ReliefStationStatus
+                        ] || 'Không rõ'}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border bg-card">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <span className="material-symbols-outlined text-sky-600">contact_phone</span>
+                      Liên hệ và địa điểm
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Số điện thoại
+                      </p>
+                      <p className="text-foreground">{viewingStation?.contactNumber || '—'}</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Địa chỉ
+                      </p>
+                      <p className="text-foreground leading-6">{viewingStation?.address || '—'}</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Bán kính bao phủ
+                      </p>
+                      <p className="text-foreground">
+                        {typeof viewingStation?.coverageRadiusKm === 'number'
+                          ? `${viewingStation.coverageRadiusKm} km`
+                          : '—'}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border bg-card">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <span className="material-symbols-outlined text-amber-600">pin_drop</span>
+                      Tọa độ trạm
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">Vĩ độ</p>
+                      <p className="font-mono text-sm text-foreground">
+                        {hasValidCoordinates(viewingStation?.latitude, viewingStation?.longitude)
+                          ? Number(viewingStation?.latitude).toFixed(6)
+                          : 'Chưa cập nhật'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Kinh độ
+                      </p>
+                      <p className="font-mono text-sm text-foreground">
+                        {hasValidCoordinates(viewingStation?.latitude, viewingStation?.longitude)
+                          ? Number(viewingStation?.longitude).toFixed(6)
+                          : 'Chưa cập nhật'}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <SheetFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
+                <Button variant="outline" onClick={() => setOpenMapModal(false)}>
+                  Đóng
+                </Button>
+              </SheetFooter>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={assignModalOpen} onOpenChange={setAssignModalOpen}>
         <DialogContent className="sm:max-w-[1028px] max-h-[92vh] overflow-hidden p-0 flex flex-col">

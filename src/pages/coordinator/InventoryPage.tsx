@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Select,
   SelectContent,
@@ -609,6 +610,18 @@ export default function CoordinatorInventoryPage() {
     [relatedTransfersDetailed, selectedTransferId],
   );
 
+  const selectedTransferSummary = useMemo(() => {
+    if (!selectedTransfer) return [] as string[];
+
+    return [
+      `Mã phiếu: ${selectedTransfer.transferCode || selectedTransfer.id.slice(0, 8)}`,
+      `Nguồn: ${selectedTransfer.sourceStationName || selectedTransfer.sourceStationId || '—'}`,
+      `Đích: ${selectedTransfer.destinationStationName || selectedTransfer.destinationStationId || '—'}`,
+      `Số dòng: ${formatNumberVN(selectedTransfer.totalRequestedItems || selectedTransfer.items?.length || 0)}`,
+      `Tổng SL: ${formatNumberVN(selectedTransfer.totalRequestedQuantity || 0)}`,
+    ];
+  }, [selectedTransfer]);
+
   const isLoading =
     isLoadingStation || isLoadingInventories || isLoadingStocks || isLoadingSupplyItems;
 
@@ -969,6 +982,31 @@ export default function CoordinatorInventoryPage() {
     await Promise.all([refetchSourceTransfers(), refetchDestinationTransfers()]);
     setOpenCancelTransfer(false);
     setSelectedTransferId(null);
+  };
+
+  const openTransferDetailDialog = (transferId: string) => {
+    setSelectedTransferId(transferId);
+    setOpenTransferDetail(true);
+  };
+
+  const openApproveTransferDialog = (transferId: string) => {
+    setSelectedTransferId(transferId);
+    setOpenApproveTransfer(true);
+  };
+
+  const openShipTransferDialog = (transferId: string) => {
+    setSelectedTransferId(transferId);
+    setOpenShipTransfer(true);
+  };
+
+  const openReceiveTransferDialog = (transferId: string) => {
+    setSelectedTransferId(transferId);
+    setOpenReceiveTransfer(true);
+  };
+
+  const openCancelTransferDialog = (transferId: string) => {
+    setSelectedTransferId(transferId);
+    setOpenCancelTransfer(true);
   };
 
   /** Open the edit min/max dialog for a specific stock lot */
@@ -1398,13 +1436,13 @@ export default function CoordinatorInventoryPage() {
                   return (
                     <div
                       key={transfer.id}
-                      className="rounded-xl border border-border bg-card px-4 py-3 flex items-center justify-between gap-4 cursor-pointer hover:border-primary/40"
-                      onClick={() => {
-                        setSelectedTransferId(transfer.id);
-                        setOpenTransferDetail(true);
-                      }}
+                      className="rounded-xl border border-border bg-card px-4 py-3 flex items-center justify-between gap-4 hover:bg-muted/20 hover:shadow-sm transition-all"
                     >
-                      <div className="space-y-1">
+                      <button
+                        type="button"
+                        className="space-y-1 text-left flex-1 min-w-0 group/detail"
+                        onClick={() => openTransferDetailDialog(transfer.id)}
+                      >
                         <div className="flex items-center gap-2">
                           <span
                             className={`px-2 py-0.5 rounded text-xs font-semibold border ${statusClass}`}
@@ -1436,16 +1474,20 @@ export default function CoordinatorInventoryPage() {
                             ? new Date(transfer.createdAt).toLocaleDateString('vi-VN')
                             : 'N/A'}
                         </p>
-                      </div>
+                        <div className="pt-1 flex items-center gap-1 text-xs text-primary font-medium group-hover/detail:underline">
+                          <span className="material-symbols-outlined text-sm">visibility</span>
+                          Xem chi tiết phiếu
+                        </div>
+                      </button>
                       <div className="flex flex-wrap gap-2 shrink-0">
                         {canReceive && (
                           <Button
                             size="sm"
                             variant="success"
-                            className="gap-1"
-                            onClick={() => {
-                              setSelectedTransferId(transfer.id);
-                              setOpenReceiveTransfer(true);
+                            className="gap-1 shadow-sm"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openReceiveTransferDialog(transfer.id);
                             }}
                           >
                             <span className="material-symbols-outlined text-sm">inventory</span>
@@ -1456,10 +1498,10 @@ export default function CoordinatorInventoryPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="gap-1 text-destructive"
-                            onClick={() => {
-                              setSelectedTransferId(transfer.id);
-                              setOpenCancelTransfer(true);
+                            className="gap-1 border-red-200 text-destructive hover:bg-red-50 dark:hover:bg-red-950/20"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openCancelTransferDialog(transfer.id);
                             }}
                           >
                             <span className="material-symbols-outlined text-sm">close</span>
@@ -1546,13 +1588,13 @@ export default function CoordinatorInventoryPage() {
                   return (
                     <div
                       key={transfer.id}
-                      className="rounded-xl border border-border bg-card px-4 py-3 flex items-center justify-between gap-4 cursor-pointer hover:border-primary/40"
-                      onClick={() => {
-                        setSelectedTransferId(transfer.id);
-                        setOpenTransferDetail(true);
-                      }}
+                      className="rounded-xl border border-border bg-card px-4 py-3 flex items-center justify-between gap-4 hover:bg-muted/20 hover:shadow-sm transition-all"
                     >
-                      <div className="space-y-1">
+                      <button
+                        type="button"
+                        className="space-y-1 text-left flex-1 min-w-0 group/detail"
+                        onClick={() => openTransferDetailDialog(transfer.id)}
+                      >
                         <div className="flex items-center gap-2">
                           <span
                             className={`px-2 py-0.5 rounded text-xs font-semibold border ${statusClass}`}
@@ -1584,16 +1626,20 @@ export default function CoordinatorInventoryPage() {
                             ? new Date(transfer.createdAt).toLocaleDateString('vi-VN')
                             : 'N/A'}
                         </p>
-                      </div>
+                        <div className="pt-1 flex items-center gap-1 text-xs text-primary font-medium group-hover/detail:underline">
+                          <span className="material-symbols-outlined text-sm">visibility</span>
+                          Xem chi tiết phiếu
+                        </div>
+                      </button>
                       <div className="flex flex-wrap gap-2 shrink-0">
                         {isPending && (
                           <Button
                             size="sm"
-                            variant="primary"
-                            className="gap-1"
-                            onClick={() => {
-                              setSelectedTransferId(transfer.id);
-                              setOpenApproveTransfer(true);
+                            variant="success"
+                            className="gap-1 shadow-sm"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openApproveTransferDialog(transfer.id);
                             }}
                           >
                             <span className="material-symbols-outlined text-sm">check_circle</span>
@@ -1603,11 +1649,11 @@ export default function CoordinatorInventoryPage() {
                         {isApproved && (
                           <Button
                             size="sm"
-                            variant="outline"
-                            className="gap-1"
-                            onClick={() => {
-                              setSelectedTransferId(transfer.id);
-                              setOpenShipTransfer(true);
+                            variant="primary"
+                            className="gap-1 shadow-sm"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openShipTransferDialog(transfer.id);
                             }}
                           >
                             <span className="material-symbols-outlined text-sm">
@@ -1620,10 +1666,10 @@ export default function CoordinatorInventoryPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="gap-1 text-destructive"
-                            onClick={() => {
-                              setSelectedTransferId(transfer.id);
-                              setOpenCancelTransfer(true);
+                            className="gap-1 border-red-200 text-destructive hover:bg-red-50 dark:hover:bg-red-950/20"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openCancelTransferDialog(transfer.id);
                             }}
                           >
                             <span className="material-symbols-outlined text-sm">close</span>
@@ -2085,172 +2131,71 @@ export default function CoordinatorInventoryPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Approve Transfer Confirmation Dialog */}
-      <Dialog open={openApproveTransfer} onOpenChange={setOpenApproveTransfer}>
-        <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
-          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
-            <DialogTitle className="text-xl font-bold text-foreground">
-              Phê duyệt phiếu điều phối
-            </DialogTitle>
-            <DialogDescription>
-              Xác nhận phê duyệt phiếu và tạo giao dịch xuất kho tương ứng.
-            </DialogDescription>
-          </DialogHeader>
+      <ConfirmDialog
+        open={openApproveTransfer}
+        onOpenChange={(open) => {
+          setOpenApproveTransfer(open);
+          if (!open) setSelectedTransferId(null);
+        }}
+        title="Phê duyệt phiếu điều phối"
+        description={`${selectedTransferSummary.join(' • ')}. Phiếu sẽ chuyển sang trạng thái đã duyệt và sẵn sàng giao hàng.`}
+        confirmText={approveTransferStatus === 'pending' ? 'Đang phê duyệt...' : 'Phê duyệt phiếu'}
+        cancelText="Đóng"
+        variant="success"
+        onConfirm={() => {
+          void handleApproveTransfer();
+        }}
+      />
 
-          {selectedTransfer && (
-            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
-              <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2 text-sm">
-                <p>
-                  <span className="text-muted-foreground">Mã phiếu:</span>{' '}
-                  <span className="font-mono font-semibold">{selectedTransfer.id}</span>
-                </p>
-                <p>
-                  <span className="text-muted-foreground">Điểm đến:</span>{' '}
-                  <span className="font-medium">
-                    {selectedTransfer.destinationStationName ||
-                      selectedTransfer.destinationStationId}
-                  </span>
-                </p>
-                {selectedTransfer.reason && (
-                  <p>
-                    <span className="text-muted-foreground">Lý do:</span> {selectedTransfer.reason}
-                  </p>
-                )}
-                <div>
-                  <p className="text-muted-foreground mb-1">Vật phẩm:</p>
-                  <ul className="space-y-1">
-                    {(selectedTransfer.items || []).map((item) => {
-                      const supply = supplyMap.get(item.supplyItemId);
-                      return (
-                        <li key={item.supplyItemId} className="flex justify-between">
-                          <span>{supply?.name || item.supplyItemId}</span>
-                          <span className="font-semibold">
-                            {formatNumberVN(item.requestedQuantity ?? item.quantity ?? 0)}{' '}
-                            {supply?.unit || ''}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              </div>
+      <ConfirmDialog
+        open={openShipTransfer}
+        onOpenChange={(open) => {
+          setOpenShipTransfer(open);
+          if (!open) setSelectedTransferId(null);
+        }}
+        title="Đánh dấu đang giao"
+        description={`${selectedTransferSummary.join(' • ')}. Phiếu sẽ chuyển sang trạng thái đang vận chuyển.`}
+        confirmText={
+          shipTransferStatus === 'pending' ? 'Đang cập nhật...' : 'Chuyển sang đang giao'
+        }
+        cancelText="Đóng"
+        variant="info"
+        onConfirm={() => {
+          void handleShipTransfer();
+        }}
+      />
 
-              <p className="text-sm text-muted-foreground">
-                Sau khi phê duyệt, hệ thống sẽ tự động tạo giao dịch{' '}
-                <span className="font-semibold text-foreground">xuất kho – Chuyển điều phối</span>{' '}
-                liên kết với phiếu này.
-              </p>
-            </div>
-          )}
+      <ConfirmDialog
+        open={openReceiveTransfer}
+        onOpenChange={(open) => {
+          setOpenReceiveTransfer(open);
+          if (!open) setSelectedTransferId(null);
+        }}
+        title="Xác nhận nhận hàng"
+        description={`${selectedTransferSummary.join(' • ')}. Hệ thống sẽ tạo giao dịch nhập kho theo số lượng thực nhận.`}
+        confirmText={receiveTransferStatus === 'pending' ? 'Đang xác nhận...' : 'Xác nhận đã nhận'}
+        cancelText="Đóng"
+        variant="success"
+        onConfirm={() => {
+          void handleReceiveTransfer();
+        }}
+      />
 
-          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2 shrink-0">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setOpenApproveTransfer(false);
-                setSelectedTransferId(null);
-              }}
-            >
-              Hủy
-            </Button>
-            <Button
-              variant="primary"
-              className="gap-2"
-              disabled={approveTransferStatus === 'pending'}
-              onClick={() => void handleApproveTransfer()}
-            >
-              <span className="material-symbols-outlined text-lg">check_circle</span>
-              {approveTransferStatus === 'pending' ? 'Đang xử lý...' : 'Xác nhận phê duyệt'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={openShipTransfer} onOpenChange={setOpenShipTransfer}>
-        <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
-          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
-            <DialogTitle>Đánh dấu đang giao</DialogTitle>
-            <DialogDescription>
-              Xác nhận phiếu đã được xuất kho và đang vận chuyển.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto p-6">
-            <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-              Phiếu sẽ được chuyển sang trạng thái{' '}
-              <span className="font-semibold text-foreground">Đang vận chuyển</span>.
-            </div>
-          </div>
-          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2 shrink-0">
-            <Button variant="outline" onClick={() => setOpenShipTransfer(false)}>
-              Hủy
-            </Button>
-            <Button
-              variant="primary"
-              disabled={shipTransferStatus === 'pending'}
-              onClick={() => void handleShipTransfer()}
-            >
-              {shipTransferStatus === 'pending' ? 'Đang xử lý...' : 'Xác nhận đang giao'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={openReceiveTransfer} onOpenChange={setOpenReceiveTransfer}>
-        <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
-          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
-            <DialogTitle>Xác nhận nhận hàng</DialogTitle>
-            <DialogDescription>
-              Xác nhận trạm đích đã nhận hàng. Hệ thống sẽ tạo giao dịch nhập kho tương ứng.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto p-6">
-            <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-              Hệ thống sẽ tạo giao dịch{' '}
-              <span className="font-semibold text-foreground">nhập kho</span> theo số lượng thực tế
-              đã nhận.
-            </div>
-          </div>
-          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2 shrink-0">
-            <Button variant="outline" onClick={() => setOpenReceiveTransfer(false)}>
-              Hủy
-            </Button>
-            <Button
-              variant="primary"
-              disabled={receiveTransferStatus === 'pending'}
-              onClick={() => void handleReceiveTransfer()}
-            >
-              {receiveTransferStatus === 'pending' ? 'Đang xử lý...' : 'Xác nhận nhận hàng'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={openCancelTransfer} onOpenChange={setOpenCancelTransfer}>
-        <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
-          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
-            <DialogTitle>Hủy phiếu điều phối</DialogTitle>
-            <DialogDescription>Xác nhận hủy phiếu điều phối này.</DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto p-6">
-            <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-              Thao tác này sẽ cập nhật phiếu sang trạng thái{' '}
-              <span className="font-semibold text-destructive">Đã hủy</span>.
-            </div>
-          </div>
-          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2 shrink-0">
-            <Button variant="outline" onClick={() => setOpenCancelTransfer(false)}>
-              Hủy
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={cancelTransferStatus === 'pending'}
-              onClick={() => void handleCancelTransfer()}
-            >
-              {cancelTransferStatus === 'pending' ? 'Đang xử lý...' : 'Xác nhận hủy'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={openCancelTransfer}
+        onOpenChange={(open) => {
+          setOpenCancelTransfer(open);
+          if (!open) setSelectedTransferId(null);
+        }}
+        title="Hủy phiếu điều phối"
+        description={`${selectedTransferSummary.join(' • ')}. Thao tác này sẽ chuyển phiếu sang trạng thái đã hủy.`}
+        confirmText={cancelTransferStatus === 'pending' ? 'Đang hủy...' : 'Hủy phiếu'}
+        cancelText="Đóng"
+        variant="destructive"
+        onConfirm={() => {
+          void handleCancelTransfer();
+        }}
+      />
 
       <Dialog open={openTransferDetail} onOpenChange={setOpenTransferDetail}>
         <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
