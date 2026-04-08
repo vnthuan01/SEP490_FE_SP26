@@ -8,6 +8,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useNavigate } from 'react-router-dom';
 import { useTeamMembers, useTeams, useTeamsInStation } from '@/hooks/useTeams';
 import {
+  useAssignTeamToCampaign,
+  useCampaignSummary,
+  useCampaignTeams,
+  useCampaigns,
+  useRemoveTeamFromCampaign,
+  useUpdateCampaignTeamStatus,
+} from '@/hooks/useCampaigns';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -29,7 +37,33 @@ import { useVolunteerProfiles } from '@/hooks/useVolunteerProfiles';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
 import { toast } from 'sonner';
 import type { TeamStatus } from '@/enums/beEnums';
-import { TeamStatusLabel, getTeamStatusClass, parseEnumValue } from '@/enums/beEnums';
+import {
+  CampaignTeamRole,
+  CampaignTeamStatus,
+  TeamStatusLabel,
+  getCampaignStatusClass,
+  getCampaignStatusLabel,
+  getCampaignTypeLabel,
+  getTeamStatusClass,
+  parseEnumValue,
+} from '@/enums/beEnums';
+
+const CAMPAIGN_TEAM_ROLE_LABEL: Record<number, string> = {
+  [CampaignTeamRole.Logistics]: 'Hậu cần',
+  [CampaignTeamRole.Medical]: 'Y tế',
+  [CampaignTeamRole.Relief]: 'Cứu trợ',
+  [CampaignTeamRole.Communication]: 'Điều phối',
+  [CampaignTeamRole.Support]: 'Hỗ trợ',
+};
+
+const CAMPAIGN_TEAM_STATUS_LABEL: Record<number, string> = {
+  [CampaignTeamStatus.Invited]: 'Đã mời',
+  [CampaignTeamStatus.Accepted]: 'Đã chấp nhận',
+  [CampaignTeamStatus.Active]: 'Đang tham gia',
+  [CampaignTeamStatus.Completed]: 'Hoàn thành',
+  [CampaignTeamStatus.Withdrawn]: 'Rút lui',
+  [CampaignTeamStatus.Cancelled]: 'Đã hủy',
+};
 
 type LegacyStatus = 'available' | 'moving' | 'rescuing' | 'lost-contact';
 
@@ -83,12 +117,20 @@ export default function CoordinatorTeamManagementPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
+  const [isCampaignAssignmentOpen, setIsCampaignAssignmentOpen] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [selectedVolunteerIds, setSelectedVolunteerIds] = useState<string[]>([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const [selectedCampaignRole, setSelectedCampaignRole] = useState<string>(
+    String(CampaignTeamRole.Relief),
+  );
+  const [selectedCampaignInitialStatus, setSelectedCampaignInitialStatus] = useState<string>(
+    String(CampaignTeamStatus.Invited),
+  );
   const navigate = useNavigate();
 
   const isLoading = isLoadingStation || isLoadingTeamList;
@@ -134,6 +176,19 @@ export default function CoordinatorTeamManagementPage() {
     pageSize: 200,
   });
 
+  const { campaigns, isLoading: isLoadingCampaigns } = useCampaigns({
+    pageIndex: 1,
+    pageSize: 200,
+  });
+  const { summary: selectedCampaignSummary } = useCampaignSummary(selectedCampaignId || '');
+  const { teams: assignedCampaignTeams, isLoading: isLoadingAssignedCampaignTeams } =
+    useCampaignTeams(selectedCampaignId || '');
+  const { mutateAsync: assignTeamToCampaign, status: assignTeamToCampaignStatus } =
+    useAssignTeamToCampaign();
+  const { mutateAsync: updateCampaignTeamStatus } = useUpdateCampaignTeamStatus();
+  const { mutateAsync: removeTeamFromCampaign, status: removeTeamFromCampaignStatus } =
+    useRemoveTeamFromCampaign();
+
   const filteredTeams = useMemo(() => {
     return teams.filter(
       (t) =>
@@ -172,6 +227,21 @@ export default function CoordinatorTeamManagementPage() {
       return userId && !memberIds.has(userId);
     });
   }, [members, profiles]);
+
+  const assignedCampaignTeamIds = useMemo(
+    () => new Set((assignedCampaignTeams || []).map((item) => String(item.teamId))),
+    [assignedCampaignTeams],
+  );
+
+  const availableCampaigns = useMemo(
+    () => campaigns.filter((campaign) => Number(campaign.type) !== 0),
+    [campaigns],
+  );
+
+  const selectedCampaignLabel = useMemo(
+    () => availableCampaigns.find((campaign) => campaign.campaignId === selectedCampaignId),
+    [availableCampaigns, selectedCampaignId],
+  );
 
   const handleCreateTeam = async () => {
     if (!reliefStationId) {
@@ -229,6 +299,53 @@ export default function CoordinatorTeamManagementPage() {
   const handleRemoveMember = async (userId: string) => {
     if (!selectedTeamId) return;
     await removeMember(userId);
+  };
+
+  const handleAssignTeamToSelectedCampaign = async () => {
+    if (!selectedTeamId) {
+      toast.error('Vui lòng chọn đội ngũ trước khi gán vào chiến dịch.');
+      return;
+    }
+
+    if (!selectedCampaignId) {
+      toast.error('Vui lòng chọn chiến dịch.');
+      return;
+    }
+
+    try {
+      await assignTeamToCampaign({
+        id: selectedCampaignId,
+        data: {
+          teamId: selectedTeamId,
+          role: Number(selectedCampaignRole),
+          initialStatus: Number(selectedCampaignInitialStatus),
+        },
+      });
+    } catch {
+      return;
+    }
+
+    await refetch();
+  };
+
+  const handleUpdateAssignedTeamStatus = async (
+    campaignId: string,
+    teamId: string,
+    status: number,
+  ) => {
+    try {
+      await updateCampaignTeamStatus({ id: campaignId, teamId, data: { status } });
+    } catch {
+      return;
+    }
+  };
+
+  const handleRemoveAssignedTeam = async (campaignId: string, teamId: string) => {
+    try {
+      await removeTeamFromCampaign({ id: campaignId, teamId });
+    } catch {
+      return;
+    }
   };
 
   return (
@@ -523,6 +640,18 @@ export default function CoordinatorTeamManagementPage() {
                     {getStatusLabel(selectedTeam.status)}
                   </span>
                   <div className="flex gap-2">
+                    <button
+                      className="p-2 text-muted-foreground hover:text-primary hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors"
+                      onClick={() => {
+                        setSelectedCampaignId('');
+                        setSelectedCampaignRole(String(CampaignTeamRole.Relief));
+                        setSelectedCampaignInitialStatus(String(CampaignTeamStatus.Invited));
+                        setIsCampaignAssignmentOpen(true);
+                      }}
+                      title="Gán đội vào chiến dịch"
+                    >
+                      <span className="material-symbols-outlined">campaign</span>
+                    </button>
                     <button className="p-2 text-muted-foreground hover:text-slate-900 dark:hover:text-foreground hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors">
                       <span className="material-symbols-outlined">edit</span>
                     </button>
@@ -554,6 +683,125 @@ export default function CoordinatorTeamManagementPage() {
                 <p className="mt-4 text-sm text-muted-foreground">
                   {selectedTeam.description?.trim() || 'Chưa có mô tả cho đội ngũ này.'}
                 </p>
+                <div className="mt-4 rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        Chiến dịch được phân công
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Moderator điều phối đội vào chiến dịch từ đây.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => {
+                        setSelectedCampaignId('');
+                        setSelectedCampaignRole(String(CampaignTeamRole.Relief));
+                        setSelectedCampaignInitialStatus(String(CampaignTeamStatus.Invited));
+                        setIsCampaignAssignmentOpen(true);
+                      }}
+                    >
+                      <span className="material-symbols-outlined text-sm">add</span>
+                      Gán chiến dịch
+                    </Button>
+                  </div>
+
+                  {selectedCampaignId ? (
+                    isLoadingAssignedCampaignTeams ? (
+                      <p className="text-sm text-muted-foreground">
+                        Đang tải phân công chiến dịch...
+                      </p>
+                    ) : assignedCampaignTeams.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Chiến dịch này chưa có đội nào được gán.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {assignedCampaignTeams.map((assignment) => {
+                          const isCurrentTeam =
+                            String(assignment.teamId) === String(selectedTeam.id);
+                          return (
+                            <div
+                              key={assignment.campaignTeamId}
+                              className={cn(
+                                'rounded-lg border p-3 space-y-3',
+                                isCurrentTeam
+                                  ? 'border-primary/40 bg-primary/5'
+                                  : 'border-border bg-background',
+                              )}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-medium text-foreground">
+                                    {assignment.teamName}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Vai trò:{' '}
+                                    {CAMPAIGN_TEAM_ROLE_LABEL[assignment.role] || assignment.role}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Thành viên: {assignment.memberCount}
+                                  </p>
+                                </div>
+                                <span className="inline-flex items-center rounded-full border border-border px-2.5 py-1 text-xs font-medium text-foreground">
+                                  {CAMPAIGN_TEAM_STATUS_LABEL[assignment.status] ||
+                                    assignment.status}
+                                </span>
+                              </div>
+
+                              {isCurrentTeam && selectedCampaignId && (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Select
+                                    onValueChange={(value) =>
+                                      handleUpdateAssignedTeamStatus(
+                                        selectedCampaignId,
+                                        assignment.teamId,
+                                        Number(value),
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger className="w-[220px]">
+                                      <SelectValue placeholder="Cập nhật trạng thái" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {Object.entries(CAMPAIGN_TEAM_STATUS_LABEL).map(
+                                        ([key, label]) => (
+                                          <SelectItem key={key} value={key}>
+                                            {label}
+                                          </SelectItem>
+                                        ),
+                                      )}
+                                    </SelectContent>
+                                  </Select>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-destructive"
+                                    onClick={() =>
+                                      handleRemoveAssignedTeam(
+                                        selectedCampaignId,
+                                        assignment.teamId,
+                                      )
+                                    }
+                                    disabled={removeTeamFromCampaignStatus === 'pending'}
+                                  >
+                                    Gỡ khỏi chiến dịch
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Chọn một chiến dịch trong hộp thoại gán để xem chi tiết phân công đội.
+                    </p>
+                  )}
+                </div>
                 {/* Mini Map Preview Placeholder */}
                 <div className="mt-4 w-full h-32 rounded-lg bg-slate-100 dark:bg-background relative flex items-center justify-center border border-slate-200 dark:border-border group cursor-pointer">
                   <div
@@ -838,6 +1086,169 @@ export default function CoordinatorTeamManagementPage() {
               disabled={selectedVolunteerIds.length === 0 || addMembersBulkStatus === 'pending'}
             >
               {addMembersBulkStatus === 'pending' ? 'Đang thêm...' : 'Thêm thành viên đã chọn'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isCampaignAssignmentOpen} onOpenChange={setIsCampaignAssignmentOpen}>
+        <DialogContent className="sm:max-w-[760px]">
+          <DialogHeader>
+            <DialogTitle>Gán đội vào chiến dịch</DialogTitle>
+            <DialogDescription>
+              Chỉ dùng các API teams/campaigns dành cho moderator điều phối đội vào chiến dịch.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Chọn chiến dịch</label>
+              <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={isLoadingCampaigns ? 'Đang tải chiến dịch...' : 'Chọn chiến dịch'}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableCampaigns.map((campaign) => (
+                    <SelectItem key={campaign.campaignId} value={campaign.campaignId}>
+                      {campaign.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedCampaignLabel && (
+              <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-foreground">{selectedCampaignLabel.name}</p>
+                  <span
+                    className={cn(
+                      'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium',
+                      getCampaignStatusClass(selectedCampaignLabel.status),
+                    )}
+                  >
+                    {getCampaignStatusLabel(selectedCampaignLabel.status)}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-border px-2.5 py-1 text-xs font-medium">
+                    {getCampaignTypeLabel(selectedCampaignLabel.type)}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Thời gian: {new Date(selectedCampaignLabel.startDate).toLocaleDateString('vi-VN')}{' '}
+                  - {new Date(selectedCampaignLabel.endDate).toLocaleDateString('vi-VN')}
+                </p>
+                {selectedCampaignSummary && (
+                  <p className="text-xs text-muted-foreground">
+                    Ngân sách còn lại:{' '}
+                    {selectedCampaignSummary.remainingBudget?.toLocaleString('vi-VN')} • Tiến độ
+                    nhân lực: {selectedCampaignSummary.peopleReached}/
+                    {selectedCampaignSummary.peopleTarget}
+                  </p>
+                )}
+                {selectedTeam && assignedCampaignTeamIds.has(String(selectedTeam.id)) && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Đội này đã được gán vào chiến dịch được chọn.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Vai trò trong chiến dịch</label>
+                <Select value={selectedCampaignRole} onValueChange={setSelectedCampaignRole}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn vai trò" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(CAMPAIGN_TEAM_ROLE_LABEL).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Trạng thái ban đầu</label>
+                <Select
+                  value={selectedCampaignInitialStatus}
+                  onValueChange={setSelectedCampaignInitialStatus}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn trạng thái" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(CAMPAIGN_TEAM_STATUS_LABEL).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {selectedCampaignId && (
+              <div className="rounded-xl border border-border bg-background p-4 space-y-3">
+                <p className="text-sm font-semibold text-foreground">Đội đã tham gia chiến dịch</p>
+                {isLoadingAssignedCampaignTeams ? (
+                  <p className="text-sm text-muted-foreground">Đang tải danh sách đội...</p>
+                ) : assignedCampaignTeams.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Chưa có đội nào trong chiến dịch này.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
+                    {assignedCampaignTeams.map((assignment) => (
+                      <div
+                        key={assignment.campaignTeamId}
+                        className={cn(
+                          'rounded-lg border px-3 py-2',
+                          String(assignment.teamId) === String(selectedTeamId)
+                            ? 'border-primary/40 bg-primary/5'
+                            : 'border-border',
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">
+                              {assignment.teamName}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {CAMPAIGN_TEAM_ROLE_LABEL[assignment.role] || assignment.role} •{' '}
+                              {CAMPAIGN_TEAM_STATUS_LABEL[assignment.status] || assignment.status}
+                            </p>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {assignment.memberCount} thành viên
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCampaignAssignmentOpen(false)}>
+              Đóng
+            </Button>
+            <Button
+              onClick={handleAssignTeamToSelectedCampaign}
+              disabled={
+                !selectedTeamId ||
+                !selectedCampaignId ||
+                assignTeamToCampaignStatus === 'pending' ||
+                assignedCampaignTeamIds.has(String(selectedTeamId))
+              }
+            >
+              {assignTeamToCampaignStatus === 'pending' ? 'Đang gán...' : 'Gán đội vào chiến dịch'}
             </Button>
           </DialogFooter>
         </DialogContent>

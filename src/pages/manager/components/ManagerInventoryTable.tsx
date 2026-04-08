@@ -40,7 +40,6 @@ export function ManagerInventoryTable({
   onImportStock,
   onUpdateStock,
   onViewStockDetail,
-  onCreateTransfer,
   onViewTransfers,
   onViewTransactions,
   onToggleStatus,
@@ -56,7 +55,6 @@ export function ManagerInventoryTable({
   onUpdateStock: (inventoryId: string, inventoryName: string) => void;
   /** Mở dialog xem chi tiết tồn kho (chỉ đọc) */
   onViewStockDetail: (inventoryId: string, inventoryName: string) => void;
-  onCreateTransfer: (inventoryId: string, reliefStationId: string, inventoryName: string) => void;
   onViewTransfers: (inventoryId: string, reliefStationId: string, inventoryName: string) => void;
   onViewTransactions: (inventoryId: string, inventoryName: string) => void;
   onToggleStatus: (inventoryId: string, level: number, status: EntityStatus) => void;
@@ -184,20 +182,7 @@ export function ManagerInventoryTable({
                           onClick={() => onUpdateStock(inv.inventoryId, inv.reliefStationName)}
                         >
                           <span className="material-symbols-outlined text-lg">inventory</span>
-                          Cập nhật tồn kho
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="gap-2 text-primary"
-                          onClick={() =>
-                            onCreateTransfer(
-                              inv.inventoryId,
-                              inv.reliefStationId,
-                              inv.reliefStationName,
-                            )
-                          }
-                        >
-                          <span className="material-symbols-outlined text-lg">swap_horiz</span>
-                          Tạo phiếu chuyển kho
+                          Cập nhật thông tin tồn kho hiện có
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="gap-2 text-primary"

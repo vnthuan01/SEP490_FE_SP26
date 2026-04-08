@@ -2,6 +2,12 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } fro
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 // import { Analytics } from '@vercel/analytics/react';
+
+type VisitorChartPoint = {
+  name: string;
+  visits: number;
+};
+
 const data = [
   { name: 'Mon', visits: 4000 },
   { name: 'Tue', visits: 3000 },
@@ -12,26 +18,44 @@ const data = [
   { name: 'Sun', visits: 3000 },
 ];
 
-export function VisitorChart({ className }: { className?: string }) {
+export function VisitorChart({
+  className,
+  data: providedData,
+  title = 'Lượng truy cập',
+  subtitle = 'Dữ liệu truy cập hệ thống',
+  icon = 'groups',
+  trendLabel = '+14.5%',
+}: {
+  className?: string;
+  data?: VisitorChartPoint[];
+  title?: string;
+  subtitle?: string;
+  icon?: string;
+  trendLabel?: string;
+}) {
+  const chartData = providedData?.length ? providedData : data;
+
   return (
-    <Card className={cn('bg-card border-border', className)}>
+    <Card className={cn('bg-card border-border h-full overflow-hidden', className)}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <div>
           <CardTitle className="text-lg font-bold text-foreground flex items-center gap-2">
-            <span className="material-symbols-outlined text-green-500">groups</span>
-            Lượng truy cập
+            <span className="material-symbols-outlined text-green-500">{icon}</span>
+            {title}
           </CardTitle>
-          <p className="text-xs text-muted-foreground mt-1">Vercel Analytics</p>
+          <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
         </div>
-        <div className="flex items-center gap-2 text-xs font-medium bg-primary/10 text-primary px-2 py-1 rounded-full">
-          <span className="material-symbols-outlined text-sm">trending_up</span>
-          <span>+14.5%</span>
-        </div>
+        {trendLabel ? (
+          <div className="flex items-center gap-2 text-xs font-medium bg-primary/10 text-primary px-2 py-1 rounded-full">
+            <span className="material-symbols-outlined text-sm">trending_up</span>
+            <span>{trendLabel}</span>
+          </div>
+        ) : null}
       </CardHeader>
-      <CardContent>
-        <div className="h-[200px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data}>
+      <CardContent className="flex flex-col min-h-0 h-full">
+        <div className="flex-1 min-h-0 h-[200px] w-full min-w-0">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+            <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#8cf4c3ff" vertical={false} />
               <XAxis
                 dataKey="name"

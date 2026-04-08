@@ -4,7 +4,7 @@
  * cho AuthContext cập nhật lại token state sau khi refresh thành công.
  */
 
-type TokenUpdateCallback = (accessToken: string, refreshToken?: string) => void;
+type TokenUpdateCallback = (accessToken: string | null, refreshToken?: string | null) => void;
 
 let _callback: TokenUpdateCallback | null = null;
 
@@ -19,6 +19,6 @@ export function unregisterTokenUpdateCallback(): void {
 }
 
 /** Gọi sau khi refresh token thành công trong interceptor */
-export function notifyTokenUpdate(accessToken: string, refreshToken?: string): void {
+export function notifyTokenUpdate(accessToken: string | null, refreshToken?: string | null): void {
   _callback?.(accessToken, refreshToken);
 }

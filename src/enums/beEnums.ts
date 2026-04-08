@@ -1196,6 +1196,37 @@ export function getSupplyCategoryClass(value: unknown): string {
   return 'border-border bg-muted text-muted-foreground';
 }
 
+export function getInventoryStatusLabel(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in InventoryStatusLabel) return InventoryStatusLabel[n as InventoryStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'critical') return InventoryStatusLabel[InventoryStatus.Critical];
+    if (normalized === 'needrestock') return InventoryStatusLabel[InventoryStatus.NeedRestock];
+    if (normalized === 'safe') return InventoryStatusLabel[InventoryStatus.Safe];
+    if (normalized === 'full') return InventoryStatusLabel[InventoryStatus.Full];
+    return value;
+  }
+
+  return 'Không rõ';
+}
+
+export function getInventoryStatusClass(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in InventoryStatusClass) return InventoryStatusClass[n as InventoryStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'critical') return InventoryStatusClass[InventoryStatus.Critical];
+    if (normalized === 'needrestock') return InventoryStatusClass[InventoryStatus.NeedRestock];
+    if (normalized === 'safe') return InventoryStatusClass[InventoryStatus.Safe];
+    if (normalized === 'full') return InventoryStatusClass[InventoryStatus.Full];
+  }
+
+  return 'border-border bg-muted text-muted-foreground';
+}
+
 export function getSupplyAllocationStatusLabel(value: unknown): string {
   const n = parseEnumValue(value);
   if (n in SupplyAllocationStatusLabel)

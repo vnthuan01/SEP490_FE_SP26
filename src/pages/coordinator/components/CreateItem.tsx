@@ -14,6 +14,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import type { NewInventoryItem, ItemInventoryProps } from '@/types/createItemInventory';
 import CustomCalendar from '@/components/ui/customCalendar';
+import { clearDialogDraft, readDialogDraft, writeDialogDraft } from '@/lib/dialogDraft';
 
 const UNIT_OPTIONS = ['Thùng', 'Hộp', 'Bao', 'Chai', 'Cái', 'Gói'];
 
@@ -47,6 +48,7 @@ export function CreateInventoryItemDialog({
   initialSupplyItemId,
   existingStock,
 }: ItemInventoryProps) {
+  const CREATE_ITEM_DRAFT_KEY = 'coordinator-create-item-draft';
   const [form, setForm] = React.useState<NewInventoryItem>({
     supplyItemId: '',
     name: '',
@@ -63,6 +65,11 @@ export function CreateInventoryItemDialog({
   React.useEffect(() => {
     if (!open) return;
     const selected = supplyItems.find((item) => item.id === initialSupplyItemId);
+    const draft = readDialogDraft<NewInventoryItem | null>(CREATE_ITEM_DRAFT_KEY, null);
+    if (draft) {
+      setForm(draft);
+      return;
+    }
     setForm({
       supplyItemId: selected?.id || '',
       name: selected?.name || '',
@@ -76,6 +83,10 @@ export function CreateInventoryItemDialog({
     });
     setOpenExpirationDateCalendarDialog(false);
   }, [open, initialSupplyItemId, supplyItems, existingStock]);
+
+  React.useEffect(() => {
+    writeDialogDraft(CREATE_ITEM_DRAFT_KEY, form);
+  }, [form]);
 
   const update = <K extends keyof NewInventoryItem>(key: K, value: NewInventoryItem[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -104,14 +115,14 @@ export function CreateInventoryItemDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg p-0 overflow-hidden">
-        <DialogHeader className="px-6 py-4 border-b border-border">
+      <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
+        <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
           <DialogTitle className="text-xl font-bold text-foreground">
             Nhập kho – Vật tư mới
           </DialogTitle>
         </DialogHeader>
 
-        <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
           {/* SUPPLY ITEM */}
           <div className="space-y-2">
             <Label>
@@ -338,14 +349,37 @@ export function CreateInventoryItemDialog({
         </div>
 
         {/* ACTIONS */}
-        <div className="border-t border-border px-6 py-4 flex justify-end gap-2 bg-muted/40">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <div className="border-t border-border px-6 py-4 flex justify-end gap-2 bg-muted/40 shrink-0">
+          <Button
+            variant="outline"
+            onClick={() => {
+              clearDialogDraft(CREATE_ITEM_DRAFT_KEY);
+              const selected = supplyItems.find((item) => item.id === initialSupplyItemId);
+              setForm({
+                supplyItemId: selected?.id || '',
+                name: selected?.name || '',
+                category: selected?.category || '',
+                icon: selected?.icon || '',
+                iconUrl: selected?.iconUrl || selected?.icon || '',
+                unit: selected?.unit || '',
+                quantity: 1,
+                capacity: existingStock?.maximumStockLevel,
+                expirationDate: null,
+              });
+            }}
+          >
+            <span className="material-symbols-outlined mr-1">remove_done</span>
+            Xóa nháp
+          </Button>
+          <Button variant="destructive" onClick={() => onOpenChange(false)}>
+            <span className="material-symbols-outlined mr-1">close</span>
             Hủy
           </Button>
           <Button
             variant="primary"
             disabled={!canSubmit}
             onClick={() => {
+              clearDialogDraft(CREATE_ITEM_DRAFT_KEY);
               onSubmit(form);
               onOpenChange(false);
             }}
