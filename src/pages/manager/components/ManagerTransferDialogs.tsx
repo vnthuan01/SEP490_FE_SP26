@@ -132,7 +132,7 @@ export function ManagerCreateTransferDialog({
     notes: string;
     items: TransferItemDraft[];
   };
-  onFormChange: (key: 'destinationStationId' | 'reason' | 'notes', value: string) => void;
+  onFormChange: (key: 'sourceStationId' | 'reason' | 'notes', value: string) => void;
   onItemChange: (id: string, key: 'supplyItemId' | 'quantity' | 'notes', value: string) => void;
   onAddItem: () => void;
   onRemoveItem: (id: string) => void;
@@ -147,10 +147,10 @@ export function ManagerCreateTransferDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-none w-[94vw] max-w-5xl h-[88vh] overflow-hidden p-0 flex flex-col">
         <DialogHeader className="px-6 py-4 border-b border-border">
-          <DialogTitle>Tạo phiếu chuyển kho</DialogTitle>
+          <DialogTitle>Tạo yêu cầu điều phối kho</DialogTitle>
           <DialogDescription>
-            Lập phiếu chuyển hàng từ {sourceInventoryName || 'kho nguồn'} sang trạm/kho đích. Sau
-            khi tạo thành công sẽ chuyển sang bước tạo PDF và ký xác nhận.
+            Tạo yêu cầu cấp hàng cho {sourceInventoryName || 'kho đang chọn'}. Mặc định sẽ yêu cầu
+            từ kho trung tâm; bạn cũng có thể chọn kho nguồn khác cùng cấp nếu cần.
           </DialogDescription>
         </DialogHeader>
 
@@ -158,14 +158,14 @@ export function ManagerCreateTransferDialog({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label>
-                Trạm đích <RequiredMark />
+                Kho / trạm nguồn <RequiredMark />
               </Label>
               <Select
                 value={transferForm.destinationStationId}
-                onValueChange={(value) => onFormChange('destinationStationId', value)}
+                onValueChange={(value) => onFormChange('sourceStationId', value)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Chọn trạm nhận hàng" />
+                  <SelectValue placeholder="Chọn kho / trạm cấp hàng" />
                 </SelectTrigger>
                 <SelectContent>
                   {destinationStations.map((station) => (
@@ -300,7 +300,7 @@ export function ManagerCreateTransferDialog({
                         <p className="font-medium text-foreground">{selectedSupply.name}</p>
                         <p>Đơn vị: {selectedSupply.unit}</p>
                         <p>
-                          Tồn kho nguồn hiện có:{' '}
+                          Tồn kho tại nơi cấp hiện có:{' '}
                           <span className="font-semibold text-foreground">
                             {formatNumberVN(currentStock)}
                           </span>
@@ -321,7 +321,7 @@ export function ManagerCreateTransferDialog({
           </Button>
           <Button variant="primary" onClick={onSubmit} disabled={isPending}>
             <span className="material-symbols-outlined text-lg">add</span>
-            {isPending ? 'Đang tạo...' : 'Tạo phiếu chuyển kho'}
+            {isPending ? 'Đang tạo...' : 'Tạo yêu cầu điều phối'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -334,21 +334,31 @@ export function ManagerTransferHistoryDialog({
   onOpenChange,
   transfers,
   isLoading,
-  onApprove,
-  onShip,
-  onReceive,
-  onCancel,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   transfers: Array<{
     id: string;
+    transferCode?: string;
     sourceStationId: string;
+    sourceStationName?: string;
     destinationStationId: string;
+    destinationStationName?: string;
+    totalRequestedItems?: number;
+    totalRequestedQuantity?: number;
+    requestedByName?: string;
+    reason?: string;
     status: number;
     notes?: string;
     createdAt?: string;
-    items?: Array<{ supplyItemId: string; quantity: number }>;
+    items?: Array<{
+      supplyItemId: string;
+      supplyItemName?: string;
+      quantity?: number;
+      requestedQuantity?: number;
+      actualQuantity?: number | null;
+      notes?: string;
+    }>;
   }>;
   isLoading: boolean;
   onApprove: (id: string) => void;
@@ -386,7 +396,7 @@ export function ManagerTransferHistoryDialog({
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
                             <p className="font-semibold text-foreground">
-                              Mã phiếu: {transfer.id.slice(0, 8)}...
+                              Mã phiếu: {transfer.transferCode || `${transfer.id.slice(0, 8)}...`}
                             </p>
                             <Badge
                               variant="outline"
@@ -401,8 +411,9 @@ export function ManagerTransferHistoryDialog({
                             </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            Kho/trạm nguồn: {transfer.sourceStationId} → đích:{' '}
-                            {transfer.destinationStationId}
+                            Kho/trạm nguồn: {transfer.sourceStationName || transfer.sourceStationId}{' '}
+                            → đích:{' '}
+                            {transfer.destinationStationName || transfer.destinationStationId}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             Thời gian tạo:{' '}
@@ -411,22 +422,36 @@ export function ManagerTransferHistoryDialog({
                               : 'Chưa có dữ liệu'}
                           </p>
                           <p className="text-sm text-muted-foreground">
+                            Người yêu cầu: {transfer.requestedByName || 'Chưa rõ'} • Tổng dòng:{' '}
+                            {formatNumberVN(
+                              transfer.totalRequestedItems || transfer.items?.length || 0,
+                            )}{' '}
+                            • Tổng số lượng: {formatNumberVN(transfer.totalRequestedQuantity || 0)}
+                          </p>
+                          {transfer.reason && (
+                            <p className="text-sm text-muted-foreground">
+                              Lý do: {transfer.reason}
+                            </p>
+                          )}
+                          <p className="text-sm text-muted-foreground">
                             Ghi chú: {transfer.notes || 'Không có ghi chú'}
                           </p>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
+                        {/* <div className="flex flex-wrap gap-2">
                           {transfer.status === SupplyTransferStatus.Pending && (
                             <Button
                               size="sm"
-                              variant="outline"
+                              variant="success"
                               onClick={() => onApprove(transfer.id)}
                             >
+                              <span className="material-symbols-outlined">check</span>
                               Duyệt
                             </Button>
                           )}
                           {transfer.status === SupplyTransferStatus.Approved && (
                             <Button size="sm" variant="outline" onClick={() => onShip(transfer.id)}>
+                              <span className="material-symbols-outlined text-lg">ship</span>
                               Đánh dấu đang giao
                             </Button>
                           )}
@@ -451,7 +476,7 @@ export function ManagerTransferHistoryDialog({
                                 Hủy phiếu
                               </Button>
                             )}
-                        </div>
+                        </div> */}
                       </div>
 
                       <div className="rounded-xl border border-border bg-muted/20 p-4">
@@ -461,8 +486,12 @@ export function ManagerTransferHistoryDialog({
                         <div className="space-y-2 text-sm text-muted-foreground">
                           {(transfer.items || []).map((item, index) => (
                             <p key={`${transfer.id}-${item.supplyItemId}-${index}`}>
-                              Vật phẩm: {item.supplyItemId} • Số lượng:{' '}
-                              {formatNumberVN(item.quantity)}
+                              Vật phẩm: {item.supplyItemName || item.supplyItemId} • SL yêu cầu:{' '}
+                              {formatNumberVN(item.requestedQuantity ?? item.quantity ?? 0)}
+                              {typeof item.actualQuantity === 'number'
+                                ? ` • SL thực tế: ${formatNumberVN(item.actualQuantity)}`
+                                : ''}
+                              {item.notes ? ` • Ghi chú: ${item.notes}` : ''}
                             </p>
                           ))}
                         </div>

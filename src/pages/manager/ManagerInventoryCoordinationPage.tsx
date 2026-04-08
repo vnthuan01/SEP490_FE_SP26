@@ -42,19 +42,16 @@ import { useProvincialStations } from '@/hooks/useReliefStations';
 import {
   useApproveSupplyTransfer,
   useCancelSupplyTransfer,
-  useCreateSupplyTransfer,
   useReceiveSupplyTransfer,
   useShipSupplyTransfer,
+  useSupplyTransferDetails,
   useSupplyTransfersBySourceStation,
 } from '@/hooks/useSupplyTransfers';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
 import {
-  ManagerCreateTransferDialog,
   ManagerTransactionHistoryDialog,
   ManagerTransferHistoryDialog,
-  type TransferItemDraft,
 } from './components/ManagerTransferDialogs';
-import { TransferPdfWorkflowDialog } from '@/components/pdf/TransferPdfWorkflowDialog';
 import { ManagerInventoryTable } from './components/ManagerInventoryTable';
 import { ManagerPaginationControls } from './components/ManagerPaginationControls';
 import { ManagerSupplyCatalogTable } from './components/ManagerSupplyCatalogTable';
@@ -74,6 +71,10 @@ import {
   getCampaignStatusShortLabel,
   getInventoryLevelIcon,
   getInventoryLevelLabel,
+  getInventoryStatusClass,
+  getInventoryStatusLabel,
+  getSupplyCategoryClass,
+  getSupplyCategoryIcon,
   getSupplyCategoryLabel,
 } from '@/enums/beEnums';
 import {
@@ -122,16 +123,6 @@ type DongCapNhatTonKho = {
   stockId?: string;
   isExisting?: boolean;
   expirationDate?: string | null;
-};
-
-type TransferDialogState = {
-  sourceInventoryId: string;
-  sourceStationId: string;
-  sourceInventoryName: string;
-  destinationStationId: string;
-  reason: string;
-  notes: string;
-  items: TransferItemDraft[];
 };
 
 const DANH_MUC_VAT_PHAM = [
@@ -196,14 +187,6 @@ const taoDongCapNhatTonKho = (): DongCapNhatTonKho => ({
   expirationDate: null,
 });
 
-const taoDongTransfer = (): TransferItemDraft => ({
-  id: crypto.randomUUID(),
-  supplyItemId: '',
-  quantity: '1',
-  notes: '',
-  iconUrl: '',
-});
-
 export const parseLocalDateFromYmd = (value?: string | null) => {
   if (!value) return undefined;
 
@@ -236,10 +219,8 @@ export default function ManagerInventoryCoordinationPage() {
   const [openCreateSupply, setOpenCreateSupply] = useState(false);
   const [openBulkEditSupply, setOpenBulkEditSupply] = useState(false);
   const [openCreateAllocation, setOpenCreateAllocation] = useState(false);
-  const [openCreateTransfer, setOpenCreateTransfer] = useState(false);
   const [openTransferHistory, setOpenTransferHistory] = useState(false);
   const [openTransactionHistory, setOpenTransactionHistory] = useState(false);
-  const [openTransferPdfWorkflow, setOpenTransferPdfWorkflow] = useState(false);
   /** Dialog tạo tồn kho mới – chỉ cho vật phẩm chưa có trong kho */
   const [openCreateStockDialog, setOpenCreateStockDialog] = useState(false);
   /** Dialog nhập bổ sung tồn kho – chỉ POST createTransaction import */
@@ -257,6 +238,7 @@ export default function ManagerInventoryCoordinationPage() {
   const [selectedInventoryForHistory, setSelectedInventoryForHistory] = useState<{
     id: string;
     name: string;
+    stationId: string;
   } | null>(null);
   const [inventoryForm, setInventoryForm] = useState({
     reliefStationId: '',
@@ -280,17 +262,6 @@ export default function ManagerInventoryCoordinationPage() {
     sourceInventoryId: '',
     items: [taoDongDieuPhoi()],
   });
-  const [transferForm, setTransferForm] = useState<TransferDialogState>({
-    sourceInventoryId: '',
-    sourceStationId: '',
-    sourceInventoryName: '',
-    destinationStationId: '',
-    reason: '',
-    notes: '',
-    items: [taoDongTransfer()],
-  });
-  const [lastCreatedTransferId, setLastCreatedTransferId] = useState('');
-
   const { data: inventoriesResponse, isLoading: isLoadingInventories } = useInventories({
     pageIndex,
     pageSize: 4,
@@ -312,13 +283,6 @@ export default function ManagerInventoryCoordinationPage() {
     selectedInventoryForStock?.id || '',
     { pageIndex: 1, pageSize: 500 },
   );
-  const { data: transferInventoryStocksResponse } = useInventoryStocks(
-    transferForm.sourceInventoryId || '',
-    {
-      pageIndex: 1,
-      pageSize: 500,
-    },
-  );
   const { data: allocationInventoryStocksResponse, isLoading: isLoadingAllocationInventoryStocks } =
     useInventoryStocks(allocationForm.sourceInventoryId || '', {
       pageIndex: 1,
@@ -329,7 +293,7 @@ export default function ManagerInventoryCoordinationPage() {
     { pageIndex: 1, pageSize: 500 },
   );
   const { data: transferHistoryResponse, isLoading: isLoadingTransferHistory } =
-    useSupplyTransfersBySourceStation(selectedInventoryForHistory?.id || '');
+    useSupplyTransfersBySourceStation(selectedInventoryForHistory?.stationId || '');
   const { data: transactionHistoryResponse, isLoading: isLoadingTransactionHistory } =
     useInventoryTransactions(selectedInventoryForHistory?.id || '', {
       pageIndex: 1,
@@ -342,8 +306,6 @@ export default function ManagerInventoryCoordinationPage() {
   const { mutateAsync: updateStock, status: updateStockStatus } = useUpdateStock();
   const { mutateAsync: createTransaction, status: createTransactionStatus } =
     useCreateTransaction();
-  const { mutateAsync: createSupplyTransfer, status: createSupplyTransferStatus } =
-    useCreateSupplyTransfer();
   const { mutateAsync: approveSupplyTransfer } = useApproveSupplyTransfer();
   const { mutateAsync: shipSupplyTransfer } = useShipSupplyTransfer();
   const { mutateAsync: receiveSupplyTransfer } = useReceiveSupplyTransfer();
@@ -362,7 +324,6 @@ export default function ManagerInventoryCoordinationPage() {
     () => inventoryStocksResponse?.items || [],
     [inventoryStocksResponse],
   );
-  const transferInventoryStocks = transferInventoryStocksResponse?.items || [];
   const allocationInventoryStocks = useMemo(
     () => allocationInventoryStocksResponse?.items || [],
     [allocationInventoryStocksResponse],
@@ -374,6 +335,11 @@ export default function ManagerInventoryCoordinationPage() {
   const transferHistory = Array.isArray(transferHistoryResponse)
     ? transferHistoryResponse
     : (transferHistoryResponse as any)?.items || [];
+  const { transferMap: transferHistoryDetailMap, isLoading: isLoadingTransferHistoryDetails } =
+    useSupplyTransferDetails(transferHistory.map((transfer: any) => transfer.id));
+  const detailedTransferHistory = transferHistory.map(
+    (transfer: any) => transferHistoryDetailMap.get(transfer.id) || transfer,
+  );
   const transactionHistory = (transactionHistoryResponse as any)?.items || [];
 
   const activeInventories = useMemo(
@@ -982,101 +948,23 @@ export default function ManagerInventoryCoordinationPage() {
     setOpenUpdateStockDialog(false);
   };
 
-  const openTransferDialog = (
-    inventoryId: string,
-    reliefStationId: string,
-    inventoryName: string,
-  ) => {
-    setTransferForm({
-      sourceInventoryId: inventoryId,
-      sourceStationId: reliefStationId,
-      sourceInventoryName: inventoryName,
-      destinationStationId: '',
-      reason: '',
-      notes: '',
-      items: [taoDongTransfer()],
-    });
-    setOpenCreateTransfer(true);
-  };
-
-  const updateTransferForm = (key: 'destinationStationId' | 'reason' | 'notes', value: string) => {
-    setTransferForm((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const updateTransferItem = (
-    id: string,
-    key: 'supplyItemId' | 'quantity' | 'notes',
-    value: string,
-  ) => {
-    setTransferForm((prev) => ({
-      ...prev,
-      items: prev.items.map((item) => (item.id === id ? { ...item, [key]: value } : item)),
-    }));
-  };
-
-  const addTransferItem = () => {
-    setTransferForm((prev) => ({
-      ...prev,
-      items: [...prev.items, taoDongTransfer()],
-    }));
-  };
-
-  const removeTransferItem = (id: string) => {
-    setTransferForm((prev) => ({
-      ...prev,
-      items: prev.items.length === 1 ? prev.items : prev.items.filter((item) => item.id !== id),
-    }));
-  };
-
-  const handleCreateTransfer = async () => {
-    if (!transferForm.sourceStationId || !transferForm.destinationStationId) {
-      toast.error('Vui lòng chọn đầy đủ kho nguồn và trạm đích.');
-      return;
-    }
-
-    if (!transferForm.reason.trim()) {
-      toast.error('Vui lòng nhập lý do chuyển kho.');
-      return;
-    }
-
-    const validItems = transferForm.items
-      .map((item) => ({
-        supplyItemId: item.supplyItemId,
-        quantity: parseFormattedNumber(item.quantity),
-        notes: item.notes?.trim() || undefined,
-      }))
-      .filter((item) => item.supplyItemId && item.quantity > 0);
-
-    if (validItems.length === 0) {
-      toast.error('Vui lòng thêm ít nhất một vật phẩm chuyển kho hợp lệ.');
-      return;
-    }
-
-    const createdTransfer = await createSupplyTransfer({
-      sourceStationId: transferForm.sourceStationId,
-      destinationStationId: transferForm.destinationStationId,
-      reason: transferForm.reason.trim(),
-      notes: transferForm.notes,
-      items: validItems,
-    });
-
-    const createdTransferId =
-      (createdTransfer as any)?.data?.id ||
-      (createdTransfer as any)?.data?.transferId ||
-      transferForm.sourceInventoryId ||
-      'TRANSFER_MOI';
-    setLastCreatedTransferId(createdTransferId);
-    setOpenCreateTransfer(false);
-    setOpenTransferPdfWorkflow(true);
-  };
-
   const openTransferHistoryDialog = (inventoryId: string, inventoryName: string) => {
-    setSelectedInventoryForHistory({ id: inventoryId, name: inventoryName });
+    const matchedInventory = inventories.find((inventory) => inventory.inventoryId === inventoryId);
+    setSelectedInventoryForHistory({
+      id: inventoryId,
+      name: inventoryName,
+      stationId: matchedInventory?.reliefStationId || '',
+    });
     setOpenTransferHistory(true);
   };
 
   const openTransactionHistoryDialog = (inventoryId: string, inventoryName: string) => {
-    setSelectedInventoryForHistory({ id: inventoryId, name: inventoryName });
+    const matchedInventory = inventories.find((inventory) => inventory.inventoryId === inventoryId);
+    setSelectedInventoryForHistory({
+      id: inventoryId,
+      name: inventoryName,
+      stationId: matchedInventory?.reliefStationId || '',
+    });
     setOpenTransactionHistory(true);
   };
 
@@ -1218,7 +1106,6 @@ export default function ManagerInventoryCoordinationPage() {
                     onImportStock={openStockImportManagement}
                     onUpdateStock={openStockUpdateManagement}
                     onViewStockDetail={openViewStockDetail}
-                    onCreateTransfer={openTransferDialog}
                     onViewTransfers={openTransferHistoryDialog}
                     onViewTransactions={openTransactionHistoryDialog}
                     onToggleStatus={handleInventoryStatusChange}
@@ -2180,13 +2067,22 @@ export default function ManagerInventoryCoordinationPage() {
                       >
                         <td className="px-4 py-3">
                           <p className="font-medium text-foreground">{stock.supplyItemName}</p>
-                          <p className="text-xs text-muted-foreground">{stock.supplyItemUnit}</p>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">
-                          {stock.supplyItemCategoryName}
+                        <td className="px-4 py-3">
+                          <Badge
+                            variant="outline"
+                            appearance="outline"
+                            size="xs"
+                            className={`gap-1.5 text-xs border ${getSupplyCategoryClass(stock.supplyItemCategory)}`}
+                          >
+                            <span className="material-symbols-outlined text-[14px] shrink-0">
+                              {getSupplyCategoryIcon(stock.supplyItemCategory)}
+                            </span>
+                            {getSupplyCategoryLabel(stock.supplyItemCategory)}
+                          </Badge>
                         </td>
                         <td className="px-4 py-3 text-right font-semibold">
-                          {formatNumberVN(stock.currentQuantity)}{' '}
+                          {formatNumberVN(stock.currentQuantity)}/
                           <span className="text-xs text-muted-foreground font-normal">
                             {stock.supplyItemUnit}
                           </span>
@@ -2213,9 +2109,9 @@ export default function ManagerInventoryCoordinationPage() {
                             variant="outline"
                             appearance="outline"
                             size="xs"
-                            className="text-xs"
+                            className={`text-xs border ${getInventoryStatusClass(stock.stockStatus)}`}
                           >
-                            {stock.stockStatusName}
+                            {getInventoryStatusLabel(stock.stockStatus)}
                           </Badge>
                         </td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">
@@ -2580,39 +2476,29 @@ export default function ManagerInventoryCoordinationPage() {
         </DialogContent>
       </Dialog>
 
-      <ManagerCreateTransferDialog
-        open={openCreateTransfer}
-        onOpenChange={setOpenCreateTransfer}
-        sourceInventoryName={transferForm.sourceInventoryName}
-        destinationStations={stations.map((station) => ({
-          id: station.reliefStationId ?? station.stationId ?? station.id,
-          name: station.name,
-        }))}
-        supplyItems={supplyItems}
-        sourceStocks={transferInventoryStocks}
-        transferForm={{
-          destinationStationId: transferForm.destinationStationId,
-          reason: transferForm.reason,
-          notes: transferForm.notes,
-          items: transferForm.items,
-        }}
-        onFormChange={updateTransferForm}
-        onItemChange={updateTransferItem}
-        onAddItem={addTransferItem}
-        onRemoveItem={removeTransferItem}
-        onSubmit={handleCreateTransfer}
-        isPending={createSupplyTransferStatus === 'pending'}
-      />
-
       <ManagerTransferHistoryDialog
         open={openTransferHistory}
         onOpenChange={setOpenTransferHistory}
-        transfers={transferHistory}
-        isLoading={isLoadingTransferHistory}
-        onApprove={(id) => approveSupplyTransfer(id)}
-        onShip={(id) => shipSupplyTransfer(id)}
-        onReceive={(id) => receiveSupplyTransfer(id)}
-        onCancel={(id) => cancelSupplyTransfer(id)}
+        transfers={detailedTransferHistory}
+        isLoading={isLoadingTransferHistory || isLoadingTransferHistoryDetails}
+        onApprove={(id) => approveSupplyTransfer({ id, data: {} })}
+        onShip={(id) => shipSupplyTransfer({ id, data: {} })}
+        onReceive={(id) =>
+          receiveSupplyTransfer({
+            id,
+            data: {
+              items:
+                transferHistory
+                  .find((transfer: any) => transfer.id === id)
+                  ?.items?.map((item: any) => ({
+                    supplyItemId: item.supplyItemId,
+                    actualQuantity: item.requestedQuantity ?? item.quantity ?? 0,
+                    notes: item.notes,
+                  })) || [],
+            },
+          })
+        }
+        onCancel={(id) => cancelSupplyTransfer({ id, data: {} })}
       />
 
       <ManagerTransactionHistoryDialog
@@ -2621,34 +2507,6 @@ export default function ManagerInventoryCoordinationPage() {
         inventoryName={selectedInventoryForHistory?.name || ''}
         transactions={transactionHistory}
         isLoading={isLoadingTransactionHistory}
-      />
-
-      <TransferPdfWorkflowDialog
-        open={openTransferPdfWorkflow}
-        onOpenChange={setOpenTransferPdfWorkflow}
-        data={{
-          transferCode: lastCreatedTransferId || 'TRANSFER_MOI',
-          sourceName: transferForm.sourceInventoryName || 'Kho nguồn',
-          destinationName:
-            stations.find(
-              (station) =>
-                (station.reliefStationId ?? station.stationId ?? station.id) ===
-                transferForm.destinationStationId,
-            )?.name || 'Trạm nhận hàng',
-          createdAt: new Date().toLocaleString('vi-VN'),
-          decidedBy: 'Quản lý kho tổng',
-          notes: transferForm.notes,
-          items: transferForm.items
-            .map((item) => {
-              const matchedSupply = supplyItems.find((supply) => supply.id === item.supplyItemId);
-              return {
-                name: matchedSupply?.name || item.supplyItemId,
-                quantity: parseFormattedNumber(item.quantity),
-                unit: matchedSupply?.unit,
-              };
-            })
-            .filter((item) => item.name && item.quantity > 0),
-        }}
       />
     </DashboardLayout>
   );

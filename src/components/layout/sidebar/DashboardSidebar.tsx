@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LogOut, Settings } from 'lucide-react';
 import { useAuthContext } from '@/components/provider/auth/AuthProvider';
+import { useUserProfile } from '@/hooks/useUsers';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
@@ -42,6 +43,8 @@ export function DashboardSidebar({
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuthContext();
+  const { profile } = useUserProfile();
+  const avatarUrl = profile?.pictureUrl || user?.avatarUrl || null;
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -198,22 +201,22 @@ export function DashboardSidebar({
             >
               <div
                 className={`bg-center bg-no-repeat bg-cover rounded-full size-9 border border-border flex-shrink-0 ${
-                  user?.avatarUrl ? '' : 'bg-primary text-primary-foreground'
+                  avatarUrl ? '' : 'bg-primary text-primary-foreground'
                 }`}
                 style={{
-                  backgroundImage: user?.avatarUrl ? `url("${user.avatarUrl}")` : 'none',
+                  backgroundImage: avatarUrl ? `url("${avatarUrl}")` : 'none',
                 }}
               >
-                {!user?.avatarUrl && (
+                {!avatarUrl && (
                   <div className="w-full h-full flex items-center justify-center font-bold">
-                    {user?.fullName?.charAt(0) || 'A'}
+                    {profile?.displayName?.charAt(0) || user?.fullName?.charAt(0) || 'A'}
                   </div>
                 )}
               </div>
               {!isCollapsed && (
                 <div className="flex flex-col overflow-hidden min-w-0">
                   <span className="text-sm font-bold text-foreground truncate">
-                    {user?.fullName || 'Admin User'}
+                    {profile?.displayName || user?.fullName || 'Admin User'}
                   </span>
                   <span className="text-xs text-muted-foreground truncate">
                     {user?.email || 'admin@cuutrovn.org'}
@@ -226,7 +229,7 @@ export function DashboardSidebar({
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col gap-1">
                 <p className="text-sm font-semibold leading-none text-popover-foreground">
-                  {user?.fullName || 'Admin User'}
+                  {profile?.displayName || user?.fullName || 'Admin User'}
                 </p>
                 <p className="text-xs leading-none text-muted-foreground">
                   {user?.email || 'admin@cuutrovn.org'}

@@ -45,6 +45,7 @@ import {
 } from '@/enums/beEnums';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 const getStationId = (station: {
   id?: string | null;
@@ -80,6 +81,7 @@ export default function ManagerStationPage() {
   const [openEditModal, setOpenEditModal] = useState(false);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [selectedModeratorId, setSelectedModeratorId] = useState<string>('');
+  const [moderatorPageIndex, setModeratorPageIndex] = useState(1);
   const [editingStation, setEditingStation] = useState<{
     id: string | null;
     name: string;
@@ -105,8 +107,8 @@ export default function ManagerStationPage() {
     pagination: moderatorsPagination,
     refetch: refetchModerators,
   } = useModerators({
-    pageIndex: 1,
-    pageSize: 100,
+    pageIndex: moderatorPageIndex,
+    pageSize: 5,
     isBanned: false,
   });
 
@@ -193,6 +195,7 @@ export default function ManagerStationPage() {
 
     setSelectedStation({ id: stationId, name: station.name });
     setSelectedModeratorId('');
+    setModeratorPageIndex(1);
     setAssignModalOpen(true);
   };
 
@@ -474,17 +477,18 @@ export default function ManagerStationPage() {
       />
 
       <Dialog open={assignModalOpen} onOpenChange={setAssignModalOpen}>
-        <DialogContent className="sm:max-w-[560px]">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-[1028px] max-h-[92vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border">
             <DialogTitle>Gán điều phối viên cho trạm</DialogTitle>
             <DialogDescription>
-              Chọn điều phối viên từ danh sách moderator hiện có để gán cho trạm.
+              Chọn điều phối viên từ danh sách Điều phối viên hiện có để gán cho trạm.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-4">
             <div className="rounded-xl border border-border bg-muted/30 p-4">
-              <p className="text-xs uppercase font-semibold text-muted-foreground">
+              <p className="text-xs uppercase font-semibold text-muted-foreground flex items-center gap-1">
+                <span className="material-symbols-outlined text-lg ">storefront</span>
                 Trạm được chọn
               </p>
               <p className="mt-1 text-sm font-semibold text-foreground">
@@ -510,6 +514,15 @@ export default function ManagerStationPage() {
                   {moderators.map((moderator) => {
                     const isActive = selectedModeratorId === moderator.id;
                     const isManagingStation = moderator.isManagingStation;
+                    const fallbackText = (moderator.displayName || moderator.email || '?')
+                      .trim()
+                      .slice(0, 1)
+                      .toUpperCase();
+                    const pictureUrl =
+                      'pictureUrl' in moderator &&
+                      typeof (moderator as { pictureUrl?: unknown }).pictureUrl === 'string'
+                        ? (moderator as { pictureUrl: string }).pictureUrl || undefined
+                        : undefined;
 
                     return (
                       <button
@@ -526,19 +539,30 @@ export default function ManagerStationPage() {
                         }`}
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-semibold text-foreground">
-                              {moderator.displayName || 'Chưa có tên hiển thị'}
-                            </p>
-                            <p className="text-sm text-muted-foreground">{moderator.email}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {moderator.phoneNumber || 'Chưa có số điện thoại'}
-                            </p>
-                            {isManagingStation && (
-                              <p className="mt-1 text-xs font-medium text-amber-600">
-                                Đang quản lý một trạm khác
+                          <div className="flex items-start gap-3 min-w-0">
+                            <Avatar className="size-10 shrink-0">
+                              <AvatarImage
+                                src={pictureUrl}
+                                alt={moderator.displayName || moderator.email || 'Moderator avatar'}
+                              />
+                              <AvatarFallback>{fallbackText}</AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-foreground">
+                                {moderator.displayName || 'Chưa có tên hiển thị'}
                               </p>
-                            )}
+                              <p className="text-sm text-muted-foreground truncate">
+                                {moderator.email}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {moderator.phoneNumber || 'Chưa có số điện thoại'}
+                              </p>
+                              {isManagingStation && (
+                                <p className="mt-1 text-xs font-medium text-amber-600">
+                                  Đang quản lý một trạm khác
+                                </p>
+                              )}
+                            </div>
                           </div>
                           {isActive && (
                             <span className="material-symbols-outlined text-primary">
@@ -551,16 +575,40 @@ export default function ManagerStationPage() {
                   })}
                 </div>
               )}
-              {!!moderatorsPagination && moderatorsPagination.totalCount > moderators.length && (
-                <p className="text-xs text-muted-foreground">
-                  Đang hiển thị {moderators.length}/{moderatorsPagination.totalCount} moderator đầu
-                  tiên.
-                </p>
+              {!!moderatorsPagination && moderatorsPagination.totalCount > 0 && (
+                <div className="flex items-center justify-between gap-3 pt-2">
+                  <p className="text-xs text-muted-foreground">
+                    Trang {moderatorsPagination.currentPage} / {moderatorsPagination.totalPages} •{' '}
+                    Tổng {moderatorsPagination.totalCount} Điều phối viên
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!moderatorsPagination.hasPrevious || isLoadingModerators}
+                      onClick={() => setModeratorPageIndex((prev) => Math.max(1, prev - 1))}
+                    >
+                      Trước
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!moderatorsPagination.hasNext || isLoadingModerators}
+                      onClick={() =>
+                        setModeratorPageIndex((prev) =>
+                          Math.min(moderatorsPagination.totalPages, prev + 1),
+                        )
+                      }
+                    >
+                      Sau
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="px-6 py-4 border-t border-border bg-background">
             <Button variant="outline" onClick={() => setAssignModalOpen(false)}>
               Hủy
             </Button>
