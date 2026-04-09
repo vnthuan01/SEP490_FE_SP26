@@ -28,6 +28,7 @@ export function CampaignAllocationDialog({
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [note, setNote] = React.useState('');
   const [campaignId, setCampaignId] = React.useState('');
+  const [errors, setErrors] = React.useState<{ campaign?: string; items?: string }>({});
 
   React.useEffect(() => {
     if (!open) return;
@@ -44,6 +45,7 @@ export function CampaignAllocationDialog({
       setNote(draft.note || '');
       setCampaignId(draft.campaignId || '');
       setEditingId(null);
+      setErrors({});
       return;
     }
 
@@ -52,6 +54,7 @@ export function CampaignAllocationDialog({
     setNote('');
     setCampaignId('');
     setEditingId(null);
+    setErrors({});
   }, [open]);
 
   React.useEffect(() => {
@@ -79,6 +82,7 @@ export function CampaignAllocationDialog({
       if (prev.some((i) => i.id === item.id)) return prev;
       return [...prev, { ...item, quantity: 1 }];
     });
+    setErrors((prev) => ({ ...prev, items: undefined }));
   };
 
   const toggleCheckedItem = (id: string, checked: boolean) => {
@@ -103,6 +107,7 @@ export function CampaignAllocationDialog({
       return [...prev, ...itemsToAdd];
     });
 
+    setErrors((prev) => ({ ...prev, items: undefined }));
     setCheckedItemIds([]);
   };
 
@@ -116,6 +121,7 @@ export function CampaignAllocationDialog({
       return [...prev, ...itemsToAdd];
     });
 
+    setErrors((prev) => ({ ...prev, items: undefined }));
     setCheckedItemIds([]);
   };
 
@@ -268,11 +274,8 @@ export function CampaignAllocationDialog({
             </h3>
 
             <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm text-muted-foreground">
-              Phiếu này dùng để cấp phát vật tư từ{' '}
-              <span className="font-medium text-foreground">kho trạm</span> sang{' '}
-              <span className="font-medium text-foreground">chiến dịch đang hoạt động</span>. Sau
-              khi thêm vật tư vào phiếu, bạn vẫn có thể điều chỉnh số lượng từng dòng trước khi xác
-              nhận.
+              Sau khi thêm vật tư vào phiếu, bạn vẫn có thể điều chỉnh số lượng từng dòng trước khi
+              xác nhận.
             </div>
 
             {/* CAMPAIGN */}
@@ -280,8 +283,11 @@ export function CampaignAllocationDialog({
               <p className="text-sm font-medium mb-2 text-foreground">Chiến dịch nhận cấp phát</p>
               <select
                 value={campaignId}
-                onChange={(e) => setCampaignId(e.target.value)}
-                className="w-full h-10 rounded-md border border-border bg-background px-3 text-sm"
+                onChange={(e) => {
+                  setCampaignId(e.target.value);
+                  setErrors((prev) => ({ ...prev, campaign: undefined }));
+                }}
+                className={`w-full h-10 rounded-md border bg-background px-3 text-sm ${errors.campaign ? 'border-red-500' : 'border-border'}`}
               >
                 <option value="">-- Chọn chiến dịch --</option>
                 {campaigns.map((campaign) => (
@@ -290,6 +296,12 @@ export function CampaignAllocationDialog({
                   </option>
                 ))}
               </select>
+              {errors.campaign && (
+                <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+                  <span className="material-symbols-outlined text-[14px]">error</span>
+                  {errors.campaign}
+                </p>
+              )}
               {campaigns.length === 0 && (
                 <p className="text-xs text-muted-foreground mt-1">
                   Chưa có chiến dịch nào thuộc trạm này.
@@ -299,6 +311,12 @@ export function CampaignAllocationDialog({
 
             {/* SCROLL AREA */}
             <div className="flex-1 min-h-0 overflow-y-auto space-y-4 text-sm">
+              {errors.items && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">error</span>
+                  {errors.items}
+                </p>
+              )}
               {selectedItems.map((item) => (
                 <div key={item.id} className="flex justify-between gap-3">
                   <div className="min-w-0">
@@ -392,7 +410,7 @@ export function CampaignAllocationDialog({
             <div className="mt-4">
               <p className="text-sm font-medium mb-2 text-foreground">Ghi chú</p>
               <Textarea
-                rows={3}
+                rows={2}
                 value={note}
                 onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNote(e.target.value)}
                 placeholder="Ví dụ: Cấp phát cho chiến dịch cứu trợ miền Trung"
@@ -411,6 +429,7 @@ export function CampaignAllocationDialog({
                   setNote('');
                   setCampaignId('');
                   setEditingId(null);
+                  setErrors({});
                 }}
               >
                 <span className="material-symbols-outlined mr-1">remove_done</span>
@@ -423,8 +442,15 @@ export function CampaignAllocationDialog({
               </Button>
               <Button
                 variant="primary"
-                disabled={totalLines === 0 || !campaignId}
                 onClick={() => {
+                  const errs: { campaign?: string; items?: string } = {};
+                  if (!campaignId) errs.campaign = 'Vui lòng chọn chiến dịch nhận cấp phát.';
+                  if (totalLines === 0)
+                    errs.items = 'Vui lòng thêm ít nhất một vật tư vào phiếu cấp phát.';
+                  if (Object.keys(errs).length > 0) {
+                    setErrors(errs);
+                    return;
+                  }
                   clearDialogDraft(CAMPAIGN_ALLOCATION_DRAFT_KEY);
                   onSubmit(selectedItems, note, campaignId);
                 }}

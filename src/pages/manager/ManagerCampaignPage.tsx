@@ -1197,6 +1197,7 @@ export default function ManagerCampaignPage() {
                             {openStartCalendar && (
                               <div className="absolute z-50 mt-2 rounded-xl border border-border bg-white shadow-lg p-3 w-fit">
                                 <CustomCalendar
+                                  disabledDays={{ before: new Date() }}
                                   value={parseIsoToDate(field.value)}
                                   onChange={(date) => {
                                     field.onChange(date ? toUtcNoonIso(date) : '');

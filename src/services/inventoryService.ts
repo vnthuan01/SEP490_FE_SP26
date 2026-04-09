@@ -46,6 +46,7 @@ export interface PaginatedResponse<T> {
 
 export interface Stock {
   stockId: string;
+  inventoryStockId?: string;
   inventoryId: string;
   supplyItemId: string;
   supplyItemName: string;
@@ -62,6 +63,26 @@ export interface Stock {
   expirationDate?: string | null;
 }
 
+type RawStock = {
+  inventoryStockId?: string;
+  id?: string;
+  stockId?: string;
+  supplyStockId?: string;
+  inventoryId?: string;
+  supplyItemId?: string;
+  supplyItemName?: string;
+  supplyItemUnit?: string;
+  supplyItemCategory?: number;
+  supplyItemCategoryName?: string;
+  currentQuantity?: number;
+  minimumStockLevel?: number;
+  maximumStockLevel?: number;
+  stockStatus?: number;
+  stockStatusName?: string;
+  fillPercentage?: number;
+  expirationDate?: string | null;
+};
+
 export interface CreateStockPayload {
   supplyItemId: string;
   currentQuantity: number;
@@ -73,6 +94,44 @@ export interface CreateStockPayload {
 export interface UpdateStockPayload {
   minimumStockLevel: number;
   maximumStockLevel: number;
+}
+
+function mapStock(raw: RawStock): Stock {
+  return {
+    stockId: raw.inventoryStockId || raw.stockId || raw.id || raw.supplyStockId || '',
+    inventoryStockId: raw.inventoryStockId || raw.stockId || raw.id || raw.supplyStockId || '',
+    inventoryId: raw.inventoryId || '',
+    supplyItemId: raw.supplyItemId || '',
+    supplyItemName: raw.supplyItemName || '',
+    supplyItemUnit: raw.supplyItemUnit || '',
+    supplyItemCategory: Number(raw.supplyItemCategory || 0),
+    supplyItemCategoryName: raw.supplyItemCategoryName || '',
+    currentQuantity: Number(raw.currentQuantity || 0),
+    minimumStockLevel: Number(raw.minimumStockLevel || 0),
+    maximumStockLevel: Number(raw.maximumStockLevel || 0),
+    stockStatus: Number(raw.stockStatus || 0),
+    stockStatusName: raw.stockStatusName || '',
+    fillPercentage: Number(raw.fillPercentage || 0),
+    expirationDate: raw.expirationDate ?? null,
+  };
+}
+
+function mapStocks(raw: RawStock[] | PaginatedResponse<RawStock>): PaginatedResponse<Stock> {
+  if (Array.isArray(raw)) {
+    return {
+      currentPage: 1,
+      totalPages: 1,
+      pageSize: raw.length,
+      totalCount: raw.length,
+      hasPrevious: false,
+      hasNext: false,
+      items: raw.map(mapStock),
+    };
+  }
+  return {
+    ...raw,
+    items: (raw.items || []).map(mapStock),
+  };
 }
 
 // --- Transaction Interfaces ---
@@ -136,13 +195,19 @@ export const inventoryService = {
 
   // Stock APIs
   getStocks: (id: string, params?: { pageIndex?: number; pageSize?: number }) =>
-    apiClient.get<PaginatedResponse<Stock>>(`/Inventory/${id}/stocks`, { params }),
+    apiClient
+      .get<PaginatedResponse<RawStock> | RawStock[]>(`/Inventory/${id}/stocks`, { params })
+      .then((response) => ({ ...response, data: mapStocks(response.data) })),
 
   addStock: (id: string, data: CreateStockPayload) =>
-    apiClient.post<Stock>(`/Inventory/${id}/stocks`, data),
+    apiClient
+      .post<RawStock>(`/Inventory/${id}/stocks`, data)
+      .then((response) => ({ ...response, data: mapStock(response.data) })),
 
   updateStock: (stockId: string, data: UpdateStockPayload) =>
-    apiClient.put<Stock>(`/Inventory/stocks/${stockId}`, data),
+    apiClient
+      .put<RawStock>(`/Inventory/stocks/${stockId}`, data)
+      .then((response) => ({ ...response, data: mapStock(response.data) })),
 
   deleteStock: (stockId: string) => apiClient.delete(`/Inventory/stocks/${stockId}`),
 };
