@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -84,7 +84,7 @@ import {
   normalizeNumberInput,
   parseFormattedNumber,
 } from '@/lib/utils';
-import type { Stock } from '@/services/inventoryService';
+import { inventoryService, type Stock } from '@/services/inventoryService';
 import { toast } from 'sonner';
 import CustomCalendar from '@/components/ui/customCalendar';
 
@@ -145,6 +145,20 @@ const groupStocksBySupplyItemId = (stocks: Stock[]) => {
   }
 
   return grouped;
+};
+
+const summarizeStockLots = (lots: Stock[]) => {
+  const totalCurrent = lots.reduce((sum, stock) => sum + stock.currentQuantity, 0);
+  const totalMinimum = lots.reduce((sum, stock) => sum + stock.minimumStockLevel, 0);
+  const totalMaximum = lots.reduce((sum, stock) => sum + stock.maximumStockLevel, 0);
+  const remainingCapacity = totalMaximum > 0 ? Math.max(totalMaximum - totalCurrent, 0) : null;
+
+  return {
+    totalCurrent,
+    totalMinimum,
+    totalMaximum,
+    remainingCapacity,
+  };
 };
 
 const taoDongVatPham = (): DongVatPham => ({
@@ -263,7 +277,11 @@ export default function ManagerInventoryCoordinationPage() {
     sourceInventoryId: '',
     items: [taoDongDieuPhoi()],
   });
-  const { data: inventoriesResponse, isLoading: isLoadingInventories } = useInventories({
+  const {
+    data: inventoriesResponse,
+    isLoading: isLoadingInventories,
+    refetch: refetchInventories,
+  } = useInventories({
     pageIndex,
     pageSize: 4,
   });
@@ -271,6 +289,10 @@ export default function ManagerInventoryCoordinationPage() {
     pageIndex: supplyPageIndex,
     pageSize: 6,
     category: supplyCategoryFilter === 'all' ? undefined : Number(supplyCategoryFilter),
+  });
+  const { data: allSupplyItemsResponse } = useSupplyItems({
+    pageIndex: 1,
+    pageSize: 500,
   });
   const { campaigns, isLoading: isLoadingCampaigns } = useCampaigns({
     pageIndex: 1,
@@ -280,10 +302,11 @@ export default function ManagerInventoryCoordinationPage() {
     pageIndex: 1,
     pageSize: 100,
   });
-  const { data: inventoryStocksResponse, isLoading: isLoadingInventoryStocks } = useInventoryStocks(
-    selectedInventoryForStock?.id || '',
-    { pageIndex: 1, pageSize: 500 },
-  );
+  const {
+    data: inventoryStocksResponse,
+    isLoading: isLoadingInventoryStocks,
+    refetch: refetchInventoryStocks,
+  } = useInventoryStocks(selectedInventoryForStock?.id || '', { pageIndex: 1, pageSize: 500 });
   const { data: allocationInventoryStocksResponse, isLoading: isLoadingAllocationInventoryStocks } =
     useInventoryStocks(allocationForm.sourceInventoryId || '', {
       pageIndex: 1,
@@ -323,6 +346,10 @@ export default function ManagerInventoryCoordinationPage() {
   const inventories = useMemo(() => inventoriesResponse?.items || [], [inventoriesResponse]);
   const inventoryPagination = inventoriesResponse;
   const supplyItems = useMemo(() => supplyItemsResponse?.items || [], [supplyItemsResponse]);
+  const allSupplyItems = useMemo(
+    () => allSupplyItemsResponse?.items || [],
+    [allSupplyItemsResponse],
+  );
   const supplyPagination = supplyItemsResponse;
   const stations = stationsResponse?.items || [];
   const inventoryStocks = useMemo(
@@ -337,17 +364,17 @@ export default function ManagerInventoryCoordinationPage() {
     () => inventoryStocksFilterResponse?.items || [],
     [inventoryStocksFilterResponse],
   );
-  const transferHistorySource = Array.isArray(transferHistoryResponse)
-    ? transferHistoryResponse
-    : (transferHistoryResponse as any)?.items || [];
-  const transferHistoryDestination = Array.isArray(transferHistoryDestinationResponse)
-    ? transferHistoryDestinationResponse
-    : (transferHistoryDestinationResponse as any)?.items || [];
   const transferHistory = useMemo(() => {
+    const transferHistorySource = Array.isArray(transferHistoryResponse)
+      ? transferHistoryResponse
+      : (transferHistoryResponse as any)?.items || [];
+    const transferHistoryDestination = Array.isArray(transferHistoryDestinationResponse)
+      ? transferHistoryDestinationResponse
+      : (transferHistoryDestinationResponse as any)?.items || [];
     const merged = [...transferHistorySource, ...transferHistoryDestination];
     const uniqueTransfers = new Map(merged.map((transfer: any) => [transfer.id, transfer]));
     return Array.from(uniqueTransfers.values());
-  }, [transferHistorySource, transferHistoryDestination]);
+  }, [transferHistoryResponse, transferHistoryDestinationResponse]);
   const { transferMap: transferHistoryDetailMap, isLoading: isLoadingTransferHistoryDetails } =
     useSupplyTransferDetails(transferHistory.map((transfer: any) => transfer.id));
   const detailedTransferHistory = transferHistory.map(
@@ -362,6 +389,47 @@ export default function ManagerInventoryCoordinationPage() {
   const stockLotsBySupplyItemId = useMemo(
     () => groupStocksBySupplyItemId(inventoryStocks),
     [inventoryStocks],
+  );
+  const stockDialogSupplyItems = useMemo(() => {
+    const merged = new Map<
+      string,
+      | (typeof supplyItems)[number]
+      | {
+          id: string;
+          name: string;
+          description?: string;
+          iconUrl?: string;
+          category: number;
+          unit: string;
+        }
+    >();
+
+    for (const supplyItem of allSupplyItems) {
+      merged.set(supplyItem.id, supplyItem);
+    }
+
+    for (const stock of inventoryStocks) {
+      if (!merged.has(stock.supplyItemId)) {
+        merged.set(stock.supplyItemId, {
+          id: stock.supplyItemId,
+          name: stock.supplyItemName,
+          description: '',
+          iconUrl: getSupplyCategoryIcon(stock.supplyItemCategory),
+          category: stock.supplyItemCategory,
+          unit: stock.supplyItemUnit,
+        });
+      }
+    }
+
+    return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+  }, [allSupplyItems, inventoryStocks]);
+  const availableNewStockSupplyItems = useMemo(
+    () => stockDialogSupplyItems.filter((item) => !stockLotsBySupplyItemId.has(item.id)),
+    [stockDialogSupplyItems, stockLotsBySupplyItemId],
+  );
+  const existingStockSupplyItems = useMemo(
+    () => stockDialogSupplyItems.filter((item) => stockLotsBySupplyItemId.has(item.id)),
+    [stockDialogSupplyItems, stockLotsBySupplyItemId],
   );
   const allocationStockLotsBySupplyItemId = useMemo(
     () => groupStocksBySupplyItemId(allocationInventoryStocks),
@@ -690,10 +758,35 @@ export default function ManagerInventoryCoordinationPage() {
     setOpenImportStockDialog(true);
   };
 
-  const openStockUpdateManagement = (inventoryId: string, inventoryName: string) => {
+  const openStockUpdateManagement = async (inventoryId: string, inventoryName: string) => {
     setSelectedInventoryForStock({ id: inventoryId, name: inventoryName });
     setStockDrafts([taoDongCapNhatTonKho()]);
     setOpenUpdateStockDialog(true);
+
+    try {
+      const response = await inventoryService.getStocks(inventoryId, {
+        pageIndex: 1,
+        pageSize: 500,
+      });
+      const latestStocks = response.data.items || [];
+
+      setStockDrafts(
+        latestStocks.length === 0
+          ? [taoDongCapNhatTonKho()]
+          : latestStocks.map((stock) => ({
+              id: crypto.randomUUID(),
+              supplyItemId: stock.supplyItemId,
+              importQuantity: '0',
+              minimumStockLevel: String(stock.minimumStockLevel),
+              maximumStockLevel: String(stock.maximumStockLevel),
+              stockId: stock.stockId,
+              isExisting: true,
+              expirationDate: stock.expirationDate ?? null,
+            })),
+      );
+    } catch {
+      toast.error('Không thể tải dữ liệu tồn kho để cập nhật.');
+    }
   };
 
   const openViewStockDetail = (inventoryId: string, inventoryName: string) => {
@@ -758,6 +851,27 @@ export default function ManagerInventoryCoordinationPage() {
     );
   };
 
+  useEffect(() => {
+    if (!selectedInventoryForStock?.id) return;
+    if (
+      !openCreateStockDialog &&
+      !openImportStockDialog &&
+      !openUpdateStockDialog &&
+      !openViewStockDialog
+    ) {
+      return;
+    }
+
+    void refetchInventoryStocks();
+  }, [
+    openCreateStockDialog,
+    openImportStockDialog,
+    openUpdateStockDialog,
+    openViewStockDialog,
+    refetchInventoryStocks,
+    selectedInventoryForStock?.id,
+  ]);
+
   const handleCreateNewStock = async () => {
     if (!selectedInventoryForStock?.id) {
       toast.error('Không tìm thấy kho để tạo tồn kho.');
@@ -821,6 +935,8 @@ export default function ManagerInventoryCoordinationPage() {
       });
     }
 
+    await Promise.all([refetchInventoryStocks(), refetchInventories()]);
+
     setStockDrafts([taoDongCapNhatTonKho()]);
     setOpenCreateStockDialog(false);
   };
@@ -862,6 +978,17 @@ export default function ManagerInventoryCoordinationPage() {
         toast.error('Số lượng nhập phải lớn hơn 0.');
         return;
       }
+
+      const existingLots = stockLotsBySupplyItemId.get(item.supplyItemId) ?? [];
+      const { totalCurrent, totalMaximum } = summarizeStockLots(existingLots);
+      if (totalMaximum > 0 && totalCurrent + importQuantity > totalMaximum) {
+        const supplyName =
+          supplyItems.find((supply) => supply.id === item.supplyItemId)?.name || item.supplyItemId;
+        toast.error(
+          `Vật phẩm "${supplyName}" sẽ vượt ngưỡng tồn tối đa. Hiện tại ${formatNumberVN(totalCurrent)}, max ${formatNumberVN(totalMaximum)}, chỉ nên nhập thêm tối đa ${formatNumberVN(Math.max(totalMaximum - totalCurrent, 0))}.`,
+        );
+        return;
+      }
     }
 
     for (const item of validDrafts) {
@@ -886,6 +1013,8 @@ export default function ManagerInventoryCoordinationPage() {
         ],
       });
     }
+
+    await Promise.all([refetchInventoryStocks(), refetchInventories()]);
 
     setStockDrafts([taoDongCapNhatTonKho()]);
     setOpenImportStockDialog(false);
@@ -956,6 +1085,8 @@ export default function ManagerInventoryCoordinationPage() {
         },
       });
     }
+
+    await Promise.all([refetchInventoryStocks(), refetchInventories()]);
 
     setStockDrafts([taoDongCapNhatTonKho()]);
     setOpenUpdateStockDialog(false);
@@ -1781,7 +1912,9 @@ export default function ManagerInventoryCoordinationPage() {
             </div>
 
             {stockDrafts.map((item, index) => {
-              const selectedSupply = supplyItems.find((supply) => supply.id === item.supplyItemId);
+              const selectedSupply = stockDialogSupplyItems.find(
+                (supply) => supply.id === item.supplyItemId,
+              );
               const existingLots = item.supplyItemId
                 ? stockLotsBySupplyItemId.get(item.supplyItemId) || []
                 : [];
@@ -1830,7 +1963,7 @@ export default function ManagerInventoryCoordinationPage() {
                             <SelectValue placeholder="Chọn vật phẩm" />
                           </SelectTrigger>
                           <SelectContent>
-                            {supplyItems.map((supplyItem) => (
+                            {availableNewStockSupplyItems.map((supplyItem) => (
                               <SelectItem key={supplyItem.id} value={supplyItem.id}>
                                 {supplyItem.iconUrl && (
                                   <span className="material-symbols-outlined text-[18px] text-green-500">
@@ -2170,10 +2303,17 @@ export default function ManagerInventoryCoordinationPage() {
             </div>
 
             {stockDrafts.map((item, index) => {
-              const selectedSupply = supplyItems.find((supply) => supply.id === item.supplyItemId);
+              const selectedSupply = stockDialogSupplyItems.find(
+                (supply) => supply.id === item.supplyItemId,
+              );
               const existingLots = item.supplyItemId
                 ? stockLotsBySupplyItemId.get(item.supplyItemId) || []
                 : [];
+              const { totalCurrent, totalMinimum, totalMaximum, remainingCapacity } =
+                summarizeStockLots(existingLots);
+              const importQuantityValue = parseFormattedNumber(item.importQuantity);
+              const willExceedMax =
+                totalMaximum > 0 && totalCurrent + importQuantityValue > totalMaximum;
               const notInStock = item.supplyItemId && existingLots.length === 0;
 
               return (
@@ -2221,7 +2361,7 @@ export default function ManagerInventoryCoordinationPage() {
                             <SelectValue placeholder="Chọn vật phẩm" />
                           </SelectTrigger>
                           <SelectContent>
-                            {supplyItems.map((supplyItem) => (
+                            {existingStockSupplyItems.map((supplyItem) => (
                               <SelectItem key={supplyItem.id} value={supplyItem.id}>
                                 {supplyItem.iconUrl && (
                                   <span className="material-symbols-outlined text-[18px] text-green-500">
@@ -2242,6 +2382,9 @@ export default function ManagerInventoryCoordinationPage() {
                         <Input
                           inputMode="numeric"
                           value={formatNumberInputVN(item.importQuantity)}
+                          className={
+                            willExceedMax ? 'border-destructive focus-visible:ring-destructive' : ''
+                          }
                           onChange={(e) =>
                             updateStockDraft(
                               item.id,
@@ -2259,13 +2402,48 @@ export default function ManagerInventoryCoordinationPage() {
                         <p className="font-medium text-foreground">{selectedSupply.name}</p>
                         <p>Đơn vị: {selectedSupply.unit}</p>
                         {existingLots[0] && (
-                          <p>
-                            Tồn kho hiện có:{' '}
-                            {formatNumberVN(
-                              existingLots.reduce((sum, lot) => sum + lot.currentQuantity, 0),
-                            )}{' '}
-                            {selectedSupply.unit}
-                          </p>
+                          <div className="space-y-1">
+                            <p>
+                              Tồn kho hiện có: {formatNumberVN(totalCurrent)} {selectedSupply.unit}
+                            </p>
+                            <p>
+                              Mức tồn tối thiểu hiện tại: {formatNumberVN(totalMinimum)}{' '}
+                              {selectedSupply.unit}
+                            </p>
+                            <p>
+                              Mức tồn tối đa hiện tại:{' '}
+                              {totalMaximum > 0
+                                ? `${formatNumberVN(totalMaximum)} ${selectedSupply.unit}`
+                                : 'Không giới hạn'}
+                            </p>
+                            {totalMaximum > 0 ? (
+                              <div
+                                className={`rounded-lg border p-3 ${willExceedMax ? 'border-destructive/30 bg-destructive/5 text-destructive' : 'border-amber-500/30 bg-amber-500/5 text-amber-700'}`}
+                              >
+                                <p className="font-medium">
+                                  Khuyến nghị chỉ nhập tối đa{' '}
+                                  {formatNumberVN(remainingCapacity || 0)} {selectedSupply.unit}.
+                                </p>
+                                <p className="text-xs mt-1">
+                                  Để tránh lỗi vượt ngưỡng tồn tối đa, nên đảm bảo:{' '}
+                                  <span className="font-semibold">
+                                    tồn hiện tại + số nhập ≤ max
+                                  </span>{' '}
+                                  ({formatNumberVN(totalCurrent)} + nhập ≤{' '}
+                                  {formatNumberVN(totalMaximum)}).
+                                </p>
+                                {willExceedMax && (
+                                  <p className="text-xs mt-1 font-medium">
+                                    Số lượng đang nhập sẽ vượt mức tối đa cho phép.
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">
+                                Vật phẩm này hiện chưa cấu hình giới hạn mức tồn tối đa.
+                              </p>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
@@ -2299,7 +2477,12 @@ export default function ManagerInventoryCoordinationPage() {
       </Dialog>
 
       {/* ===== Dialog Cập nhật tồn kho (chỉ PUT updateStock min/max) ===== */}
-      <Dialog open={openUpdateStockDialog} onOpenChange={setOpenUpdateStockDialog}>
+      <Dialog
+        open={openUpdateStockDialog}
+        onOpenChange={(open) => {
+          setOpenUpdateStockDialog(open);
+        }}
+      >
         <DialogContent className="!max-w-none w-[94vw] max-w-5xl h-[88vh] overflow-hidden p-0 flex flex-col">
           <DialogHeader className="px-6 py-4 border-b border-border">
             <DialogTitle>Cập nhật thông tin tồn kho hiện có</DialogTitle>
@@ -2318,7 +2501,9 @@ export default function ManagerInventoryCoordinationPage() {
             </div>
 
             {stockDrafts.map((item, index) => {
-              const selectedSupply = supplyItems.find((supply) => supply.id === item.supplyItemId);
+              const selectedSupply = stockDialogSupplyItems.find(
+                (supply) => supply.id === item.supplyItemId,
+              );
               const existingLots = item.supplyItemId
                 ? stockLotsBySupplyItemId.get(item.supplyItemId) || []
                 : [];
@@ -2371,7 +2556,7 @@ export default function ManagerInventoryCoordinationPage() {
                             <SelectValue placeholder="Chọn vật phẩm" />
                           </SelectTrigger>
                           <SelectContent>
-                            {supplyItems.map((supplyItem) => (
+                            {existingStockSupplyItems.map((supplyItem) => (
                               <SelectItem key={supplyItem.id} value={supplyItem.id}>
                                 {supplyItem.iconUrl && (
                                   <span className="material-symbols-outlined text-[18px] text-green-500">

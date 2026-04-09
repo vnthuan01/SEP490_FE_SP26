@@ -24,6 +24,7 @@ export interface CreateSupplyTransferPayload {
   destinationStationId: string;
   reason: string;
   notes?: string;
+  evidenceUrls?: string[];
   items: SupplyTransferItem[];
 }
 
@@ -41,6 +42,7 @@ export interface SupplyTransfer {
   statusName?: string;
   reason?: string;
   notes?: string;
+  evidenceUrls?: string[];
   items: SupplyTransferItem[];
   createdAt?: string;
 }
@@ -67,6 +69,7 @@ type RawSupplyTransfer = {
   statusName?: string;
   reason?: string;
   notes?: string;
+  evidenceUrls?: string[];
   requestedAt?: string;
   createdAt?: string;
   requestedByName?: string;
@@ -77,12 +80,14 @@ type RawSupplyTransfer = {
 
 type ApproveSupplyTransferPayload = {
   notes?: string;
+  evidenceUrls?: string[];
 };
 
 type ShipSupplyTransferPayload = {
   vehicleId?: string;
   driverUserId?: string;
   notes?: string;
+  evidenceUrls?: string[];
 };
 
 type ReceiveSupplyTransferPayload = {
@@ -92,10 +97,12 @@ type ReceiveSupplyTransferPayload = {
     notes?: string;
   }>;
   notes?: string;
+  evidenceUrls?: string[];
 };
 
 type CancelSupplyTransferPayload = {
   notes?: string;
+  evidenceUrls?: string[];
 };
 
 function mapSupplyTransfer(raw: RawSupplyTransfer): SupplyTransfer {
@@ -118,6 +125,7 @@ function mapSupplyTransfer(raw: RawSupplyTransfer): SupplyTransfer {
     statusName: raw.statusName,
     reason: raw.reason,
     notes: raw.notes,
+    evidenceUrls: raw.evidenceUrls || [],
     createdAt: raw.createdAt || raw.requestedAt,
     items: (raw.items || []).map((item) => ({
       supplyItemId: item.supplyItemId,

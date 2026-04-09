@@ -29,5 +29,5 @@ export interface ItemInventoryProps {
     minimumStockLevel: number;
     maximumStockLevel: number;
   } | null;
-  onSubmit: (item: NewInventoryItem) => void;
+  onSubmit: (item: NewInventoryItem) => void | Promise<void>;
 }

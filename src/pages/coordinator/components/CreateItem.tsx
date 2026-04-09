@@ -61,11 +61,15 @@ export function CreateInventoryItemDialog({
   });
   const [openExpirationDateCalendarDialog, setOpenExpirationDateCalendarDialog] =
     React.useState(false);
+  const [errors, setErrors] = React.useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
     const selected = supplyItems.find((item) => item.id === initialSupplyItemId);
     const draft = readDialogDraft<NewInventoryItem | null>(CREATE_ITEM_DRAFT_KEY, null);
+    setErrors({});
+    setSubmitting(false);
     if (draft) {
       setForm(draft);
       return;
@@ -90,9 +94,12 @@ export function CreateInventoryItemDialog({
 
   const update = <K extends keyof NewInventoryItem>(key: K, value: NewInventoryItem[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next[key as string];
+      return next;
+    });
   };
-
-  const canSubmit = form.supplyItemId && form.unit.trim() && form.quantity > 0;
 
   const handleSelectSupplyItem = (supplyItemId: string) => {
     const selected = supplyItems.find((item) => item.id === supplyItemId);
@@ -107,6 +114,21 @@ export function CreateInventoryItemDialog({
       iconUrl: selected.iconUrl || selected.icon,
       unit: selected.unit,
     }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next['supplyItemId'];
+      delete next['unit'];
+      return next;
+    });
+  };
+
+  const validate = (): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    if (!form.supplyItemId) errs['supplyItemId'] = 'Vui lòng chọn vật tư từ danh mục.';
+    if (!form.unit.trim()) errs['unit'] = 'Vui lòng chọn đơn vị.';
+    if (!form.quantity || form.quantity <= 0) errs['quantity'] = 'Số lượng phải lớn hơn 0.';
+    if (existingStock && !form.note?.trim()) errs['note'] = 'Vui lòng nhập lý do nhập kho.';
+    return errs;
   };
 
   const closeExpirationDateCalendarDialogAction = () => {
@@ -129,7 +151,9 @@ export function CreateInventoryItemDialog({
               Chọn vật tư có sẵn <span className="text-red-500">*</span>
             </Label>
             <Select value={form.supplyItemId} onValueChange={handleSelectSupplyItem}>
-              <SelectTrigger>
+              <SelectTrigger
+                className={errors['supplyItemId'] ? 'border-red-500 focus:ring-red-500' : ''}
+              >
                 <SelectValue placeholder="Chọn vật tư từ danh mục" />
               </SelectTrigger>
               <SelectContent>
@@ -148,6 +172,12 @@ export function CreateInventoryItemDialog({
                 ))}
               </SelectContent>
             </Select>
+            {errors['supplyItemId'] && (
+              <p className="text-xs text-red-500 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px]">error</span>
+                {errors['supplyItemId']}
+              </p>
+            )}
           </div>
 
           {/* NAME */}
@@ -160,16 +190,6 @@ export function CreateInventoryItemDialog({
           <div className="space-y-2">
             <Label>Danh mục</Label>
             <Input placeholder="Danh mục tự động điền theo vật tư" value={form.category} readOnly />
-          </div>
-
-          {/* ICON */}
-          <div className="space-y-2">
-            <Label>Icon</Label>
-            <Input
-              placeholder="Icon tự động điền theo vật tư"
-              value={form.iconUrl || form.icon || ''}
-              readOnly
-            />
           </div>
 
           <Separator />
@@ -208,10 +228,17 @@ export function CreateInventoryItemDialog({
                 type="number"
                 min={1}
                 value={form.quantity}
+                className={errors['quantity'] ? 'border-red-500 focus:ring-red-500' : ''}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   update('quantity', Number(e.target.value))
                 }
               />
+              {errors['quantity'] && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">error</span>
+                  {errors['quantity']}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -224,11 +251,7 @@ export function CreateInventoryItemDialog({
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                   update('unit', e.target.value)
                 }
-                className="
-                  w-full h-10 rounded-md border border-border
-                  bg-background px-3 text-sm text-foreground
-                  focus:outline-none focus:ring-2 focus:ring-primary
-                "
+                className={`w-full h-10 rounded-md border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary ${errors['unit'] ? 'border-red-500' : 'border-border'}`}
               >
                 <option value="">-- Chọn đơn vị --</option>
 
@@ -238,6 +261,12 @@ export function CreateInventoryItemDialog({
                   </option>
                 ))}
               </select>
+              {errors['unit'] && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">error</span>
+                  {errors['unit']}
+                </p>
+              )}
             </div>
           </div>
 
@@ -249,7 +278,7 @@ export function CreateInventoryItemDialog({
             <Input
               type="number"
               min={form.quantity}
-              placeholder="Ví dụ: 1000"
+              placeholder="Ví dụ: 1.000"
               value={form.capacity ?? ''}
               disabled={!!existingStock}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
@@ -339,11 +368,17 @@ export function CreateInventoryItemDialog({
                 rows={3}
                 placeholder="Ví dụ: Bổ sung vật tư do nhu cầu sử dụng tăng cao"
                 value={form.note || ''}
+                className={`resize-none ${errors['note'] ? 'border-red-500 focus:ring-red-500' : ''}`}
                 onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                   update('note', e.target.value)
                 }
-                className="resize-none"
               />
+              {errors['note'] && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">error</span>
+                  {errors['note']}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -354,6 +389,7 @@ export function CreateInventoryItemDialog({
             variant="outline"
             onClick={() => {
               clearDialogDraft(CREATE_ITEM_DRAFT_KEY);
+              setErrors({});
               const selected = supplyItems.find((item) => item.id === initialSupplyItemId);
               setForm({
                 supplyItemId: selected?.id || '',
@@ -377,15 +413,24 @@ export function CreateInventoryItemDialog({
           </Button>
           <Button
             variant="primary"
-            disabled={!canSubmit}
-            onClick={() => {
+            disabled={submitting}
+            onClick={async () => {
+              const errs = validate();
+              if (Object.keys(errs).length > 0) {
+                setErrors(errs);
+                return;
+              }
               clearDialogDraft(CREATE_ITEM_DRAFT_KEY);
-              onSubmit(form);
-              onOpenChange(false);
+              setSubmitting(true);
+              try {
+                await onSubmit(form);
+              } finally {
+                setSubmitting(false);
+              }
             }}
           >
             <span className="material-symbols-outlined mr-2">add</span>
-            Nhập kho
+            {submitting ? 'Đang nhập...' : 'Nhập kho'}
           </Button>
         </div>
       </DialogContent>

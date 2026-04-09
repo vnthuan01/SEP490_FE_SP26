@@ -236,6 +236,8 @@ export default function CoordinatorInventoryPage() {
   const [openCreate, setOpenCreate] = useState(false);
   const [openCampaignAllocation, setOpenCampaignAllocation] = useState(false);
   const [openTransferRequest, setOpenTransferRequest] = useState(false);
+  const [transferErrors, setTransferErrors] = useState<Record<string, string>>({});
+  const [editStockErrors, setEditStockErrors] = useState<Record<string, string>>({});
   const [openApproveTransfer, setOpenApproveTransfer] = useState(false);
   const [openShipTransfer, setOpenShipTransfer] = useState(false);
   const [openReceiveTransfer, setOpenReceiveTransfer] = useState(false);
@@ -264,14 +266,14 @@ export default function CoordinatorInventoryPage() {
   // ── Edit min/max dialog state ───────────────────────────────────────────────
   const [editStockDialog, setEditStockDialog] = useState<{
     open: boolean;
-    stock: Stock | null;
+    stockId: string;
     supplyName: string;
     minValue: string;
     maxValue: string;
   }>(() =>
     readDialogDraft(EDIT_STOCK_DRAFT_KEY, {
       open: false,
-      stock: null,
+      stockId: '',
       supplyName: '',
       minValue: '',
       maxValue: '',
@@ -675,17 +677,17 @@ export default function CoordinatorInventoryPage() {
     capacity?: number;
     note?: string;
     expirationDate?: string | null;
-  }) => {
+  }): Promise<boolean> => {
     if (!managedInventory?.inventoryId) {
       toast.error('Không tìm thấy kho đang quản lý để nhập hàng.');
-      return;
+      return false;
     }
 
     const matchedSupplyItem = supplyItems.find((supply) => supply.id === item.supplyItemId);
 
     if (!matchedSupplyItem) {
       toast.error('Chưa tìm thấy vật phẩm tương ứng trong danh mục hàng hóa cứu trợ.');
-      return;
+      return false;
     }
 
     const existingStock = stockMapBySupplyItemId.get(matchedSupplyItem.id);
@@ -693,41 +695,50 @@ export default function CoordinatorInventoryPage() {
     if (existingStock) {
       if (!item.note?.trim()) {
         toast.error('Vui lòng nhập lý do nhập kho cho vật phẩm đã có sẵn trong kho.');
-        return;
+        return false;
       }
 
       // Existing stock → use inventory transaction import
-      await createTransaction({
-        inventoryId: managedInventory.inventoryId,
-        type: TransactionType.Import,
-        reason: TransactionReason.Other,
-        notes: item.note || 'Nhập kho từ trang quản lý kho moderator',
-        items: [
-          {
-            supplyItemId: matchedSupplyItem.id,
-            supplyItemName: matchedSupplyItem.name,
-            supplyItemUnit: matchedSupplyItem.unit,
-            quantity: item.quantity,
-            notes: item.note || 'Nhập thêm vật tư vào kho',
-          },
-        ],
-      });
+      try {
+        await createTransaction({
+          inventoryId: managedInventory.inventoryId,
+          type: TransactionType.Import,
+          reason: TransactionReason.Other,
+          notes: item.note || 'Nhập kho từ trang quản lý kho moderator',
+          items: [
+            {
+              supplyItemId: matchedSupplyItem.id,
+              supplyItemName: matchedSupplyItem.name,
+              supplyItemUnit: matchedSupplyItem.unit,
+              quantity: item.quantity,
+              notes: item.note || 'Nhập thêm vật tư vào kho',
+            },
+          ],
+        });
+      } catch {
+        return false;
+      }
     } else {
       // New stock row → use addStock with optional expiration date
-      await addStock({
-        id: managedInventory.inventoryId,
-        data: {
-          supplyItemId: matchedSupplyItem.id,
-          currentQuantity: item.quantity,
-          minimumStockLevel: 0,
-          maximumStockLevel: item.capacity || item.quantity,
-          expirationDate: item.expirationDate ?? null,
-        },
-      });
+      try {
+        await addStock({
+          id: managedInventory.inventoryId,
+          data: {
+            supplyItemId: matchedSupplyItem.id,
+            currentQuantity: item.quantity,
+            minimumStockLevel: 0,
+            maximumStockLevel: item.capacity || item.quantity,
+            expirationDate: item.expirationDate ?? null,
+          },
+        });
+      } catch {
+        return false;
+      }
     }
 
     await Promise.all([refetchStocks(), refetchTransactions()]);
     toast.success('Đã nhập hàng vào kho Điều phối viên đang quản lý.');
+    return true;
   };
 
   const handleOpenQuickImport = (item: InventoryItemCard) => {
@@ -736,6 +747,7 @@ export default function CoordinatorInventoryPage() {
   };
 
   const handleOpenTransferRequest = () => {
+    setTransferErrors({});
     setTransferForm((prev) => ({
       ...prev,
       sourceStationId: prev.sourceStationId || upstreamSourceStations[0]?.stationId || '',
@@ -766,6 +778,11 @@ export default function CoordinatorInventoryPage() {
       };
     });
 
+    setTransferErrors((prev) => {
+      const next = { ...prev };
+      delete next['items'];
+      return next;
+    });
     setTransferNewItemSupplyId('');
   };
 
@@ -816,27 +833,34 @@ export default function CoordinatorInventoryPage() {
       return;
     }
 
+    const errs: Record<string, string> = {};
+
     if (!transferForm.sourceStationId) {
-      toast.error('Không tìm thấy trạm nguồn/kho tổng để gửi yêu cầu.');
-      return;
+      errs['sourceStationId'] = 'Vui lòng chọn trạm nguồn / kho tổng.';
     }
 
     if (!transferForm.reason.trim()) {
-      toast.error('Vui lòng nhập lý do yêu cầu điều phối.');
-      return;
+      errs['reason'] = 'Vui lòng nhập lý do yêu cầu điều phối.';
     }
 
     const validItems = transferForm.items.filter((item) => item.supplyItemId && item.quantity > 0);
     if (validItems.length === 0) {
-      toast.error('Vui lòng chọn ít nhất một vật phẩm cần điều phối.');
+      errs['items'] = 'Vui lòng chọn ít nhất một vật phẩm cần điều phối.';
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setTransferErrors(errs);
       return;
     }
+
+    setTransferErrors({});
 
     await createSupplyTransfer({
       sourceStationId: transferForm.sourceStationId,
       destinationStationId: station.reliefStationId,
       reason: transferForm.reason.trim(),
       notes: transferForm.notes.trim(),
+      evidenceUrls: [],
       items: validItems,
     });
 
@@ -926,7 +950,7 @@ export default function CoordinatorInventoryPage() {
     }
 
     try {
-      await approveTransfer({ id: selectedTransfer.id, data: {} });
+      await approveTransfer({ id: selectedTransfer.id, data: { evidenceUrls: [] } });
 
       await Promise.all([
         refetchStocks(),
@@ -946,7 +970,7 @@ export default function CoordinatorInventoryPage() {
 
   const handleShipTransfer = async () => {
     if (!selectedTransfer) return;
-    await shipTransfer({ id: selectedTransfer.id, data: {} });
+    await shipTransfer({ id: selectedTransfer.id, data: { evidenceUrls: [] } });
     await Promise.all([refetchSourceTransfers(), refetchDestinationTransfers()]);
     setOpenShipTransfer(false);
     setSelectedTransferId(null);
@@ -958,6 +982,7 @@ export default function CoordinatorInventoryPage() {
     await receiveTransfer({
       id: selectedTransfer.id,
       data: {
+        evidenceUrls: [],
         items: (selectedTransfer.items || []).map((item) => ({
           supplyItemId: item.supplyItemId,
           actualQuantity: item.requestedQuantity ?? item.quantity ?? 0,
@@ -978,7 +1003,7 @@ export default function CoordinatorInventoryPage() {
 
   const handleCancelTransfer = async () => {
     if (!selectedTransfer) return;
-    await cancelTransfer({ id: selectedTransfer.id, data: {} });
+    await cancelTransfer({ id: selectedTransfer.id, data: { evidenceUrls: [] } });
     await Promise.all([refetchSourceTransfers(), refetchDestinationTransfers()]);
     setOpenCancelTransfer(false);
     setSelectedTransferId(null);
@@ -1011,9 +1036,10 @@ export default function CoordinatorInventoryPage() {
 
   /** Open the edit min/max dialog for a specific stock lot */
   const handleOpenEditStock = (stock: Stock, supplyName: string) => {
+    setEditStockErrors({});
     setEditStockDialog({
       open: true,
-      stock,
+      stockId: stock.stockId || '',
       supplyName,
       minValue: String(stock.minimumStockLevel),
       maxValue: String(stock.maximumStockLevel),
@@ -1022,34 +1048,48 @@ export default function CoordinatorInventoryPage() {
 
   /** Validate and submit min/max update */
   const handleSaveEditStock = async () => {
-    const { stock, minValue, maxValue } = editStockDialog;
-    if (!stock || !managedInventory?.inventoryId) return;
+    const { stockId, minValue, maxValue } = editStockDialog;
+    if (!stockId || !managedInventory?.inventoryId) {
+      toast.error('Không tìm thấy dữ liệu lô hàng để cập nhật. Vui lòng đóng và mở lại.');
+      return;
+    }
 
     const min = Number(minValue);
     const max = Number(maxValue);
+    const errs: Record<string, string> = {};
 
     if (isNaN(min) || min < 0) {
-      toast.error('Ngưỡng tối thiểu phải là số không âm.');
-      return;
+      errs['minValue'] = 'Ngưỡng tối thiểu phải là số không âm.';
     }
     if (isNaN(max) || max < 0) {
-      toast.error('Ngưỡng tối đa phải là số không âm.');
+      errs['maxValue'] = 'Ngưỡng tối đa phải là số không âm.';
+    }
+    if (!errs['minValue'] && !errs['maxValue'] && max > 0 && min > max) {
+      errs['minValue'] = 'Ngưỡng tối thiểu không được lớn hơn ngưỡng tối đa.';
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setEditStockErrors(errs);
       return;
     }
-    if (max > 0 && min > max) {
-      toast.error('Ngưỡng tối thiểu không được lớn hơn ngưỡng tối đa.');
-      return;
-    }
+
+    setEditStockErrors({});
 
     try {
       await updateStock({
-        stockId: stock.stockId,
+        stockId,
         inventoryId: managedInventory.inventoryId,
         data: { minimumStockLevel: min, maximumStockLevel: max },
       });
       await refetchStocks();
       clearDialogDraft(EDIT_STOCK_DRAFT_KEY);
-      setEditStockDialog({ open: false, stock: null, supplyName: '', minValue: '', maxValue: '' });
+      setEditStockDialog({
+        open: false,
+        stockId: '',
+        supplyName: '',
+        minValue: '',
+        maxValue: '',
+      });
     } catch {
       // errors handled by hook
     }
@@ -1057,6 +1097,7 @@ export default function CoordinatorInventoryPage() {
 
   const handleClearTransferDraft = () => {
     clearDialogDraft(TRANSFER_REQUEST_DRAFT_KEY);
+    setTransferErrors({});
     setTransferForm({
       sourceStationId: upstreamSourceStations[0]?.stationId || '',
       reason: '',
@@ -1070,9 +1111,10 @@ export default function CoordinatorInventoryPage() {
     clearDialogDraft(EDIT_STOCK_DRAFT_KEY);
     setEditStockDialog((prev) => ({
       ...prev,
-      minValue: prev.stock ? String(prev.stock.minimumStockLevel) : '',
-      maxValue: prev.stock ? String(prev.stock.maximumStockLevel) : '',
+      minValue: '',
+      maxValue: '',
     }));
+    setEditStockErrors({});
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -1862,8 +1904,9 @@ export default function CoordinatorInventoryPage() {
             ? stockMapBySupplyItemId.get(selectedQuickImportSupplyItemId) || null
             : null
         }
-        onSubmit={(item) => {
-          void handleImportItem(item);
+        onSubmit={async (item) => {
+          const success = await handleImportItem(item);
+          if (!success) return;
           setSelectedQuickImportSupplyItemId('');
           setOpenCreate(false);
         }}
@@ -1891,9 +1934,20 @@ export default function CoordinatorInventoryPage() {
                   </label>
                   <Select
                     value={transferForm.sourceStationId}
-                    onValueChange={handleChangeTransferSource}
+                    onValueChange={(v) => {
+                      handleChangeTransferSource(v);
+                      setTransferErrors((prev) => {
+                        const next = { ...prev };
+                        delete next['sourceStationId'];
+                        return next;
+                      });
+                    }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger
+                      className={
+                        transferErrors['sourceStationId'] ? 'border-red-500 focus:ring-red-500' : ''
+                      }
+                    >
                       <SelectValue placeholder="Chọn trạm nguồn" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1906,6 +1960,12 @@ export default function CoordinatorInventoryPage() {
                         ))}
                     </SelectContent>
                   </Select>
+                  {transferErrors['sourceStationId'] && (
+                    <p className="text-xs text-red-500 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[14px]">error</span>
+                      {transferErrors['sourceStationId']}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     Chỉ hiển thị vật phẩm mà kho nguồn đang có. Nếu đổi kho nguồn, các vật phẩm
                     không còn tồn tại ở kho mới sẽ bị loại khỏi phiếu.
@@ -1920,15 +1980,29 @@ export default function CoordinatorInventoryPage() {
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Lý do điều phối</label>
+                  <label className="text-sm font-medium text-foreground">
+                    Lý do điều phối <span className="text-red-500">*</span>
+                  </label>
                   <Textarea
                     rows={3}
                     placeholder="Ví dụ: Kho đang thiếu nước uống và thuốc y tế"
                     value={transferForm.reason}
-                    onChange={(e) =>
-                      setTransferForm((prev) => ({ ...prev, reason: e.target.value }))
-                    }
+                    className={transferErrors['reason'] ? 'border-red-500 focus:ring-red-500' : ''}
+                    onChange={(e) => {
+                      setTransferForm((prev) => ({ ...prev, reason: e.target.value }));
+                      setTransferErrors((prev) => {
+                        const next = { ...prev };
+                        delete next['reason'];
+                        return next;
+                      });
+                    }}
                   />
+                  {transferErrors['reason'] && (
+                    <p className="text-xs text-red-500 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[14px]">error</span>
+                      {transferErrors['reason']}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -1946,6 +2020,12 @@ export default function CoordinatorInventoryPage() {
 
               <div className="space-y-3 rounded-2xl border border-border bg-muted/10 p-4">
                 <p className="font-semibold text-foreground">Danh sách vật phẩm cần điều phối</p>
+                {transferErrors['items'] && (
+                  <p className="text-xs text-red-500 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px]">error</span>
+                    {transferErrors['items']}
+                  </p>
+                )}
                 <div className="rounded-xl border border-border bg-yellow-500 p-3 text-sm text-white/80">
                   {isLoadingSelectedSourceStocks
                     ? 'Đang tải tồn kho kho nguồn...'
@@ -1962,7 +2042,14 @@ export default function CoordinatorInventoryPage() {
                     </label>
                     <Select
                       value={transferNewItemSupplyId}
-                      onValueChange={setTransferNewItemSupplyId}
+                      onValueChange={(v) => {
+                        setTransferNewItemSupplyId(v);
+                        setTransferErrors((prev) => {
+                          const next = { ...prev };
+                          delete next['items'];
+                          return next;
+                        });
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Chọn thêm vật phẩm cần điều phối" />
@@ -2353,14 +2440,14 @@ export default function CoordinatorInventoryPage() {
           if (!open)
             setEditStockDialog({
               open: false,
-              stock: null,
+              stockId: '',
               supplyName: '',
               minValue: '',
               maxValue: '',
             });
         }}
       >
-        <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
+        <DialogContent className="max-w-none w-[95vw] h-[50vh] p-0 overflow-hidden flex flex-col">
           <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle className="text-lg font-bold text-foreground">
               Chỉnh ngưỡng tồn kho
@@ -2371,17 +2458,29 @@ export default function CoordinatorInventoryPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Ngưỡng tối thiểu (Min)</label>
               <Input
                 type="number"
                 min={0}
                 value={editStockDialog.minValue}
-                onChange={(e) =>
-                  setEditStockDialog((prev) => ({ ...prev, minValue: e.target.value }))
-                }
+                className={editStockErrors['minValue'] ? 'border-red-500 focus:ring-red-500' : ''}
+                onChange={(e) => {
+                  setEditStockDialog((prev) => ({ ...prev, minValue: e.target.value }));
+                  setEditStockErrors((prev) => {
+                    const next = { ...prev };
+                    delete next['minValue'];
+                    return next;
+                  });
+                }}
               />
+              {editStockErrors['minValue'] && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">error</span>
+                  {editStockErrors['minValue']}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Ngưỡng tối đa (Max)</label>
@@ -2389,12 +2488,27 @@ export default function CoordinatorInventoryPage() {
                 type="number"
                 min={0}
                 value={editStockDialog.maxValue}
-                onChange={(e) =>
-                  setEditStockDialog((prev) => ({ ...prev, maxValue: e.target.value }))
-                }
+                className={editStockErrors['maxValue'] ? 'border-red-500 focus:ring-red-500' : ''}
+                onChange={(e) => {
+                  setEditStockDialog((prev) => ({ ...prev, maxValue: e.target.value }));
+                  setEditStockErrors((prev) => {
+                    const next = { ...prev };
+                    delete next['maxValue'];
+                    return next;
+                  });
+                }}
               />
-              <p className="text-xs text-muted-foreground">
-                Đặt 0 nếu không giới hạn sức chứa tối đa.
+              {editStockErrors['maxValue'] && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">error</span>
+                  {editStockErrors['maxValue']}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px]">info</span>
+                <span className="text-xs text-muted-foreground">
+                  Đặt ít nhất là 1 nếu không giới quá nhiều sức chứa tối đa.
+                </span>
               </p>
             </div>
           </div>
@@ -2408,7 +2522,7 @@ export default function CoordinatorInventoryPage() {
               onClick={() =>
                 setEditStockDialog({
                   open: false,
-                  stock: null,
+                  stockId: '',
                   supplyName: '',
                   minValue: '',
                   maxValue: '',

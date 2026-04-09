@@ -5,6 +5,7 @@ export interface ReliefStation {
   stationId?: string;
   reliefStationId?: string;
   locationId: string;
+  locationName?: string | null;
   name: string;
   address: string;
   contactNumber: string;
