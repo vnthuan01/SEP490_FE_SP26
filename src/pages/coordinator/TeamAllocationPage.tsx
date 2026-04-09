@@ -19,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 // ── API hooks ──
 import { useRescueRequests } from '@/hooks/useRescueRequests';
-import { useTeamLatestTracking, useTeamsInStation } from '@/hooks/useTeams';
+import { useTeamLatestTracking, useTeamsInStation, useTeamsActiveBatches } from '@/hooks/useTeams';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { rescueRequestService } from '@/services/rescueRequestService';
 import type { RescueRequestItem } from '@/services/rescueRequestService';
@@ -143,6 +143,8 @@ export default function CoordinatorTeamAllocationPage() {
   const { teams: apiTeams } = useTeamsInStation(station?.reliefStationId);
   const firstTeamId = apiTeams?.[0]?.teamId;
   const { trackingPoints } = useTeamLatestTracking(String(firstTeamId || ''), 100);
+  const allTeamIds = useMemo(() => (apiTeams || []).map((t: any) => String(t.teamId)), [apiTeams]);
+  const { busyTeamIds } = useTeamsActiveBatches(allTeamIds);
 
   // ── build headquarters from station ──
   const headquarters: Headquarters = useMemo(
@@ -234,11 +236,26 @@ export default function CoordinatorTeamAllocationPage() {
     });
   }, [reliefLocations, urgencyFilter, statusFilter, needsFilter, search]);
 
-  // ── available teams ──
-  const availableTeams = useMemo(
-    () => teamsWithTracking.filter((t) => t.status === 'available'),
-    [teamsWithTracking],
+  const teamOptions = useMemo(
+    () =>
+      teamsWithTracking.map((team) => {
+        let disabledReason: string | undefined;
+
+        if (team.status !== 'available') {
+          disabledReason = 'Team hiện không sẵn sàng điều phối';
+        } else if (busyTeamIds.has(team.id)) {
+          disabledReason = 'Đang di chuyển để cứu hỗ trợ, không thể phân công mới';
+        }
+
+        return {
+          ...team,
+          disabledReason,
+        };
+      }),
+    [teamsWithTracking, busyTeamIds],
   );
+
+  const availableTeams = useMemo(() => teamOptions.filter((t) => !t.disabledReason), [teamOptions]);
 
   // ── stats ──
   const stats = useMemo(
@@ -340,6 +357,7 @@ export default function CoordinatorTeamAllocationPage() {
             isOpen={!!selectedLocationId}
             onClose={() => setSelectedLocationId(undefined)}
             availableTeams={availableTeams}
+            allTeams={teamOptions}
             onAssignTeam={handleAssignTeam}
           />
 
@@ -488,6 +506,7 @@ export default function CoordinatorTeamAllocationPage() {
         isOpen={!!selectedLocationId}
         onClose={() => setSelectedLocationId(undefined)}
         availableTeams={availableTeams}
+        allTeams={teamOptions}
         onAssignTeam={handleAssignTeam}
       />
     </DashboardLayout>
