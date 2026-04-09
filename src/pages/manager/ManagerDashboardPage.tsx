@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import goongjs from '@goongmaps/goong-js';
+import { useQueries } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,7 @@ import { useProvincialStations } from '@/hooks/useReliefStations';
 import { useVehicles } from '@/hooks/useVehicles';
 import { useAnalyzeDisasterRisks } from '@/hooks/useDisasterAnalysis';
 import type { AnalyzeDisasterRiskResponse } from '@/services/disasterAnalysisService';
+import { reverseGeocodeV2 } from '@/services/goongService';
 import { managerNavItems, managerProjects } from './components/sidebarConfig';
 import {
   DisasterType,
@@ -143,6 +145,67 @@ const parseWeatherConditionVN = (condition?: string | null) => {
   return condition || 'Không rõ';
 };
 
+type GeoPoint = {
+  latitude: number;
+  longitude: number;
+};
+
+type StationAnalysisPoint = GeoPoint & {
+  label: string;
+  context: string;
+};
+
+ 
+type OnSelectStation = (stationId: string | null) => void;
+ 
+type OnSelectAnalysis = (analysis: AnalyzeDisasterRiskResponse | null) => void;
+
+const GOONG_API_KEY =
+  import.meta.env.VITE_GOONG_API_KEY || import.meta.env.VITE_GOONG_MAP_KEY || '';
+
+const toAnalysisCoordKey = (latitude: number, longitude: number) =>
+  `${Number(latitude).toFixed(6)},${Number(longitude).toFixed(6)}`;
+
+const kmToLatitudeDelta = (km: number) => km / 111;
+
+const kmToLongitudeDelta = (km: number, latitude: number) => {
+  const cosLat = Math.cos((latitude * Math.PI) / 180);
+  return km / (111 * Math.max(Math.abs(cosLat), 0.2));
+};
+
+const getPointInRadius = (center: GeoPoint, distanceKm: number, angleDeg: number): GeoPoint => {
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const latDelta = kmToLatitudeDelta(distanceKm * Math.sin(angleRad));
+  const lngDelta = kmToLongitudeDelta(distanceKm * Math.cos(angleRad), center.latitude);
+
+  return {
+    latitude: center.latitude + latDelta,
+    longitude: center.longitude + lngDelta,
+  };
+};
+
+const buildStationAnalysisPoints = (stationPoint: GeoPoint, coverageRadiusKm?: number | null) => {
+  const radiusKm = Math.max(coverageRadiusKm || 12, 3);
+  return [
+    {
+      ...getPointInRadius(stationPoint, radiusKm * 0.28, 32),
+      label: 'Điểm giám sát gần trạm',
+      context: 'khu vực lân cận trạm và cụm dân cư gần nhất',
+    },
+    {
+      ...getPointInRadius(stationPoint, radiusKm * 0.58, 154),
+      label: 'Điểm giám sát vành đai',
+      context: 'vành đai hoạt động của trạm, gồm khu dân cư và hạ tầng lân cận',
+    },
+    {
+      ...getPointInRadius(stationPoint, radiusKm * 0.82, 286),
+      label: 'Điểm giám sát ngoại vi',
+      context:
+        'khu vực rìa phạm vi phủ của trạm, có thể gồm địa hình tự nhiên hoặc vùng ít dân cư hơn',
+    },
+  ] satisfies StationAnalysisPoint[];
+};
+
 // ─── Map for disaster overlay ────────────────────────────────────────────────
 
 function DisasterRiskMap({
@@ -158,6 +221,7 @@ function DisasterRiskMap({
     name: string;
     latitude: number;
     longitude: number;
+    coverageRadiusKm?: number | null;
     address?: string | null;
     contactNumber?: string | null;
     level?: number;
@@ -165,8 +229,8 @@ function DisasterRiskMap({
   }>;
   analyses: AnalyzeDisasterRiskResponse[];
   selectedAnalysis: AnalyzeDisasterRiskResponse | null;
-  onSelectStation?: (stationId: string | null) => void;
-  onSelectAnalysis: (analysis: AnalyzeDisasterRiskResponse | null) => void;
+  onSelectStation?: OnSelectStation;
+  onSelectAnalysis: OnSelectAnalysis;
   heightClass?: string;
 }) {
   const mapInstanceRef = useRef<any>(null);
@@ -209,11 +273,38 @@ function DisasterRiskMap({
             ? '#2563eb'
             : '#16a34a';
 
+      const stationLevelLabel =
+        station.level === ReliefStationLevel.Regional
+          ? 'Trụ sở khu vực'
+          : station.level === ReliefStationLevel.Provincial
+            ? 'Trạm tỉnh / thành'
+            : 'Trạm địa phương';
+
+      const stationPopup = new goongjs.Popup({ closeButton: true, closeOnClick: false, offset: 24 })
+        .setHTML(`
+          <div style="min-width:240px;max-width:320px;padding:6px 4px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span style="width:14px;height:14px;border-radius:4px;background:${markerColor};display:inline-block;"></span>
+              <span style="font-size:12px;font-weight:700;color:${markerColor};text-transform:uppercase;">${stationLevelLabel}</span>
+            </div>
+            <div style="font-size:15px;font-weight:700;color:#111827;line-height:1.4;">${station.name}</div>
+            <div style="font-size:12px;color:#4b5563;margin-top:6px;">${station.address || 'Chưa có địa chỉ'}</div>
+            <div style="font-size:12px;color:#4b5563;margin-top:4px;">Liên hệ: ${station.contactNumber || 'Chưa có'}</div>
+            <div style="font-size:12px;color:#4b5563;margin-top:4px;">Phạm vi hoạt động: ${Math.round(station.coverageRadiusKm || 12)} km</div>
+            <div style="font-size:12px;color:#2563eb;margin-top:8px;font-weight:600;">Bấm marker thiên tai để xem phân tích AI</div>
+          </div>
+        `);
+
       const el = document.createElement('button');
       el.type = 'button';
       el.className = 'bg-transparent border-0 p-0 cursor-pointer';
-      el.innerHTML = `<span style="width:14px;height:14px;background:${markerColor};border-radius:9999px;box-shadow:0 0 0 5px ${markerColor}30;display:block;"></span>`;
+      el.innerHTML = `
+        <span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:#ffffff;border:2px solid ${markerColor};border-radius:10px;box-shadow:0 8px 24px rgba(15,23,42,0.18);">
+          <span class="material-symbols-outlined" style="font-size:18px;color:${markerColor};line-height:1;">home_work</span>
+        </span>
+      `;
       el.addEventListener('click', () => {
+        stationPopup.addTo(mapImpl);
         onSelectStation?.(station.id ?? null);
         (mapImpl as any).flyTo({
           center: [station.longitude, station.latitude],
@@ -224,6 +315,7 @@ function DisasterRiskMap({
 
       const marker = new goongjs.Marker({ element: el })
         .setLngLat([station.longitude, station.latitude])
+        .setPopup(stationPopup)
         .addTo(mapImpl);
       stationMarkersRef.current.push(marker);
     });
@@ -272,11 +364,11 @@ function DisasterRiskMap({
       el.type = 'button';
       el.className = 'bg-transparent border-0 p-0 cursor-pointer flex items-center gap-1';
       el.innerHTML = `
-        <span style="width:${isSelected ? 20 : 16}px;height:${isSelected ? 20 : 16}px;background:${theme.color};border-radius:9999px;box-shadow:0 0 0 ${isSelected ? 8 : 5}px ${theme.light};display:block;"></span>
+        <span style="display:flex;align-items:center;justify-content:center;width:${isSelected ? 28 : 24}px;height:${isSelected ? 28 : 24}px;background:${theme.color};border:2px solid #fff;transform:rotate(45deg);border-radius:6px;box-shadow:0 0 0 ${isSelected ? 8 : 5}px ${theme.light};">
+          <span class="material-symbols-outlined" style="font-size:15px;color:#fff;transform:rotate(-45deg);line-height:1;">${theme.icon}</span>
+        </span>
         <span style="font-size:11px;font-weight:700;background:${theme.color};color:#fff;padding:3px 8px;border-radius:9999px;white-space:nowrap;">${disasterLabel}</span>
       `;
-      el.addEventListener('mouseenter', () => popup.addTo(mapImpl));
-      el.addEventListener('mouseleave', () => popup.remove());
       el.addEventListener('click', () => {
         popup.addTo(mapImpl);
         onSelectAnalysis(analysis);
@@ -327,13 +419,15 @@ function DisasterRiskMap({
       {/* Legend */}
       <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2 max-w-[calc(100%-2rem)]">
         <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
-          <span className="size-3 rounded-full bg-violet-600" /> Trụ sở khu vực
+          <span className="inline-flex size-5 items-center justify-center rounded-md border-2 border-violet-600 text-violet-600">
+            <span className="material-symbols-outlined text-[12px]">home_work</span>
+          </span>
+          Trạm cứu trợ
         </div>
         <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
-          <span className="size-3 rounded-full bg-blue-600" /> Trạm tỉnh/thành
-        </div>
-        <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
-          <span className="material-symbols-outlined text-[13px] text-red-500">storm</span>
+          <span className="inline-flex size-5 items-center justify-center rounded-[4px] bg-red-500 text-white rotate-45">
+            <span className="material-symbols-outlined -rotate-45 text-[12px]">warning</span>
+          </span>
           Nguy cơ thiên tai
         </div>
       </div>
@@ -354,15 +448,9 @@ function DisasterRiskMap({
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-// Radius in km for surrounding area analysis
-const ANALYSIS_RADIUS_KM = 25;
-// ~1 degree latitude = 111 km
-const ANALYSIS_OFFSET_DEG = ANALYSIS_RADIUS_KM / 111;
-
 export default function ManagerDashboardPage() {
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [selectedInventoryId, setSelectedInventoryId] = useState('ALL_INVENTORIES');
-  const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
   const [selectedAnalysis, setSelectedAnalysis] = useState<AnalyzeDisasterRiskResponse | null>(
     null,
   );
@@ -390,9 +478,9 @@ export default function ManagerDashboardPage() {
     search: vehicleSearch || undefined,
   });
 
-  const stations = stationsData?.items || [];
-  const inventories = inventoriesData?.items || [];
-  const inventoryStocks = inventoryStocksData?.items || [];
+  const stations = useMemo(() => stationsData?.items || [], [stationsData]);
+  const inventories = useMemo(() => inventoriesData?.items || [], [inventoriesData]);
+  const inventoryStocks = useMemo(() => inventoryStocksData?.items || [], [inventoryStocksData]);
   const selectedInventory = inventories.find(
     (inventory) => inventory.inventoryId === selectedInventoryId,
   );
@@ -427,6 +515,7 @@ export default function ManagerDashboardPage() {
           name: station.name,
           latitude: Number(station.latitude || 0),
           longitude: Number(station.longitude || 0),
+          coverageRadiusKm: station.coverageRadiusKm ?? null,
           address: station.address,
           contactNumber: station.contactNumber,
           level: station.level,
@@ -450,27 +539,65 @@ export default function ManagerDashboardPage() {
     };
   }, [inventories]);
 
-  // Generate 4 surrounding analysis points (N/S/E/W) per station
+  const areaLookupQueries = useQueries({
+    queries: mapStations.map((station) => ({
+      queryKey: [
+        'station-analysis-area',
+        station.id ?? station.name,
+        station.latitude,
+        station.longitude,
+      ],
+      enabled: Boolean(GOONG_API_KEY),
+      staleTime: 30 * 60 * 1000,
+      retry: 1,
+      queryFn: async () => {
+        const response = await reverseGeocodeV2(station.latitude, station.longitude, { limit: 1 });
+        const result = response.results?.[0];
+        return {
+          stationId: station.id ?? null,
+          areaName:
+            result?.compound?.district ||
+            result?.compound?.province ||
+            result?.formatted_address ||
+            station.name,
+        };
+      },
+    })),
+  });
+
+  const areaNameByStationId = useMemo(() => {
+    const map = new Map<string | null, string>();
+    areaLookupQueries.forEach((query) => {
+      if (query.data?.stationId) {
+        map.set(query.data.stationId, query.data.areaName);
+      }
+    });
+    return map;
+  }, [areaLookupQueries]);
+
   const disasterPayloadsWithMeta = useMemo(
     () =>
       mapStations.flatMap((station) => {
-        const directions = [
-          { dlat: ANALYSIS_OFFSET_DEG, dlng: 0, dir: 'Phía Bắc' },
-          { dlat: -ANALYSIS_OFFSET_DEG, dlng: 0, dir: 'Phía Nam' },
-          { dlat: 0, dlng: ANALYSIS_OFFSET_DEG, dir: 'Phía Đông' },
-          { dlat: 0, dlng: -ANALYSIS_OFFSET_DEG, dir: 'Phía Tây' },
-        ];
-        return directions.map(({ dlat, dlng, dir }) => ({
-          stationId: station.id ?? null,
+        const stationId = station.id ?? null;
+        const stationPoint = {
+          latitude: station.latitude,
+          longitude: station.longitude,
+        };
+        const analysisPoints = buildStationAnalysisPoints(stationPoint, station.coverageRadiusKm);
+        const areaName = areaNameByStationId.get(stationId) || station.name;
+
+        return analysisPoints.map((point, index) => ({
+          stationId,
+          pointLabel: point.label,
           payload: {
-            latitude: station.latitude + dlat,
-            longitude: station.longitude + dlng,
-            locationName: `${dir} ${station.name || 'Trạm cứu trợ'}`,
-            additionalContext: `Phân tích nguy cơ thiên tai khu vực bán kính ${ANALYSIS_RADIUS_KM}km ${dir.toLowerCase()} trạm ${station.name || 'Trạm cứu trợ'}. Địa chỉ trạm: ${station.address || 'Không rõ địa chỉ'}`,
+            latitude: point.latitude,
+            longitude: point.longitude,
+            locationName: `${station.name} - ${point.label}`,
+            additionalContext: `Phân tích nguy cơ thiên tai cho vị trí đại diện số ${index + 1} trong phạm vi hoạt động khoảng ${Math.round(station.coverageRadiusKm || 12)}km của trạm ${station.name}. Khu vực tham chiếu: ${areaName}. Đây là vị trí nằm trong vùng hoạt động của trạm, không phải đúng tọa độ trung tâm trạm. Ngữ cảnh địa bàn: ${point.context}. Địa chỉ trạm: ${station.address || 'Không rõ địa chỉ'}`,
           },
         }));
       }),
-    [mapStations],
+    [mapStations, areaNameByStationId],
   );
 
   const disasterPayloads = useMemo(
@@ -498,13 +625,13 @@ export default function ManagerDashboardPage() {
     )[0];
   }, [disasterAnalyses]);
 
-  // Map stationId → highest-risk surrounding analysis
+  // Map stationId → highest-risk representative analysis in province
   const stationTopAnalysisMap = useMemo(() => {
     const map = new Map<string | null, AnalyzeDisasterRiskResponse>();
     disasterPayloadsWithMeta.forEach((meta) => {
-      const coordKey = `${meta.payload.latitude.toFixed(6)},${meta.payload.longitude.toFixed(6)}`;
+      const coordKey = toAnalysisCoordKey(meta.payload.latitude, meta.payload.longitude);
       const analysis = disasterAnalyses.find(
-        (a) => `${Number(a.latitude).toFixed(6)},${Number(a.longitude).toFixed(6)}` === coordKey,
+        (a) => toAnalysisCoordKey(a.latitude, a.longitude) === coordKey,
       );
       if (!analysis) return;
       const current = map.get(meta.stationId);
@@ -518,10 +645,7 @@ export default function ManagerDashboardPage() {
     return map;
   }, [disasterPayloadsWithMeta, disasterAnalyses]);
 
-  const selectedStation = mapStations.find((station) => station.id === selectedStationId) || null;
-
   const handleSelectStation = (stationId: string | null) => {
-    setSelectedStationId(stationId);
     if (stationId) {
       const topAnalysis = stationTopAnalysisMap.get(stationId);
       if (topAnalysis) setSelectedAnalysis(topAnalysis);
@@ -722,43 +846,6 @@ export default function ManagerDashboardPage() {
               onSelectAnalysis={setSelectedAnalysis}
               heightClass="h-[520px]"
             />
-
-            {/* Selected station info overlay */}
-            {selectedStation && (
-              <div className="rounded-2xl border border-border bg-muted/20 p-4 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-bold text-foreground">{selectedStation.name}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {selectedStation.level === ReliefStationLevel.Regional
-                        ? 'Trụ sở khu vực'
-                        : selectedStation.level === ReliefStationLevel.Provincial
-                          ? 'Trạm tỉnh / thành'
-                          : 'Trạm địa phương'}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStationId(null)}
-                    className="rounded-lg p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground transition"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">close</span>
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-muted-foreground">
-                  <p>{selectedStation.address || 'Chưa có địa chỉ'}</p>
-                  <p>Liên hệ: {selectedStation.contactNumber || 'Chưa có'}</p>
-                  <Badge
-                    variant="outline"
-                    appearance="outline"
-                    size="sm"
-                    className={`border w-fit ${getEntityStatusClass(selectedStation.status || EntityStatus.Active)}`}
-                  >
-                    {getEntityStatusLabel(selectedStation.status || EntityStatus.Active)}
-                  </Badge>
-                </div>
-              </div>
-            )}
 
             {/* Selected analysis card */}
             {selectedAnalysis && (
