@@ -27,6 +27,7 @@ import {
   getVerificationStatusClass,
   VerificationMethod,
   VerificationMethodLabel,
+  getPriorityLevelLabel,
 } from '@/enums/beEnums';
 
 const verificationStatusText = (status?: number | string | null) =>
@@ -56,6 +57,20 @@ const formatMeters = (value?: number | null) =>
   value == null ? '-- m' : `${value.toLocaleString('vi-VN')} m`;
 const formatSeconds = (value?: number | null) =>
   value == null ? '-- giây' : `${value.toLocaleString('vi-VN')} giây`;
+
+const weatherRiskAssessment = (riskLevel?: string | null, riskScore?: number | null) => {
+  const level = (riskLevel || '').toLowerCase();
+  if (level === 'low') {
+    return `Điều kiện thời tiết tương đối thuận lợi cho cứu hộ, mức rủi ro thấp${riskScore != null ? ` (${riskScore})` : ''}.`;
+  }
+  if (level === 'medium') {
+    return `Thời tiết có rủi ro trung bình, cần theo dõi thêm trong quá trình điều phối${riskScore != null ? ` (${riskScore})` : ''}.`;
+  }
+  if (level === 'high') {
+    return `Thời tiết nguy cơ cao, cần ưu tiên an toàn lực lượng cứu hộ${riskScore != null ? ` (${riskScore})` : ''}.`;
+  }
+  return 'Chưa có đánh giá rủi ro thời tiết.';
+};
 
 const attachmentTypeLabel = (type?: number | string | null) => {
   if (type === 0 || type === '0' || type === 'RequestEvidence') return 'Bằng chứng yêu cầu';
@@ -653,7 +668,7 @@ export default function CoordinatorRequestManagementPage() {
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1 truncate">
-                        {req.disasterType || '--'}
+                        {(req.rescueRequestType || '--') + ' • ' + (req.disasterType || '--')}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1 truncate">
                         {req.address || 'Chưa cập nhật'}
@@ -726,7 +741,7 @@ export default function CoordinatorRequestManagementPage() {
                       </div>
                       <div>
                         <p className="text-xs uppercase text-muted-foreground font-semibold">
-                          Mức ưu tiên
+                          Điểm ưu tiên
                         </p>
                         <p className="text-sm">{selected.priority ?? '--'}</p>
                       </div>
@@ -736,11 +751,20 @@ export default function CoordinatorRequestManagementPage() {
                         </p>
                         <p className="text-sm">{selected.reporterPhone || '--'}</p>
                       </div>
-                      <div className="md:col-span-2">
+                      <div>
                         <p className="text-xs uppercase text-muted-foreground font-semibold">
                           Mô tả
                         </p>
                         <p className="text-sm">{selected.description || 'Không có mô tả'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Mức ưu tiên
+                        </p>
+                        <p className="text-sm">
+                          {' '}
+                          {getPriorityLevelLabel(selected.priorityLevel) || 'Không có mức ưu tiên'}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -831,15 +855,91 @@ export default function CoordinatorRequestManagementPage() {
                       </div>
                     </div>
                   </div>
+
+                  <div className="rounded-lg border border-border p-4 space-y-3">
+                    <p className="text-sm font-semibold">D. Thời tiết khu vực & đánh giá</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Trạng thái thời tiết
+                        </p>
+                        <p className="text-sm">{selected.weatherCondition || '--'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Nhiệt độ
+                        </p>
+                        <p className="text-sm">
+                          {selected.weatherTempC != null ? `${selected.weatherTempC} °C` : '--'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">Gió</p>
+                        <p className="text-sm">
+                          {selected.weatherWindKph != null
+                            ? `${selected.weatherWindKph} km/h`
+                            : '--'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Lượng mưa
+                        </p>
+                        <p className="text-sm">
+                          {selected.weatherPrecipMm != null
+                            ? `${selected.weatherPrecipMm} mm`
+                            : '--'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Tầm nhìn
+                        </p>
+                        <p className="text-sm">
+                          {selected.weatherVisibilityKm != null
+                            ? `${selected.weatherVisibilityKm} km`
+                            : '--'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Mức rủi ro
+                        </p>
+                        <p className="text-sm">
+                          {selected.weatherRiskLevel || '--'}
+                          {selected.weatherRiskScore != null
+                            ? ` • ${selected.weatherRiskScore}`
+                            : ''}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground font-semibold">
+                          Thời điểm quan sát
+                        </p>
+                        <p className="text-sm">{formatDate(selected.weatherObservedAt)}</p>
+                      </div>
+                      <div className="md:col-span-2 rounded-lg bg-accent/30 border border-border p-3">
+                        <p className="text-xs uppercase text-muted-foreground font-semibold mb-1">
+                          Đánh giá
+                        </p>
+                        <p className="text-sm">
+                          {weatherRiskAssessment(
+                            selected.weatherRiskLevel,
+                            selected.weatherRiskScore,
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="rounded-lg border border-border p-4 space-y-3">
-                  <p className="text-sm font-semibold">D. Tệp đính kèm</p>
+                  <p className="text-sm font-semibold">E. Tệp đính kèm</p>
                   {selected.attachments?.length ? (
                     <div className="space-y-4">
                       <div>
                         <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
-                          RequestEvidence (0) · Bằng chứng yêu cầu
+                          Bằng chứng yêu cầu
                         </p>
                         {requestEvidenceAttachments.length ? (
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -872,7 +972,7 @@ export default function CoordinatorRequestManagementPage() {
 
                       <div>
                         <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
-                          CompletionEvidence (1) · Bằng chứng hoàn thành
+                          Bằng chứng hoàn thành
                         </p>
                         {completionEvidenceAttachments.length ? (
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -909,7 +1009,7 @@ export default function CoordinatorRequestManagementPage() {
                 </div>
 
                 <div className="rounded-lg border border-border p-4 space-y-3">
-                  <p className="text-sm font-semibold">E. Xác minh yêu cầu</p>
+                  <p className="text-sm font-semibold">F. Xác minh yêu cầu</p>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>

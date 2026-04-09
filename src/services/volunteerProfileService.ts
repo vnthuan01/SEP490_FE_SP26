@@ -102,6 +102,16 @@ export const volunteerProfileService = {
       },
     }),
 
+  getUnassigned: (params?: SearchVolunteerProfileParams) =>
+    apiClient.get<PagedResponse<VolunteerProfile>>('/VolunteerProfile/unassigned', {
+      params: {
+        PageIndex: params?.pageIndex,
+        PageSize: params?.pageSize,
+        Search: params?.search,
+        VerificationStatus: params?.verificationStatus,
+      },
+    }),
+
   getMyProfile: () => apiClient.get<VolunteerProfile>('/VolunteerProfile/my-profile'),
 
   getPendingApplications: (params?: SearchVolunteerProfileApplicationsParams) =>

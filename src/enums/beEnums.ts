@@ -204,6 +204,41 @@ export const RescuePriorityLevel = {
 
 export type RescuePriorityLevel = (typeof RescuePriorityLevel)[keyof typeof RescuePriorityLevel];
 
+export const PriorityLevelLabel: Record<RescuePriorityLevel, string> = {
+  [RescuePriorityLevel.Low]: 'Thấp',
+  [RescuePriorityLevel.Medium]: 'Trung bình',
+  [RescuePriorityLevel.High]: 'Cao',
+  [RescuePriorityLevel.Critical]: 'Khẩn cấp',
+};
+export function getPriorityLevelLabel(value: number | string | null | undefined) {
+  if (value == null) return 'Không có mức ưu tiên';
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+
+    if (normalized === '0' || normalized === 'low') {
+      return PriorityLevelLabel[RescuePriorityLevel.Low];
+    }
+    if (normalized === '1' || normalized === 'medium') {
+      return PriorityLevelLabel[RescuePriorityLevel.Medium];
+    }
+    if (normalized === '2' || normalized === 'high') {
+      return PriorityLevelLabel[RescuePriorityLevel.High];
+    }
+    if (normalized === '3' || normalized === 'critical') {
+      return PriorityLevelLabel[RescuePriorityLevel.Critical];
+    }
+
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) {
+      return PriorityLevelLabel[parsed as RescuePriorityLevel] ?? 'Không hợp lệ';
+    }
+
+    return 'Không hợp lệ';
+  }
+
+  return PriorityLevelLabel[value as RescuePriorityLevel] ?? 'Không hợp lệ';
+}
 // ─── Disaster / Urgency ────────────────────────────────────────────────────────
 
 export const DisasterType = {
