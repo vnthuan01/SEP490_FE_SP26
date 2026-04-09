@@ -17,7 +17,7 @@ import { type UserRoleType } from '@/enums/UserRole';
 import { roleVariantMap } from '@/constants/roleVariant';
 import { roleLabelMap } from '@/constants/roleLabel';
 import { useEffect, useState } from 'react';
-import { AddUserModal, type CreateUserPayload } from './components/AddUserModal';
+import { AddUserModal } from './components/AddUserModal';
 import { getCurrentUserProfile } from '@/services/userService';
 import { useAllUsers } from '@/hooks/useUsers';
 import { StatsCard } from '@/pages/admin/components/StatsCard';
@@ -38,6 +38,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { adminNavItems, adminProjects } from './components/sidebarConfig';
 import { Textarea } from '@/components/ui/textarea';
 
 export default function AdminUserManagementPage() {
@@ -72,7 +73,7 @@ export default function AdminUserManagementPage() {
 
     fetchProfile();
   }, []);
-  const handleCreateUser = async (_data: CreateUserPayload) => {
+  const handleCreateUser = async () => {
     console.log('Đã tạo user thành công');
     await refetch();
   };
@@ -112,7 +113,7 @@ export default function AdminUserManagementPage() {
   };
 
   return (
-    <DashboardLayout>
+    <DashboardLayout projects={adminProjects} navItems={adminNavItems}>
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div className="flex flex-col gap-2">

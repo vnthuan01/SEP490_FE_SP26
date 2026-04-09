@@ -230,6 +230,13 @@ function LoginPage() {
                 <span>Đăng nhập</span>
                 <span className="material-symbols-outlined text-sm">arrow_forward</span>
               </Button>
+
+              <Button type="button" variant="outline" size="lg" asChild>
+                <Link to="/fundraising" className="flex items-center justify-center gap-2">
+                  <span className="material-symbols-outlined text-sm">volunteer_activism</span>
+                  Xem chiến dịch gây quỹ công khai
+                </Link>
+              </Button>
             </form>
           </Form>
           {/* Footer */}

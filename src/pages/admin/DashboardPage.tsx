@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +16,7 @@ import { RequestHighlightsCard } from '@/pages/admin/components/RequestHighlight
 import { RecentActivityCard } from '@/pages/admin/components/RecentActivityCard';
 import { UpcomingCampaignsCard } from '@/pages/admin/components/UpcomingCampaignsCard';
 import { LogisticsOverviewCard } from '@/pages/admin/components/LogisticsOverviewCard';
+import { adminNavItems, adminProjects } from './components/sidebarConfig';
 import { formatNumberVN } from '@/lib/utils';
 import {
   useAdminDashboardOverview,
@@ -22,6 +24,7 @@ import {
 } from '@/hooks/useAdminDashboardOverview';
 
 export default function AdminDashboardPage() {
+  const navigate = useNavigate();
   const [timeRange, setTimeRange] = useState<AdminDashboardTimeRange>('30d');
   const {
     isLoading,
@@ -51,7 +54,7 @@ export default function AdminDashboardPage() {
         : '12 tháng gần nhất';
 
   return (
-    <DashboardLayout>
+    <DashboardLayout projects={adminProjects} navItems={adminNavItems}>
       <div className="flex flex-col gap-6">
         <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -98,9 +101,22 @@ export default function AdminDashboardPage() {
                 ))}
               </div>
 
-              <Button size="lg" className="bg-primary text-white gap-2 font-bold rounded-full">
+              <Button
+                size="lg"
+                className="bg-primary text-white gap-2 font-bold rounded-full"
+                onClick={() => navigate('/portal/admin/donations')}
+              >
+                <span className="material-symbols-outlined text-lg">volunteer_activism</span>
+                Quản lý quyên góp
+              </Button>
+              <Button
+                variant="outline"
+                size="lg"
+                className="rounded-full font-bold border-2 gap-2"
+                onClick={() => window.open('/fundraising', '_blank', 'noopener,noreferrer')}
+              >
                 <span className="material-symbols-outlined text-lg">campaign</span>
-                Tạo chiến dịch
+                Mở Chiến dịch gây quỹ công khai
               </Button>
               <Button variant="outline" size="lg" className="rounded-full font-bold border-2 gap-2">
                 <span className="material-symbols-outlined text-lg">download</span>

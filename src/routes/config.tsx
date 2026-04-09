@@ -2,7 +2,11 @@ import { UserRole } from '@/enums/UserRole';
 import LoginPage from '@/pages/auth/LoginPage';
 import DataManagementPage from '@/pages/admin/DataManagementPage';
 import AdminDashboardPage from '@/pages/admin/DashboardPage';
+import DonationManagementPage from '@/pages/admin/DonationManagementPage';
 import AdminUserManagementPage from '@/pages/admin/UserManagementPage';
+import PublicDonatePage from '@/pages/public/PublicDonatePage';
+import DonationStatusPage from '@/pages/public/DonationStatusPage';
+import FundraisingCampaignListPage from '@/pages/public/FundraisingCampaignListPage';
 import CoordinatorVolunteerRequestPage from '@/pages/coordinator/VolunteerRequestManagement';
 import CoordinatorDashboardPage from '@/pages/coordinator/DashboardPage';
 import CoordinatorRequestManagementPage from '@/pages/coordinator/RequestManagementPage';
@@ -33,6 +37,9 @@ export const routes: AppRoute[] = [
     element: <RoleBasedRoute element={<Navigate to="/login" replace />} />,
   },
   { path: '/login', element: <RoleBasedRoute element={<LoginPage />} /> },
+  { path: '/fundraising', element: <FundraisingCampaignListPage />, isProtected: false },
+  { path: '/donate/:campaignId', element: <PublicDonatePage />, isProtected: false },
+  { path: '/donate/status/:donationId', element: <DonationStatusPage />, isProtected: false },
   //Admin routes
   {
     path: '/portal/admin/dashboard',
@@ -49,6 +56,12 @@ export const routes: AppRoute[] = [
   {
     path: '/portal/admin/users',
     element: <AdminUserManagementPage />,
+    roles: [UserRole.Admin],
+    isProtected: true,
+  },
+  {
+    path: '/portal/admin/donations',
+    element: <DonationManagementPage />,
     roles: [UserRole.Admin],
     isProtected: true,
   },
