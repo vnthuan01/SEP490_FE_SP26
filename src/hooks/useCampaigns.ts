@@ -1,7 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { campaignService } from '@/services/campaignService';
 import type {
+  Campaign,
   CampaignSummary,
+  CampaignTeam,
+  PublicCampaignSummary,
   CreateCampaignPayload,
   UpdateCampaignPayload,
   SearchCampaignParams,
@@ -50,36 +53,51 @@ export function useCampaigns(params?: SearchCampaignParams) {
 }
 
 export function useCampaign(id: string) {
-  return useQuery({
+  const query = useQuery({
     queryKey: CAMPAIGN_QUERY_KEYS.detail(id),
     queryFn: async () => {
       const response = await campaignService.getById(id);
-      return response.data;
+      return response.data as Campaign;
     },
     enabled: !!id,
   });
+
+  return {
+    ...query,
+    campaign: query.data,
+  };
 }
 
 export function useCampaignSummary(id: string) {
-  return useQuery({
+  const query = useQuery({
     queryKey: CAMPAIGN_QUERY_KEYS.summary(id),
     queryFn: async () => {
       const response = await campaignService.getSummary(id);
-      return response.data;
+      return response.data as PublicCampaignSummary;
     },
     enabled: !!id,
   });
+
+  return {
+    ...query,
+    summary: query.data,
+  };
 }
 
 export function useCampaignTeams(id: string) {
-  return useQuery({
+  const query = useQuery({
     queryKey: CAMPAIGN_QUERY_KEYS.teams(id),
     queryFn: async () => {
       const response = await campaignService.getTeams(id);
-      return response.data;
+      return response.data as CampaignTeam[];
     },
     enabled: !!id,
   });
+
+  return {
+    ...query,
+    teams: (query.data || []) as CampaignTeam[],
+  };
 }
 
 // --- Mutations --- //
@@ -141,6 +159,7 @@ export function useAssignStationToCampaign() {
       campaignService.assignStation(id, data),
     onSuccess: (_, variables) => {
       toast.success('Gán trạm vào chiến dịch thành công');
+      queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.all });
       queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) });
     },
     onError: (error: any) => {
@@ -157,6 +176,7 @@ export function useRemoveStationFromCampaign() {
       campaignService.removeStation(id, reliefStationId),
     onSuccess: (_, variables) => {
       toast.success('Đã gỡ trạm khỏi chiến dịch');
+      queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.all });
       queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) });
     },
     onError: (error: any) => {
@@ -173,6 +193,7 @@ export function useAssignTeamToCampaign() {
       campaignService.assignTeam(id, data),
     onSuccess: (_, variables) => {
       toast.success('Gán đội vào chiến dịch thành công');
+      queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) });
       queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.teams(variables.id) });
     },
     onError: (error: any) => {
@@ -189,6 +210,7 @@ export function useUpdateCampaignTeamStatus() {
       campaignService.updateTeamStatus(id, teamId, data),
     onSuccess: (_, variables) => {
       toast.success('Cập nhật trạng thái đội thành công');
+      queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) });
       queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.teams(variables.id) });
     },
     onError: (error: any) => {
@@ -205,6 +227,7 @@ export function useRemoveTeamFromCampaign() {
       campaignService.removeTeam(id, teamId),
     onSuccess: (_, variables) => {
       toast.success('Đã gỡ đội khỏi chiến dịch');
+      queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) });
       queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.teams(variables.id) });
     },
     onError: (error: any) => {

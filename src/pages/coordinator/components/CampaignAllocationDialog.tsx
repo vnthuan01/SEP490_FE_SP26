@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { CampaignAllocationDialogProps, ExportItem } from '@/types/exportInventory';
 import { Textarea } from '@/components/ui/textarea';
+import { clearDialogDraft, readDialogDraft, writeDialogDraft } from '@/lib/dialogDraft';
 
 /**
  * CampaignAllocationDialog
@@ -21,6 +22,7 @@ export function CampaignAllocationDialog({
   campaigns,
   onSubmit,
 }: CampaignAllocationDialogProps) {
+  const CAMPAIGN_ALLOCATION_DRAFT_KEY = 'coordinator-campaign-allocation-draft';
   const [selectedItems, setSelectedItems] = React.useState<ExportItem[]>([]);
   const [checkedItemIds, setCheckedItemIds] = React.useState<string[]>([]);
   const [editingId, setEditingId] = React.useState<string | null>(null);
@@ -29,12 +31,37 @@ export function CampaignAllocationDialog({
 
   React.useEffect(() => {
     if (!open) return;
+    const draft = readDialogDraft<{
+      selectedItems: ExportItem[];
+      checkedItemIds: string[];
+      note: string;
+      campaignId: string;
+    } | null>(CAMPAIGN_ALLOCATION_DRAFT_KEY, null);
+
+    if (draft) {
+      setSelectedItems(draft.selectedItems || []);
+      setCheckedItemIds(draft.checkedItemIds || []);
+      setNote(draft.note || '');
+      setCampaignId(draft.campaignId || '');
+      setEditingId(null);
+      return;
+    }
+
     setSelectedItems([]);
     setCheckedItemIds([]);
     setNote('');
     setCampaignId('');
     setEditingId(null);
   }, [open]);
+
+  React.useEffect(() => {
+    writeDialogDraft(CAMPAIGN_ALLOCATION_DRAFT_KEY, {
+      selectedItems,
+      checkedItemIds,
+      note,
+      campaignId,
+    });
+  }, [selectedItems, checkedItemIds, note, campaignId]);
 
   const getStockBadgeClass = (current: number, capacity: number) => {
     const percent = (current / capacity) * 100;
@@ -376,17 +403,34 @@ export function CampaignAllocationDialog({
             {/* ACTION */}
             <div className="flex flex-row gap-2 pt-6 space-y-2">
               <Button
-                variant="primary"
-                disabled={totalLines === 0 || !campaignId}
-                onClick={() => onSubmit(selectedItems, note, campaignId)}
+                variant="outline"
+                onClick={() => {
+                  clearDialogDraft(CAMPAIGN_ALLOCATION_DRAFT_KEY);
+                  setSelectedItems([]);
+                  setCheckedItemIds([]);
+                  setNote('');
+                  setCampaignId('');
+                  setEditingId(null);
+                }}
               >
-                <span className="material-symbols-outlined mr-2">outbound</span>
-                Xác nhận cấp phát
+                <span className="material-symbols-outlined mr-1">remove_done</span>
+                Xóa nháp
               </Button>
 
               <Button variant="destructive" onClick={() => onOpenChange(false)}>
                 <span className="material-symbols-outlined">close</span>
                 Hủy
+              </Button>
+              <Button
+                variant="primary"
+                disabled={totalLines === 0 || !campaignId}
+                onClick={() => {
+                  clearDialogDraft(CAMPAIGN_ALLOCATION_DRAFT_KEY);
+                  onSubmit(selectedItems, note, campaignId);
+                }}
+              >
+                <span className="material-symbols-outlined mr-2">outbound</span>
+                Xác nhận cấp phát
               </Button>
             </div>
           </div>

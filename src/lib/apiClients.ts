@@ -1,6 +1,12 @@
 import axios, { type AxiosRequestHeaders, type InternalAxiosRequestConfig } from 'axios';
-import Cookies from 'js-cookie';
-import { getAuthToken, setAuthToken } from './cookies';
+import {
+  clearAuthToken,
+  getAuthToken,
+  getRefreshToken,
+  setAuthToken,
+  setRefreshToken,
+} from './cookies';
+import { notifyTokenUpdate } from './tokenBridge';
 
 const BASE_URL = import.meta.env.VITE_BASE_API_URI || import.meta.env.VITE_API_BASE_URL;
 
@@ -43,6 +49,10 @@ apiClient.interceptors.response.use(
   (res) => res,
   async (error) => {
     const originalRequest = error.config;
+    if (!originalRequest) {
+      return Promise.reject(error);
+    }
+
     // Bỏ qua interceptor nếu là request login hoặc refresh token để tránh loop
     const isAuthRequest =
       originalRequest.url?.includes('/login') || originalRequest.url?.includes('/refresh-token');
@@ -63,7 +73,7 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshToken = Cookies.get('refresh-token');
+        const refreshToken = getRefreshToken();
         if (!refreshToken) throw new Error('No refresh token');
 
         // Gọi server lấy access token mới
@@ -73,14 +83,32 @@ apiClient.interceptors.response.use(
           { headers: { 'Content-Type': 'application/json' } },
         );
 
-        const newAccessToken = data.data.accessToken;
+        const refreshPayload = data?.data ?? data;
+        const newAccessToken: string | undefined = refreshPayload?.accessToken;
+        const newRefreshToken: string | undefined = refreshPayload?.refreshToken;
+
+        if (!newAccessToken) {
+          throw new Error('Refresh token response does not contain accessToken');
+        }
+
         setAuthToken(newAccessToken);
+        if (newRefreshToken) {
+          setRefreshToken(newRefreshToken);
+        }
+
+        // Thông báo cho AuthContext cập nhật React state
+        notifyTokenUpdate(newAccessToken, newRefreshToken);
 
         processQueue(null, newAccessToken);
 
+        if (!originalRequest.headers) {
+          originalRequest.headers = {} as AxiosRequestHeaders;
+        }
         originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
-        return axios(originalRequest);
+        return apiClient(originalRequest);
       } catch (err) {
+        clearAuthToken();
+        notifyTokenUpdate(null, null);
         processQueue(err, null);
         return Promise.reject(err);
       } finally {

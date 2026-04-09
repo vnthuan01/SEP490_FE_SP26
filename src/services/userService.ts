@@ -20,6 +20,7 @@ export interface ModeratorListItem {
   displayName: string | null;
   email: string;
   phoneNumber: string | null;
+  pictureUrl?: string | null;
   isBanned: boolean;
   isManagingStation: boolean;
 }

@@ -1,4 +1,4 @@
-import { type ReactNode, useState, useCallback, useMemo } from 'react';
+import { type ReactNode, useState, useCallback, useMemo, useEffect } from 'react';
 import {
   authService,
   type LoginPayload,
@@ -9,6 +9,7 @@ import { AuthContext } from './AuthContextType';
 import { getAuthToken, setAuthToken, setRefreshToken, clearAuthToken } from '@/lib/cookies';
 import { decodeJwt } from '@/lib/jwt';
 import type { UserRoleType } from '@/enums/UserRole';
+import { registerTokenUpdateCallback, unregisterTokenUpdateCallback } from '@/lib/tokenBridge';
 
 type AuthProviderProps = { children: ReactNode };
 
@@ -30,6 +31,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [token, setToken] = useState<string | null>(() => getAuthToken());
 
   const user = useMemo(() => parseUserFromToken(token), [token]);
+
+  // Kết nối tokenBridge: interceptor axios có thể cập nhật React state khi refresh token
+  useEffect(() => {
+    registerTokenUpdateCallback((newAccessToken, newRefreshToken) => {
+      setToken(newAccessToken);
+      if (newRefreshToken) {
+        setRefreshToken(newRefreshToken);
+      }
+    });
+    return () => {
+      unregisterTokenUpdateCallback();
+    };
+  }, []);
 
   const login = useCallback(async (data: LoginPayload) => {
     const res = await authService.login(data);

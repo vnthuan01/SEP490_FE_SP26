@@ -48,9 +48,16 @@ export interface Stock {
   stockId: string;
   inventoryId: string;
   supplyItemId: string;
+  supplyItemName: string;
+  supplyItemUnit: string;
+  supplyItemCategory: number;
+  supplyItemCategoryName: string;
   currentQuantity: number;
   minimumStockLevel: number;
   maximumStockLevel: number;
+  stockStatus: number;
+  stockStatusName: string;
+  fillPercentage: number;
   /** Optional – backend may or may not include this field */
   expirationDate?: string | null;
 }
