@@ -4,6 +4,14 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -68,6 +76,26 @@ const ROUTE_LAYER_ID = 'request-route-layer';
 const COVERAGE_SOURCE_ID = 'station-coverage-source';
 const COVERAGE_FILL_LAYER_ID = 'station-coverage-fill';
 const COVERAGE_OUTLINE_LAYER_ID = 'station-coverage-outline';
+const REQUEST_LIST_PAGE_SIZE = 5;
+
+const buildPageItems = (currentPage: number, totalPages: number) => {
+  if (totalPages <= 1) return [1];
+
+  const pages = new Set<number>([1, totalPages, currentPage]);
+  if (currentPage > 1) pages.add(currentPage - 1);
+  if (currentPage < totalPages) pages.add(currentPage + 1);
+
+  const sorted = Array.from(pages).sort((a, b) => a - b);
+  const items: Array<number | 'ellipsis'> = [];
+
+  sorted.forEach((page, index) => {
+    const prev = sorted[index - 1];
+    if (prev && page - prev > 1) items.push('ellipsis');
+    items.push(page);
+  });
+
+  return items;
+};
 
 function decodePolyline(encoded: string): Array<[number, number]> {
   const coordinates: Array<[number, number]> = [];
@@ -125,7 +153,6 @@ const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY || '';
 export default function CoordinatorRequestManagementPage() {
   const {
     requests,
-    paging,
     isLoading,
     isError,
     refetch,
@@ -141,6 +168,8 @@ export default function CoordinatorRequestManagementPage() {
     'all' | 'pending' | 'approved' | 'rejected'
   >('all');
   const [selectedId, setSelectedId] = useState('');
+  const [listPage, setListPage] = useState(1);
+  const [pageInput, setPageInput] = useState('1');
 
   const [verifyMethod, setVerifyMethod] = useState(1);
   const [verifyNote, setVerifyNote] = useState('');
@@ -181,6 +210,46 @@ export default function CoordinatorRequestManagementPage() {
       return matchStatus && matchSearch;
     });
   }, [requests, search, verificationFilter]);
+
+  const requestStats = useMemo(
+    () => ({
+      total: requests.length,
+      pending: requests.filter((r) => {
+        const status = getVerification(r)?.status;
+        return status === 0 || status === '0' || status === 'Pending' || status == null;
+      }).length,
+      approved: requests.filter((r) => {
+        const status = getVerification(r)?.status;
+        return status === 1 || status === '1' || status === 'Approved';
+      }).length,
+      rejected: requests.filter((r) => {
+        const status = getVerification(r)?.status;
+        return status === 2 || status === '2' || status === 'Rejected';
+      }).length,
+    }),
+    [requests],
+  );
+
+  const totalListPages = Math.max(1, Math.ceil(filtered.length / REQUEST_LIST_PAGE_SIZE));
+
+  useEffect(() => {
+    setListPage(1);
+  }, [search, verificationFilter]);
+
+  useEffect(() => {
+    if (listPage > totalListPages) {
+      setListPage(totalListPages);
+    }
+  }, [listPage, totalListPages]);
+
+  useEffect(() => {
+    setPageInput(String(listPage));
+  }, [listPage]);
+
+  const paginatedRequests = useMemo(() => {
+    const start = (listPage - 1) * REQUEST_LIST_PAGE_SIZE;
+    return filtered.slice(start, start + REQUEST_LIST_PAGE_SIZE);
+  }, [filtered, listPage]);
 
   const effectiveSelectedId = useMemo(() => {
     if (!filtered.length) return '';
@@ -553,430 +622,650 @@ export default function CoordinatorRequestManagementPage() {
     }
   };
 
+  const handleJumpToPage = () => {
+    const nextPage = Number(pageInput);
+    if (!Number.isFinite(nextPage)) {
+      setPageInput(String(listPage));
+      return;
+    }
+
+    setListPage(Math.min(Math.max(1, Math.trunc(nextPage)), totalListPages));
+  };
+
+  const listPageItems = buildPageItems(listPage, totalListPages);
+
   return (
     <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
-      <div className="mb-6 flex flex-wrap justify-between items-end gap-4">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-black text-primary">Quản lý yêu cầu cứu hộ</h1>
-          <p className="text-muted-foreground mt-1">Liệt kê yêu cầu cứu hộ.</p>
-        </div>
-        <Button variant="outline" className="gap-2" onClick={() => refetch()}>
-          <span className="material-symbols-outlined">refresh</span>
-          Tải lại
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <Card className="xl:col-span-1">
-          <CardContent className="p-4 space-y-4">
-            <input
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-              placeholder="Tìm tên/SĐT/địa chỉ/mô tả..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant={verificationFilter === 'all' ? 'primary' : 'outline'}
-                onClick={() => setVerificationFilter('all')}
-              >
-                Tất cả
-              </Button>
-              <Button
-                size="sm"
-                variant={verificationFilter === 'pending' ? 'primary' : 'outline'}
-                className={cn(
-                  verificationFilter === 'pending' &&
-                    'bg-amber-400 border-amber-400 text-amber-950 hover:bg-amber-300',
-                )}
-                onClick={() => setVerificationFilter('pending')}
-              >
-                <span className="material-symbols-outlined text-base">schedule</span>
-                Chờ xác minh
-              </Button>
-              <Button
-                size="sm"
-                variant={verificationFilter === 'approved' ? 'primary' : 'outline'}
-                onClick={() => setVerificationFilter('approved')}
-              >
-                Đã xác minh
-              </Button>
-              <Button
-                size="sm"
-                variant={verificationFilter === 'rejected' ? 'primary' : 'outline'}
-                onClick={() => setVerificationFilter('rejected')}
-              >
-                Từ chối
-              </Button>
-            </div>
-
-            {isLoading ? (
-              <div className="space-y-2">
-                {[1, 2, 3].map((k) => (
-                  <Skeleton key={k} className="h-12" />
-                ))}
-              </div>
-            ) : isError ? (
-              <p className="text-sm text-red-500">Không tải được danh sách yêu cầu.</p>
-            ) : filtered.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Không có yêu cầu phù hợp.</p>
-            ) : (
-              <div className="space-y-2 max-h-[620px] overflow-auto pr-1">
-                {filtered.map((req) => {
-                  const id = getRequestId(req);
-                  const verificationItem = getVerification(req);
-                  const isActive = id === selectedId;
-                  return (
-                    <button
-                      key={id}
-                      onClick={() => setSelectedId(id)}
-                      className={cn(
-                        'w-full text-left rounded-lg border p-3 transition-colors',
-                        isActive
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border hover:bg-accent/40',
-                      )}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-semibold text-sm truncate">
-                          {req.reporterFullName || '--'}
-                        </p>
-                        <span
-                          className={cn(
-                            'text-[11px] px-2 py-0.5 rounded-full border font-medium',
-                            verificationStatusClass(verificationItem?.status),
-                          )}
-                        >
-                          {verificationStatusText(verificationItem?.status)}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1 truncate">
-                        {req.disasterType || '--'}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1 truncate">
-                        {req.address || 'Chưa cập nhật'}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {formatKm(req.stationToRequestDistanceKm)} •{' '}
-                        {formatMin(req.stationToRequestDurationMinutes)}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {formatDate(req.createdAt)}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            <p className="text-xs text-muted-foreground">
-              Tổng: {paging?.totalCount ?? filtered.length} yêu cầu.
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-black text-primary md:text-4xl">Quản lý yêu cầu cứu hộ</h1>
+            <p className="max-w-2xl text-sm text-muted-foreground md:text-base">
+              Đồng bộ danh sách yêu cầu cần xử lý, theo dõi vị trí và xác minh theo đúng luồng điều
+              phối của coordinator.
             </p>
-          </CardContent>
-        </Card>
+          </div>
+          <Button variant="outline" className="h-11 gap-2 px-5" onClick={() => refetch()}>
+            <span className="material-symbols-outlined">refresh</span>
+            Tải lại
+          </Button>
+        </div>
 
-        <Card className="xl:col-span-2">
-          <CardContent className="p-6">
-            {!selected ? (
-              <p className="text-muted-foreground">Chọn một yêu cầu để xem chi tiết.</p>
-            ) : (
-              <div className="space-y-6">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div>
-                    <h2 className="text-2xl font-black">{selected.reporterFullName || '--'}</h2>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Mã yêu cầu: {getRequestId(selected)}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-4">
+          <Card className="border-border bg-card">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Tổng yêu cầu
+                  </p>
+                  <p className="mt-3 text-3xl font-black text-foreground">{requestStats.total}</p>
+                </div>
+                <div className="flex size-11 items-center justify-center rounded-2xl border border-sky-200 bg-sky-500/10 text-sky-600">
+                  <span className="material-symbols-outlined">inbox</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-border bg-card">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Chờ xác minh
+                  </p>
+                  <p className="mt-3 text-3xl font-black text-amber-600">{requestStats.pending}</p>
+                </div>
+                <div className="flex size-11 items-center justify-center rounded-2xl border border-amber-200 bg-amber-500/10 text-amber-600">
+                  <span className="material-symbols-outlined">schedule</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-border bg-card">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Đã xác minh
+                  </p>
+                  <p className="mt-3 text-3xl font-black text-emerald-600">
+                    {requestStats.approved}
+                  </p>
+                </div>
+                <div className="flex size-11 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-500/10 text-emerald-600">
+                  <span className="material-symbols-outlined">verified</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-border bg-card">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Từ chối
+                  </p>
+                  <p className="mt-3 text-3xl font-black text-rose-600">{requestStats.rejected}</p>
+                </div>
+                <div className="flex size-11 items-center justify-center rounded-2xl border border-rose-200 bg-rose-500/10 text-rose-600">
+                  <span className="material-symbols-outlined">cancel</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+          <Card className="overflow-hidden border-border bg-card">
+            <CardContent className="flex h-full flex-col p-0">
+              <div className="border-b border-border/70 px-5 pb-4 pt-5">
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <h2 className="text-xl font-black text-foreground">Danh sách yêu cầu</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Hiển thị 5 yêu cầu mỗi trang, có tìm kiếm, lọc và chuyển trang nhanh.
                     </p>
                   </div>
-                  <span
-                    className={cn(
-                      'text-xs px-3 py-1 rounded-full border font-semibold',
-                      verificationStatusClass(verification?.status),
-                    )}
-                  >
-                    {verificationStatusText(verification?.status)}
-                  </span>
-                </div>
 
-                <div className="space-y-4">
-                  <div className="rounded-lg border border-border p-4 space-y-3">
-                    <p className="text-sm font-semibold">A. Thông tin yêu cầu</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs uppercase text-muted-foreground font-semibold">
-                          Loại thiên tai
-                        </p>
-                        <p className="text-sm">
-                          {selected.disasterType != null
-                            ? getDisasterTypeLabel(selected.disasterType)
-                            : '--'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase text-muted-foreground font-semibold">
-                          Loại yêu cầu cứu hộ
-                        </p>
-                        <p className="text-sm">
-                          {selected.rescueRequestType != null
-                            ? getRescueRequestTypeLabel(selected.rescueRequestType)
-                            : '--'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase text-muted-foreground font-semibold">
-                          Mức ưu tiên
-                        </p>
-                        <p className="text-sm">{selected.priority ?? '--'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase text-muted-foreground font-semibold">
-                          Số điện thoại người báo tin
-                        </p>
-                        <p className="text-sm">{selected.reporterPhone || '--'}</p>
-                      </div>
-                      <div className="md:col-span-2">
-                        <p className="text-xs uppercase text-muted-foreground font-semibold">
-                          Mô tả
-                        </p>
-                        <p className="text-sm">{selected.description || 'Không có mô tả'}</p>
-                      </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_170px]">
+                    <div className="relative">
+                      <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-muted-foreground">
+                        search
+                      </span>
+                      <Input
+                        className="h-11 border-border bg-background pl-10"
+                        placeholder="Tìm tên, SĐT, địa chỉ, mô tả..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                      />
                     </div>
+
+                    <Select
+                      value={verificationFilter}
+                      onValueChange={(value: 'all' | 'pending' | 'approved' | 'rejected') =>
+                        setVerificationFilter(value)
+                      }
+                    >
+                      <SelectTrigger className="h-11 border-border bg-background">
+                        <SelectValue placeholder="Lọc trạng thái" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tất cả trạng thái</SelectItem>
+                        <SelectItem value="pending">Chờ xác minh</SelectItem>
+                        <SelectItem value="approved">Đã xác minh</SelectItem>
+                        <SelectItem value="rejected">Từ chối</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
-                  <div className="rounded-lg border border-border p-4 space-y-3">
-                    <p className="text-sm font-semibold">B. Vị trí</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="md:col-span-2">
-                        <p className="text-xs uppercase text-muted-foreground font-semibold">
-                          Địa chỉ
-                        </p>
-                        <p className="text-sm">{selected.address || 'Chưa cập nhật'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase text-muted-foreground font-semibold">
-                          Vĩ độ
-                        </p>
-                        <p className="text-sm">{selected.latitude ?? '--'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase text-muted-foreground font-semibold">
-                          Kinh độ
-                        </p>
-                        <p className="text-sm">{selected.longitude ?? '--'}</p>
-                      </div>
-                      <div className="md:col-span-2">
-                        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
-                          Bản đồ vị trí yêu cầu
-                        </p>
-                        <div className="rounded-lg border border-border overflow-hidden bg-accent/20">
-                          {!GOONG_MAP_KEY ? (
-                            <p className="p-3 text-sm text-muted-foreground">
-                              Thiếu VITE_GOONG_MAP_KEY để hiển thị bản đồ.
-                            </p>
-                          ) : (
-                            <>
-                              <div ref={requestMapContainerRef} className="h-[320px] w-full" />
-                              {!selectedCoordinates ? (
-                                <p className="p-3 text-xs text-muted-foreground">
-                                  Yêu cầu này chưa có tọa độ hợp lệ để ghim vị trí.
-                                </p>
-                              ) : null}
-                            </>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant={verificationFilter === 'all' ? 'primary' : 'outline'}
+                      className="rounded-full"
+                      onClick={() => setVerificationFilter('all')}
+                    >
+                      <span className="material-symbols-outlined text-sm">apps</span>
+                      Tất cả
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={verificationFilter === 'pending' ? 'primary' : 'outline'}
+                      className={cn(
+                        'rounded-full',
+                        verificationFilter === 'pending' &&
+                          'border-amber-300 bg-amber-500/15 text-amber-700 hover:bg-amber-500/20',
+                      )}
+                      onClick={() => setVerificationFilter('pending')}
+                    >
+                      <span className="material-symbols-outlined text-sm">schedule</span>
+                      Chờ xác minh
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={verificationFilter === 'approved' ? 'primary' : 'outline'}
+                      className="rounded-full"
+                      onClick={() => setVerificationFilter('approved')}
+                    >
+                      <span className="material-symbols-outlined text-sm">verified</span>
+                      Đã xác minh
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={verificationFilter === 'rejected' ? 'primary' : 'outline'}
+                      className="rounded-full"
+                      onClick={() => setVerificationFilter('rejected')}
+                    >
+                      <span className="material-symbols-outlined text-sm">cancel</span>
+                      Từ chối
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-auto px-4 py-4">
+                {isLoading ? (
+                  <div className="space-y-2">
+                    {[1, 2, 3, 4, 5].map((k) => (
+                      <Skeleton key={k} className="h-24 rounded-2xl" />
+                    ))}
+                  </div>
+                ) : isError ? (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-500/5 px-4 py-4 text-sm text-rose-600">
+                    Không tải được danh sách yêu cầu.
+                  </div>
+                ) : filtered.length === 0 ? (
+                  <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-muted/10 p-6 text-center">
+                    <span className="material-symbols-outlined text-5xl text-muted-foreground">
+                      search_off
+                    </span>
+                    <div>
+                      <p className="text-base font-semibold text-foreground">
+                        Không có yêu cầu phù hợp
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Hãy thử thay đổi từ khóa tìm kiếm hoặc trạng thái cần lọc.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {paginatedRequests.map((req) => {
+                      const id = getRequestId(req);
+                      const verificationItem = getVerification(req);
+                      const isActive = id === effectiveSelectedId;
+
+                      return (
+                        <button
+                          key={id}
+                          onClick={() => setSelectedId(id)}
+                          className={cn(
+                            'w-full rounded-2xl border border-border p-4 text-left transition-all',
+                            isActive
+                              ? 'border-primary/40 bg-primary/10 shadow-sm'
+                              : 'hover:border-primary/20 hover:bg-accent/40',
                           )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-foreground">
+                                {req.reporterFullName || '--'}
+                              </p>
+                              <p className="mt-1 truncate text-xs text-muted-foreground">
+                                {req.address || 'Chua cap nhat dia chi'}
+                              </p>
+                            </div>
+                            <span
+                              className={cn(
+                                'shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold',
+                                verificationStatusClass(verificationItem?.status),
+                              )}
+                            >
+                              {verificationStatusText(verificationItem?.status)}
+                            </span>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] text-muted-foreground">
+                              <span className="material-symbols-outlined text-sm">cyclone</span>
+                              {req.disasterType != null
+                                ? getDisasterTypeLabel(req.disasterType)
+                                : '--'}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] text-muted-foreground">
+                              <span className="material-symbols-outlined text-sm">route</span>
+                              {formatKm(req.stationToRequestDistanceKm)}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] text-muted-foreground">
+                              <span className="material-symbols-outlined text-sm">schedule</span>
+                              {formatMin(req.stationToRequestDurationMinutes)}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-xs text-muted-foreground">
+                            {formatDate(req.createdAt)}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-border/70 px-5 py-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    Trang {listPage}/{totalListPages} - Hiển thị {paginatedRequests.length} /{' '}
+                    {filtered.length} yêu cầu lọc được.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1"
+                      disabled={listPage <= 1}
+                      onClick={() => setListPage((prev) => Math.max(1, prev - 1))}
+                    >
+                      <span className="material-symbols-outlined text-sm">chevron_left</span>
+                      Prev
+                    </Button>
+                    {listPageItems.map((item, index) =>
+                      item === 'ellipsis' ? (
+                        <span
+                          key={`ellipsis-${index}`}
+                          className="px-1 text-sm text-muted-foreground"
+                        >
+                          ...
+                        </span>
+                      ) : (
+                        <Button
+                          key={item}
+                          size="sm"
+                          variant={item === listPage ? 'primary' : 'outline'}
+                          className="min-w-9"
+                          onClick={() => setListPage(item)}
+                        >
+                          {item}
+                        </Button>
+                      ),
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1"
+                      disabled={listPage >= totalListPages}
+                      onClick={() => setListPage((prev) => Math.min(totalListPages, prev + 1))}
+                    >
+                      Next
+                      <span className="material-symbols-outlined text-sm">chevron_right</span>
+                    </Button>
+                    <div className="flex items-center gap-2 rounded-full border border-border px-2 py-1">
+                      <span className="text-xs text-muted-foreground">Tới trang</span>
+                      <Input
+                        value={pageInput}
+                        onChange={(e) => setPageInput(e.target.value.replace(/[^0-9]/g, ''))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleJumpToPage();
+                        }}
+                        className="h-8 w-14 border-0 px-2 text-center shadow-none focus-visible:ring-0"
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 px-2"
+                        onClick={handleJumpToPage}
+                      >
+                        Đi
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-2xl border-border bg-card">
+            <CardContent className="p-4 md:p-6">
+              {!selected ? (
+                <div className="flex min-h-[520px] items-center justify-center rounded-2xl border border-dashed border-border bg-muted/10 p-6 text-center text-muted-foreground">
+                  Chon mot yeu cau de xem chi tiet.
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-gradient-to-br from-primary/5 via-background to-background p-5">
+                    <div>
+                      <h2 className="text-2xl font-black">{selected.reporterFullName || '--'}</h2>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Mã yêu cầu: {getRequestId(selected)}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        'text-xs px-3 py-1 rounded-full border font-semibold',
+                        verificationStatusClass(verification?.status),
+                      )}
+                    >
+                      {verificationStatusText(verification?.status)}
+                    </span>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="overflow-hidden rounded-2xl border border-border p-4 space-y-3">
+                      <p className="text-sm font-semibold">A. Thông tin yêu cầu</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground font-semibold">
+                            Loại thiên tai
+                          </p>
+                          <p className="text-sm">
+                            {selected.disasterType != null
+                              ? getDisasterTypeLabel(selected.disasterType)
+                              : '--'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground font-semibold">
+                            Loại yêu cầu cứu hộ
+                          </p>
+                          <p className="text-sm">
+                            {selected.rescueRequestType != null
+                              ? getRescueRequestTypeLabel(selected.rescueRequestType)
+                              : '--'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground font-semibold">
+                            Mức ưu tiên
+                          </p>
+                          <p className="text-sm">{selected.priority ?? '--'}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground font-semibold">
+                            Số điện thoại người báo tin
+                          </p>
+                          <p className="text-sm">{selected.reporterPhone || '--'}</p>
+                        </div>
+                        <div className="md:col-span-2">
+                          <p className="text-xs uppercase text-muted-foreground font-semibold">
+                            Mô tả
+                          </p>
+                          <p className="text-sm">{selected.description || 'Không có mô tả'}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-border p-4 space-y-3">
+                      <p className="text-sm font-semibold">B. Vị trí</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="md:col-span-2">
+                          <p className="text-xs uppercase text-muted-foreground font-semibold">
+                            Địa chỉ
+                          </p>
+                          <p className="text-sm">{selected.address || 'Chưa cập nhật'}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground font-semibold">
+                            Vĩ độ
+                          </p>
+                          <p className="text-sm">{selected.latitude ?? '--'}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground font-semibold">
+                            Kinh độ
+                          </p>
+                          <p className="text-sm">{selected.longitude ?? '--'}</p>
+                        </div>
+                        <div className="md:col-span-2">
+                          <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
+                            Bản đồ vị trí yêu cầu
+                          </p>
+                          <div className="overflow-hidden rounded-2xl border border-border bg-accent/20">
+                            {!GOONG_MAP_KEY ? (
+                              <p className="p-3 text-sm text-muted-foreground">
+                                Thiếu VITE_GOONG_MAP_KEY để hiển thị bản đồ.
+                              </p>
+                            ) : (
+                              <>
+                                <div ref={requestMapContainerRef} className="h-[320px] w-full" />
+                                {!selectedCoordinates ? (
+                                  <p className="p-3 text-xs text-muted-foreground">
+                                    Yêu cầu này chưa có tọa độ hợp lệ để ghim vị trí.
+                                  </p>
+                                ) : null}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-border p-4 space-y-3">
+                      <p className="text-sm font-semibold">C. Khoảng cách & thời gian di chuyển</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground font-semibold">
+                            Thời gian tạo
+                          </p>
+                          <p className="text-sm">{formatDate(selected.createdAt)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground font-semibold">
+                            Khoảng cách (km)
+                          </p>
+                          <p className="text-sm">{formatKm(selected.stationToRequestDistanceKm)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground font-semibold">
+                            Thời gian di chuyển (phút)
+                          </p>
+                          <p className="text-sm">
+                            {formatMin(selected.stationToRequestDurationMinutes)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground font-semibold">
+                            Khoảng cách (m)
+                          </p>
+                          <p className="text-sm">
+                            {formatMeters(selected.stationToRequestDistanceMeters)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground font-semibold">
+                            Thời gian di chuyển (giây)
+                          </p>
+                          <p className="text-sm">
+                            {formatSeconds(selected.stationToRequestDurationSeconds)}
+                          </p>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-lg border border-border p-4 space-y-3">
-                    <p className="text-sm font-semibold">C. Khoảng cách & thời gian di chuyển</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs uppercase text-muted-foreground font-semibold">
-                          Thời gian tạo
-                        </p>
-                        <p className="text-sm">{formatDate(selected.createdAt)}</p>
+                  <div className="overflow-hidden rounded-2xl border border-border p-4 space-y-3">
+                    <p className="text-sm font-semibold">D. Tệp đính kèm</p>
+                    {selected.attachments?.length ? (
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
+                            RequestEvidence (0) · Bằng chứng yêu cầu
+                          </p>
+                          {requestEvidenceAttachments.length ? (
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+                              {requestEvidenceAttachments.map((att) => (
+                                <a
+                                  key={att.attachmentId}
+                                  href={att.fileUrl || '#'}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="overflow-hidden rounded-2xl border border-border bg-accent/30"
+                                  title={attachmentTypeLabel(att.attachmentType)}
+                                >
+                                  <img
+                                    src={att.fileUrl || ''}
+                                    alt="attachment"
+                                    className="w-full h-28 object-cover"
+                                    onError={(e) => {
+                                      (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                    }}
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">
+                              Không có bằng chứng yêu cầu.
+                            </p>
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
+                            CompletionEvidence (1) · Bằng chứng hoàn thành
+                          </p>
+                          {completionEvidenceAttachments.length ? (
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+                              {completionEvidenceAttachments.map((att) => (
+                                <a
+                                  key={att.attachmentId}
+                                  href={att.fileUrl || '#'}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="overflow-hidden rounded-2xl border border-border bg-accent/30"
+                                  title={attachmentTypeLabel(att.attachmentType)}
+                                >
+                                  <img
+                                    src={att.fileUrl || ''}
+                                    alt="attachment"
+                                    className="w-full h-28 object-cover"
+                                    onError={(e) => {
+                                      (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                    }}
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">
+                              Không có bằng chứng hoàn thành.
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs uppercase text-muted-foreground font-semibold">
-                          Khoảng cách (km)
-                        </p>
-                        <p className="text-sm">{formatKm(selected.stationToRequestDistanceKm)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase text-muted-foreground font-semibold">
-                          Thời gian di chuyển (phút)
-                        </p>
-                        <p className="text-sm">
-                          {formatMin(selected.stationToRequestDurationMinutes)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase text-muted-foreground font-semibold">
-                          Khoảng cách (m)
-                        </p>
-                        <p className="text-sm">
-                          {formatMeters(selected.stationToRequestDistanceMeters)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase text-muted-foreground font-semibold">
-                          Thời gian di chuyển (giây)
-                        </p>
-                        <p className="text-sm">
-                          {formatSeconds(selected.stationToRequestDurationSeconds)}
-                        </p>
-                      </div>
-                    </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Không có ảnh đính kèm.</p>
+                    )}
                   </div>
-                </div>
 
-                <div className="rounded-lg border border-border p-4 space-y-3">
-                  <p className="text-sm font-semibold">D. Tệp đính kèm</p>
-                  {selected.attachments?.length ? (
-                    <div className="space-y-4">
+                  <div className="rounded-2xl border border-border p-4 space-y-3">
+                    <p className="text-sm font-semibold">E. Xác minh yêu cầu</p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
-                          RequestEvidence (0) · Bằng chứng yêu cầu
+                        <p className="text-xs uppercase text-muted-foreground mb-1">
+                          Phương thức xác minh
                         </p>
-                        {requestEvidenceAttachments.length ? (
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                            {requestEvidenceAttachments.map((att) => (
-                              <a
-                                key={att.attachmentId}
-                                href={att.fileUrl || '#'}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="rounded-lg overflow-hidden border border-border bg-accent/30"
-                                title={attachmentTypeLabel(att.attachmentType)}
-                              >
-                                <img
-                                  src={att.fileUrl || ''}
-                                  alt="attachment"
-                                  className="w-full h-28 object-cover"
-                                  onError={(e) => {
-                                    (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                  }}
-                                />
-                              </a>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">
-                            Không có bằng chứng yêu cầu.
-                          </p>
-                        )}
+                        <select
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                          value={verifyMethod}
+                          onChange={(e) => setVerifyMethod(Number(e.target.value))}
+                        >
+                          {[0, 1, 2, 3, 4, 5].map((m) => (
+                            <option key={m} value={m}>
+                              {verificationMethodLabel(m)}
+                            </option>
+                          ))}
+                        </select>
                       </div>
-
                       <div>
-                        <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
-                          CompletionEvidence (1) · Bằng chứng hoàn thành
+                        <p className="text-xs uppercase text-muted-foreground mb-1">
+                          Ghi chú xác minh
                         </p>
-                        {completionEvidenceAttachments.length ? (
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                            {completionEvidenceAttachments.map((att) => (
-                              <a
-                                key={att.attachmentId}
-                                href={att.fileUrl || '#'}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="rounded-lg overflow-hidden border border-border bg-accent/30"
-                                title={attachmentTypeLabel(att.attachmentType)}
-                              >
-                                <img
-                                  src={att.fileUrl || ''}
-                                  alt="attachment"
-                                  className="w-full h-28 object-cover"
-                                  onError={(e) => {
-                                    (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                  }}
-                                />
-                              </a>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">
-                            Không có bằng chứng hoàn thành.
-                          </p>
-                        )}
+                        <Textarea
+                          value={verifyNote}
+                          onChange={(e) => setVerifyNote(e.target.value)}
+                          placeholder="Ghi chú xác minh (không bắt buộc)"
+                          rows={2}
+                        />
                       </div>
                     </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Không có ảnh đính kèm.</p>
-                  )}
-                </div>
 
-                <div className="rounded-lg border border-border p-4 space-y-3">
-                  <p className="text-sm font-semibold">E. Xác minh yêu cầu</p>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-xs uppercase text-muted-foreground mb-1">
-                        Phương thức xác minh
-                      </p>
-                      <select
-                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                        value={verifyMethod}
-                        onChange={(e) => setVerifyMethod(Number(e.target.value))}
+                    <div className="flex gap-3">
+                      <Button
+                        variant="primary"
+                        onClick={handleVerify}
+                        disabled={!isPending || verifyStatus === 'pending'}
                       >
-                        {[0, 1, 2, 3, 4, 5].map((m) => (
-                          <option key={m} value={m}>
-                            {verificationMethodLabel(m)}
-                          </option>
-                        ))}
-                      </select>
+                        {verifyStatus === 'pending' ? 'Đang xác minh...' : 'Xác minh'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="text-red-600 border-red-500/30 hover:bg-red-500/10"
+                        onClick={() => {
+                          setActionError('');
+                          setIsRejectOpen(true);
+                        }}
+                        disabled={!isPending || rejectStatus === 'pending'}
+                      >
+                        Từ chối
+                      </Button>
                     </div>
-                    <div>
-                      <p className="text-xs uppercase text-muted-foreground mb-1">
-                        Ghi chú xác minh
+                  </div>
+
+                  {verification?.status === 2 && (
+                    <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
+                      <p className="text-xs uppercase font-semibold text-red-600">Lý do từ chối</p>
+                      <p className="text-sm text-red-700 mt-1">
+                        {verification.reason || 'Không có lý do'}
                       </p>
-                      <Textarea
-                        value={verifyNote}
-                        onChange={(e) => setVerifyNote(e.target.value)}
-                        placeholder="Ghi chú xác minh (không bắt buộc)"
-                        rows={2}
-                      />
                     </div>
-                  </div>
+                  )}
 
-                  <div className="flex gap-3">
-                    <Button
-                      variant="primary"
-                      onClick={handleVerify}
-                      disabled={!isPending || verifyStatus === 'pending'}
-                    >
-                      {verifyStatus === 'pending' ? 'Đang xác minh...' : 'Xác minh'}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="text-red-600 border-red-500/30 hover:bg-red-500/10"
-                      onClick={() => {
-                        setActionError('');
-                        setIsRejectOpen(true);
-                      }}
-                      disabled={!isPending || rejectStatus === 'pending'}
-                    >
-                      Từ chối
-                    </Button>
-                  </div>
+                  {actionError ? <p className="text-sm text-red-500">{actionError}</p> : null}
                 </div>
-
-                {verification?.status === 2 && (
-                  <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
-                    <p className="text-xs uppercase font-semibold text-red-600">Lý do từ chối</p>
-                    <p className="text-sm text-red-700 mt-1">
-                      {verification.reason || 'Không có lý do'}
-                    </p>
-                  </div>
-                )}
-
-                {actionError ? <p className="text-sm text-red-500">{actionError}</p> : null}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <Dialog open={isRejectOpen} onOpenChange={setIsRejectOpen}>
