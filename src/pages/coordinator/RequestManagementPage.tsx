@@ -206,6 +206,28 @@ export default function CoordinatorRequestManagementPage() {
   const requestMarkerRef = useRef<Marker | null>(null);
   const stationMarkerRef = useRef<Marker | null>(null);
 
+  // Callback ref: inits map the instant the container div first appears in DOM.
+  // This is faster than useEffect([], []) which runs after mount when the
+  // container may not exist yet (it lives inside a conditional render block).
+  const requestMapCallbackRef = (node: HTMLDivElement | null) => {
+    requestMapContainerRef.current = node;
+    if (!node) {
+      requestMarkerRef.current?.remove();
+      stationMarkerRef.current?.remove();
+      requestMapRef.current?.remove();
+      requestMapRef.current = null;
+      return;
+    }
+    if (!GOONG_MAP_KEY || requestMapRef.current) return;
+    goongjs.accessToken = GOONG_MAP_KEY;
+    requestMapRef.current = new goongjs.Map({
+      container: node,
+      style: 'https://tiles.goong.io/assets/goong_map_web.json',
+      center: [108.2022, 16.0544],
+      zoom: 5,
+    });
+  };
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return requests.filter((r) => {
@@ -271,10 +293,13 @@ export default function CoordinatorRequestManagementPage() {
     return filtered.slice(start, start + REQUEST_LIST_PAGE_SIZE);
   }, [filtered, listPage]);
 
+  // No auto-fallback: effectiveSelectedId is exactly what the user clicked.
+  // The old fallback to filtered[0] caused map to try to plot coordinates
+  // before the user ever selected anything, breaking the callback-ref map init.
   const effectiveSelectedId = useMemo(() => {
-    if (!filtered.length) return '';
+    if (!selectedId) return '';
     const found = filtered.some((r) => getRequestId(r) === selectedId);
-    return found ? selectedId : getRequestId(filtered[0]);
+    return found ? selectedId : '';
   }, [filtered, selectedId]);
 
   const selected = useMemo(
@@ -333,29 +358,6 @@ export default function CoordinatorRequestManagementPage() {
   );
 
   useEffect(() => {
-    if (!requestMapContainerRef.current || !GOONG_MAP_KEY) return;
-
-    goongjs.accessToken = GOONG_MAP_KEY;
-    requestMapRef.current = new goongjs.Map({
-      container: requestMapContainerRef.current,
-      style: 'https://tiles.goong.io/assets/goong_map_web.json',
-      center: [108.2022, 16.0544],
-      zoom: 5,
-    });
-
-    return () => {
-      if (requestMarkerRef.current) {
-        requestMarkerRef.current.remove();
-        requestMarkerRef.current = null;
-      }
-      if (requestMapRef.current) {
-        requestMapRef.current.remove();
-        requestMapRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     const map = requestMapRef.current;
     if (!map) return;
 
@@ -367,25 +369,27 @@ export default function CoordinatorRequestManagementPage() {
     if (!stationCoordinates) return;
 
     const stationMarkerElement = document.createElement('div');
-    stationMarkerElement.style.cssText = 'cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px';
+    stationMarkerElement.style.cssText =
+      'cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px';
     stationMarkerElement.innerHTML = `
       <div style="position:relative;width:46px;height:46px;display:flex;align-items:center;justify-content:center">
-        <div style="position:absolute;inset:0;border-radius:50%;background:rgba(109,40,217,0.15)"></div>
+        <div style="position:absolute;inset:0;border-radius:50%;background:rgba(109,40,217,0.12)"></div>
         <div style="position:relative;z-index:1;background:linear-gradient(135deg,#6d28d9,#7c3aed);width:40px;height:40px;border-radius:50%;border:3px solid white;box-shadow:0 3px 10px rgba(109,40,217,0.5);display:flex;align-items:center;justify-content:center">
-          <span class="material-symbols-outlined" style="color:white;font-size:20px;font-variation-settings:'FILL' 1;">home_pin</span>
+          <span class="material-symbols-outlined" style="color:white;font-size:22px;font-variation-settings:'FILL' 1;">apartment</span>
         </div>
       </div>
-      <div style="background:#6d28d9;color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:9999px;white-space:nowrap;box-shadow:0 1px 4px rgba(109,40,217,0.35);max-width:130px;overflow:hidden;text-overflow:ellipsis;">Trạm cứu hộ</div>
+      <div style="background:#6d28d9;color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:9999px;white-space:nowrap;box-shadow:0 1px 4px rgba(109,40,217,0.35);">Trụ sở</div>
     `;
 
-    const stationPopup = new goongjs.Popup({ offset: [0, -56], closeButton: false })
-      .setHTML(`<div style="font-family:sans-serif;padding:2px 0;min-width:160px"><p style="font-weight:700;font-size:13px;margin:0 0 3px;color:#4c1d95">Trạm cứu hộ</p>${(station as any)?.name ? `<p style="font-size:12px;color:#374151;margin:0 0 2px">${(station as any).name}</p>` : ''}${coverageRadiusKm ? `<p style="font-size:11px;color:#7c3aed;margin:4px 0 0">Bán kính phủ sóng: <strong>${coverageRadiusKm} km</strong></p>` : ''}</div>`);
+    const stationPopup = new goongjs.Popup({ offset: [0, -56], closeButton: false }).setHTML(
+      `<div style="font-family:sans-serif;padding:2px 0;min-width:160px"><p style="font-weight:700;font-size:13px;margin:0 0 3px;color:#4c1d95">Trạm cứu hộ</p>${(station as any)?.name ? `<p style="font-size:12px;color:#374151;margin:0 0 2px">${(station as any).name}</p>` : ''}${coverageRadiusKm ? `<p style="font-size:11px;color:#7c3aed;margin:4px 0 0">Bán kính phủ sóng: <strong>${coverageRadiusKm} km</strong></p>` : ''}</div>`,
+    );
 
     stationMarkerRef.current = new goongjs.Marker({ element: stationMarkerElement })
       .setLngLat([stationCoordinates.lng, stationCoordinates.lat])
       .setPopup(stationPopup)
       .addTo(map);
-  }, [stationCoordinates]);
+  }, [stationCoordinates, station, coverageRadiusKm]);
 
   useEffect(() => {
     const map = requestMapRef.current;
@@ -476,22 +480,37 @@ export default function CoordinatorRequestManagementPage() {
     if (!selectedCoordinates) return;
 
     const markerElement = document.createElement('div');
-    markerElement.className = 'flex items-center gap-1';
+    markerElement.style.cssText =
+      'cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px';
     markerElement.innerHTML = `
-      <span style="width:10px;height:10px;background:#ef4444;border-radius:9999px;box-shadow:0 0 0 4px rgba(239,68,68,.25);"></span>
-      <span style="font-size:11px;font-weight:700;background:#111827;color:#fff;padding:2px 6px;border-radius:9999px;white-space:nowrap;">Điểm yêu cầu</span>
+      <div style="position:relative;width:46px;height:46px;display:flex;align-items:center;justify-content:center">
+        <div style="position:absolute;inset:0;border-radius:50%;background:rgba(239,68,68,0.18);animation:req-ring 1.8s ease-out infinite"></div>
+        <style>@keyframes req-ring{0%{transform:scale(1);opacity:0.6}100%{transform:scale(2);opacity:0}}</style>
+        <div style="position:relative;z-index:1;background:linear-gradient(135deg,#dc2626,#ef4444);width:40px;height:40px;border-radius:50%;border:3px solid white;box-shadow:0 3px 10px rgba(239,68,68,0.55);display:flex;align-items:center;justify-content:center">
+          <span class="material-symbols-outlined" style="color:white;font-size:22px;font-variation-settings:'FILL' 1;">person_alert</span>
+        </div>
+      </div>
+      <div style="background:#dc2626;color:white;font-size:10px;font-weight:800;padding:2px 9px;border-radius:9999px;white-space:nowrap;box-shadow:0 1px 4px rgba(220,38,38,0.4);letter-spacing:0.04em;">SOS</div>
     `;
+
+    const popup = new goongjs.Popup({ offset: [0, -56], closeButton: false }).setHTML(
+      `<div style="font-family:sans-serif;padding:2px 0;min-width:180px"><p style="font-weight:700;font-size:13px;margin:0 0 4px;color:#991b1b">Vị trí yêu cầu cứu hộ</p>${selected?.reporterFullName ? `<p style="font-size:12px;color:#374151;margin:0 0 2px"><strong>Người báo:</strong> ${selected.reporterFullName}</p>` : ''}${selected?.reporterPhone ? `<p style="font-size:12px;color:#374151;margin:0 0 2px"><strong>SĐT:</strong> ${selected.reporterPhone}</p>` : ''}${selected?.address ? `<p style="font-size:11px;color:#6b7280;margin:4px 0 0">${selected.address}</p>` : ''}${selected?.disasterType ? `<p style="font-size:11px;color:#ef4444;font-weight:600;margin:4px 0 0">Loại: ${selected.disasterType}</p>` : ''}</div>`,
+    );
 
     requestMarkerRef.current = new goongjs.Marker({ element: markerElement })
       .setLngLat([selectedCoordinates.lng, selectedCoordinates.lat])
+      .setPopup(popup)
       .addTo(map);
+
+    requestMarkerRef.current.togglePopup();
 
     (map as any).flyTo({
       center: [selectedCoordinates.lng, selectedCoordinates.lat],
       zoom: 14,
-      speed: 1,
+      speed: 2.5,
+      curve: 1,
     });
-  }, [selectedCoordinates]);
+  }, [selectedCoordinates, selected]);
 
   useEffect(() => {
     const map = requestMapRef.current;
@@ -1127,7 +1146,7 @@ export default function CoordinatorRequestManagementPage() {
                                 </p>
                               ) : (
                                 <>
-                                  <div ref={requestMapContainerRef} className="h-[320px] w-full" />
+                                  <div ref={requestMapCallbackRef} className="h-[320px] w-full" />
                                   {!selectedCoordinates ? (
                                     <p className="p-3 text-xs text-muted-foreground">
                                       Yêu cầu này chưa có tọa độ hợp lệ để ghim vị trí.

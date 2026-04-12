@@ -509,13 +509,36 @@ export default function MissionTrackingPage() {
     victimMarkerRef.current = null;
     if (!victimCoords) return;
     const el = document.createElement('div');
-    el.innerHTML =
-      '<div style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:16px;background:#ef4444;border-radius:9999px;border:2px solid white;box-shadow:0 0 0 5px rgba(239,68,68,.3);display:inline-block"></span><span style="font-size:11px;font-weight:700;background:#111827;color:#fff;padding:2px 7px;border-radius:9999px;white-space:nowrap;">Nạn nhân</span></div>';
+    el.style.cssText =
+      'cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px';
+    el.innerHTML = `
+      <div style="position:relative;width:46px;height:46px;display:flex;align-items:center;justify-content:center">
+        <div style="position:absolute;inset:0;border-radius:50%;background:rgba(239,68,68,0.18);animation:victim-ring 1.8s ease-out infinite"></div>
+        <style>@keyframes victim-ring{0%{transform:scale(1);opacity:0.6}100%{transform:scale(2.2);opacity:0}}</style>
+        <div style="position:relative;z-index:1;background:linear-gradient(135deg,#dc2626,#ef4444);width:40px;height:40px;border-radius:50%;border:3px solid white;box-shadow:0 3px 10px rgba(239,68,68,0.5);display:flex;align-items:center;justify-content:center">
+          <span class="material-symbols-outlined" style="color:white;font-size:22px;font-variation-settings:'FILL' 1;">person_alert</span>
+        </div>
+      </div>
+      <div style="background:#dc2626;color:white;font-size:10px;font-weight:800;padding:2px 9px;border-radius:9999px;white-space:nowrap;box-shadow:0 1px 4px rgba(220,38,38,0.4);letter-spacing:0.04em;">SOS</div>
+    `;
+
+    const victimPopup = new goongjs.Popup({ offset: [0, -56], closeButton: false }).setHTML(
+      `<div style="font-family:sans-serif;padding:2px 0;min-width:180px"><p style="font-weight:700;font-size:13px;margin:0 0 4px;color:#991b1b">Vị trí nạn nhân</p>${detail?.reporterFullName ? `<p style="font-size:12px;margin:0 0 2px;color:#374151"><strong>Người báo:</strong> ${detail.reporterFullName}</p>` : ''}${detail?.reporterPhone ? `<p style="font-size:12px;margin:0 0 2px;color:#374151"><strong>SĐT:</strong> ${detail.reporterPhone}</p>` : ''}${detail?.address ? `<p style="font-size:11px;color:#6b7280;margin:4px 0 0">${detail.address}</p>` : ''}</div>`,
+    );
+
     victimMarkerRef.current = new goongjs.Marker({ element: el })
       .setLngLat([victimCoords.lng, victimCoords.lat])
+      .setPopup(victimPopup)
       .addTo(map);
-    (map as any).flyTo({ center: [victimCoords.lng, victimCoords.lat], zoom: 13, speed: 1 });
-  }, [victimCoords]);
+
+    victimMarkerRef.current.togglePopup();
+    (map as any).flyTo({
+      center: [victimCoords.lng, victimCoords.lat],
+      zoom: 13,
+      speed: 2.5,
+      curve: 1,
+    });
+  }, [victimCoords, detail]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -528,15 +551,32 @@ export default function MissionTrackingPage() {
     if (!teamCoords) return;
     if (!teamMarkerRef.current) {
       const el = document.createElement('div');
-      el.innerHTML =
-        '<div style="display:flex;align-items:center;gap:4px"><span style="width:16px;height:16px;background:#2563eb;border-radius:9999px;border:2px solid white;box-shadow:0 0 0 5px rgba(37,99,235,.3);display:inline-block"></span><span style="font-size:11px;font-weight:700;background:#1e3a8a;color:#fff;padding:2px 7px;border-radius:9999px;white-space:nowrap;">Đội cứu hộ</span></div>';
+      el.style.cssText =
+        'cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px';
+      el.innerHTML = `
+        <div style="position:relative;width:46px;height:46px;display:flex;align-items:center;justify-content:center">
+          <div style="position:absolute;inset:0;border-radius:50%;background:rgba(37,99,235,0.2);animation:team-ring 1.6s ease-out infinite"></div>
+          <style>@keyframes team-ring{0%{transform:scale(1);opacity:0.6}100%{transform:scale(2.2);opacity:0}}</style>
+          <div style="position:relative;z-index:1;background:linear-gradient(135deg,#1d4ed8,#2563eb);width:40px;height:40px;border-radius:50%;border:3px solid white;box-shadow:0 3px 10px rgba(37,99,235,0.55);display:flex;align-items:center;justify-content:center;animation:team-pulse 2s ease-in-out infinite">
+            <style>@keyframes team-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}</style>
+            <span class="material-symbols-outlined" style="color:white;font-size:20px;font-variation-settings:'FILL' 1;">local_shipping</span>
+          </div>
+        </div>
+        <div style="background:#1e3a8a;color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:9999px;white-space:nowrap;box-shadow:0 1px 4px rgba(30,58,138,0.35);">Đội cứu hộ</div>
+      `;
+
+      const teamPopup = new goongjs.Popup({ offset: [0, -56], closeButton: false }).setHTML(
+        `<div style="font-family:sans-serif;padding:2px 0;min-width:160px"><p style="font-weight:700;font-size:13px;margin:0 0 4px;color:#1e40af">Đội cứu hộ</p>${currentOperation?.teamName ? `<p style="font-size:12px;color:#374151;margin:0 0 2px">${currentOperation.teamName}</p>` : ''}${currentOperation?.stationName ? `<p style="font-size:11px;color:#6b7280;margin:0 0 2px">Trạm: ${currentOperation.stationName}</p>` : ''}${opStatus ? `<p style="font-size:11px;color:#2563eb;font-weight:600;margin:4px 0 0">Trạng thái: ${opStatus}</p>` : ''}</div>`,
+      );
+
       teamMarkerRef.current = new goongjs.Marker({ element: el })
         .setLngLat([teamCoords.lng, teamCoords.lat])
+        .setPopup(teamPopup)
         .addTo(map);
     } else {
       teamMarkerRef.current.setLngLat([teamCoords.lng, teamCoords.lat]);
     }
-  }, [showMap, teamCoords]);
+  }, [showMap, teamCoords, currentOperation, opStatus]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -642,6 +682,16 @@ export default function MissionTrackingPage() {
       { padding: 80, maxZoom: 15, duration: 1200 },
     );
   }, [teamCoords, victimCoords]);
+
+  // Resize map when it becomes visible to avoid blank/cropped rendering
+  useEffect(() => {
+    if (!showMap) return;
+    const map = mapRef.current;
+    if (!map) return;
+    // Small delay gives the browser time to recalculate layout
+    const id = setTimeout(() => (map as any).resize(), 50);
+    return () => clearTimeout(id);
+  }, [showMap]);
 
   const handleRecalculateEta = async () => {
     const teamId = detail?.assignedRescueTeam?.teamId;
@@ -1136,7 +1186,7 @@ export default function MissionTrackingPage() {
                         </div>
                       </div>
                     )}
-                    <div className={showMap ? 'space-y-3' : 'hidden'}>
+                    <div className={showMap ? 'space-y-3' : 'invisible h-0 overflow-hidden'}>
                       <div className="flex items-center justify-between flex-wrap gap-2">
                         <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider flex items-center gap-1.5">
                           <span className="material-symbols-outlined text-base text-blue-500">
