@@ -3,13 +3,6 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useVolunteerReviewApplications } from '@/hooks/useVolunteerReviewApplications';
@@ -39,40 +32,57 @@ const VOL_PAGE_SIZE = 5;
 
 const buildPageItems = (currentPage: number, totalPages: number): Array<number | 'ellipsis'> => {
   if (totalPages <= 1) return [1];
+
   const pages = new Set<number>([1, totalPages, currentPage]);
   if (currentPage > 1) pages.add(currentPage - 1);
   if (currentPage < totalPages) pages.add(currentPage + 1);
+
   const sorted = Array.from(pages).sort((a, b) => a - b);
   const items: Array<number | 'ellipsis'> = [];
+
   sorted.forEach((page, index) => {
     const prev = sorted[index - 1];
     if (prev && page - prev > 1) items.push('ellipsis');
     items.push(page);
   });
+
   return items;
 };
 
 const getVerificationStatusText = (status: number) =>
-  VerificationStatusLabel[status as VerificationStatus] ?? 'Khong ro';
+  VerificationStatusLabel[status as VerificationStatus] ?? 'Không rõ';
 
 const getVerificationStatusStyle = (status: number) => {
   switch (status) {
     case 1:
-      return 'bg-amber-500/10 text-amber-600 border-amber-200';
+      return 'border-amber-200 bg-amber-500/10 text-amber-700';
     case 2:
-      return 'bg-emerald-500/10 text-emerald-600 border-emerald-200';
+      return 'border-emerald-200 bg-emerald-500/10 text-emerald-700';
     case 3:
-      return 'bg-rose-500/10 text-rose-600 border-rose-200';
+      return 'border-rose-200 bg-rose-500/10 text-rose-700';
     default:
-      return 'bg-slate-500/10 text-slate-600 border-slate-200';
+      return 'border-slate-200 bg-slate-500/10 text-slate-600';
   }
 };
 
 const getVolunteerStatusText = (status: number) =>
-  VolunteerStatusLabel[status as VolunteerStatus] ?? 'Khong ro';
+  VolunteerStatusLabel[status as VolunteerStatus] ?? 'Không rõ';
 
 const getPreferredTeamRoleText = (role: number) =>
-  TeamRolePreferenceLabel[role as TeamRolePreference] ?? `Vai tro #${role}`;
+  TeamRolePreferenceLabel[role as TeamRolePreference] ?? `Vai trò #${role}`;
+
+/** Icon theo vai trò mong muốn (Material Symbols). */
+const getPreferredTeamRoleIconName = (role: number): string => {
+  switch (role) {
+    case TeamRolePreference.Leader:
+      return 'military_tech';
+    case TeamRolePreference.Driver:
+      return 'steering_wheel';
+    case TeamRolePreference.Member:
+    default:
+      return 'diversity_3';
+  }
+};
 
 const formatDateTimeVN = (value?: string | null) => {
   if (!value) return '--';
@@ -133,6 +143,7 @@ export default function CoordinatorVolunteerRequestPage() {
         app.fullName.toLowerCase().includes(term) ||
         app.email.toLowerCase().includes(term) ||
         app.phoneNumber.toLowerCase().includes(term);
+
       const matchesStatus =
         statusFilter === 'all'
           ? true
@@ -141,6 +152,7 @@ export default function CoordinatorVolunteerRequestPage() {
             : statusFilter === 'approved'
               ? app.verificationStatus === 2
               : app.verificationStatus === 3;
+
       return matchesSearch && matchesStatus;
     });
   }, [sortedApplications, searchTerm, statusFilter]);
@@ -201,9 +213,9 @@ export default function CoordinatorVolunteerRequestPage() {
     try {
       await approveApplication(selectedApplication.volunteerProfileId);
       await refetch();
-      toast.success('Da chap nhan ho so tinh nguyen vien!');
+      toast.success('Đã chấp nhận hồ sơ tình nguyện viên!');
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Khong the chap nhan request.';
+      const msg = error?.response?.data?.message || 'Không thể chấp nhận request.';
       setActionError(msg);
       toast.error(msg);
     }
@@ -213,7 +225,7 @@ export default function CoordinatorVolunteerRequestPage() {
     if (!selectedApplication || !isPendingSelected) return;
     const reason = rejectReason.trim();
     if (!reason) {
-      setActionError('Vui long nhap ly do tu choi.');
+      setActionError('Vui lòng nhập lý do từ chối.');
       return;
     }
     setActionError('');
@@ -222,9 +234,9 @@ export default function CoordinatorVolunteerRequestPage() {
       setIsRejectDialogOpen(false);
       setRejectReason('');
       await refetch();
-      toast.success('Da tu choi ho so tinh nguyen vien.');
+      toast.success('Đã từ chối hồ sơ tình nguyện viên!');
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Khong the tu choi request.';
+      const msg = error?.response?.data?.message || 'Không thể từ chối hồ sơ tình nguyện viên!';
       setActionError(msg);
       toast.error(msg);
     }
@@ -233,30 +245,28 @@ export default function CoordinatorVolunteerRequestPage() {
   return (
     <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
       <div className="space-y-6">
-        {/* Page header */}
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="space-y-2">
             <h1 className="text-3xl font-black text-primary md:text-4xl">
-              Quan ly yeu cau tinh nguyen vien
+              Quản lý yêu cầu tình nguyện viên
             </h1>
             <p className="max-w-2xl text-sm text-muted-foreground md:text-base">
-              Duyet ho so tinh nguyen vien dang cho xu ly, theo doi trang thai va lich su ung tuyen.
+              Duyệt hồ sơ tình nguyện viên đang chờ xử lý, theo dõi trạng thái và lịch sử ứng tuyển.
             </p>
           </div>
           <Button variant="outline" className="h-11 gap-2 px-5" onClick={() => refetch()}>
             <span className="material-symbols-outlined">refresh</span>
-            Tai lai
+            Tải lại
           </Button>
         </div>
 
-        {/* Stat cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Card className="border-border bg-card">
             <CardContent className="p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Tong ho so
+                    Tổng hồ sơ
                   </p>
                   <p className="mt-3 text-3xl font-black text-foreground">{stats.total}</p>
                 </div>
@@ -271,7 +281,7 @@ export default function CoordinatorVolunteerRequestPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Cho duyet
+                    Chờ duyệt
                   </p>
                   <p className="mt-3 text-3xl font-black text-amber-600">{stats.pending}</p>
                 </div>
@@ -286,7 +296,7 @@ export default function CoordinatorVolunteerRequestPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Da duyet
+                    Đã duyệt
                   </p>
                   <p className="mt-3 text-3xl font-black text-emerald-600">{stats.approved}</p>
                 </div>
@@ -301,7 +311,7 @@ export default function CoordinatorVolunteerRequestPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Tu choi
+                    Từ chối
                   </p>
                   <p className="mt-3 text-3xl font-black text-rose-600">{stats.rejected}</p>
                 </div>
@@ -313,47 +323,30 @@ export default function CoordinatorVolunteerRequestPage() {
           </Card>
         </div>
 
-        {/* Main split */}
-        <div className="grid min-h-[calc(100vh] grid-cols-1 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-          {/* Left: list panel */}
+        <div className="grid min-h-[calc(100vh-4rem)] grid-cols-1 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
           <Card className="overflow-hidden rounded-2xl border-border bg-card xl:h-[calc(100vh-4rem)]">
             <CardContent className="flex h-full flex-col p-0">
-              {/* Header / search */}
               <div className="border-b border-border/70 px-5 pb-4 pt-5">
                 <div className="space-y-4">
                   <div className="space-y-1">
-                    <h2 className="text-xl font-black text-foreground">Danh sach ho so</h2>
+                    <h2 className="text-xl font-black text-foreground">Danh sách hồ sơ</h2>
                     <p className="text-xs text-muted-foreground">
-                      Hien thi 5 ho so moi trang. Uu tien ho so cho duyet.
+                      Hiển thị 5 hồ sơ mỗi trang. Ưu tiên hồ sơ chờ duyệt.
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_170px]">
+                  <div className="grid grid-cols-1 gap-3 ">
                     <div className="relative">
                       <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-muted-foreground">
                         search
                       </span>
                       <Input
                         className="h-11 border-border bg-background pl-10"
-                        placeholder="Tim ten, email, so dien thoai..."
+                        placeholder="Tìm tên, email, số điện thoại..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                       />
                     </div>
-                    <Select
-                      value={statusFilter}
-                      onValueChange={(value: StatusFilter) => setStatusFilter(value)}
-                    >
-                      <SelectTrigger className="h-11 border-border bg-background">
-                        <SelectValue placeholder="Loc trang thai" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Tat ca trang thai</SelectItem>
-                        <SelectItem value="pending">Cho duyet</SelectItem>
-                        <SelectItem value="approved">Da duyet</SelectItem>
-                        <SelectItem value="rejected">Tu choi</SelectItem>
-                      </SelectContent>
-                    </Select>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -364,7 +357,7 @@ export default function CoordinatorVolunteerRequestPage() {
                       onClick={() => setStatusFilter('all')}
                     >
                       <span className="material-symbols-outlined text-sm">apps</span>
-                      Tat ca
+                      Tất cả
                     </Button>
                     <Button
                       size="sm"
@@ -377,31 +370,30 @@ export default function CoordinatorVolunteerRequestPage() {
                       onClick={() => setStatusFilter('pending')}
                     >
                       <span className="material-symbols-outlined text-sm">schedule</span>
-                      Cho duyet
+                      Chờ duyệt
                     </Button>
                     <Button
                       size="sm"
-                      variant={statusFilter === 'approved' ? 'primary' : 'outline'}
+                      variant={statusFilter === 'approved' ? 'success' : 'outline'}
                       className="rounded-full"
                       onClick={() => setStatusFilter('approved')}
                     >
                       <span className="material-symbols-outlined text-sm">verified</span>
-                      Da duyet
+                      Đã duyệt
                     </Button>
                     <Button
                       size="sm"
-                      variant={statusFilter === 'rejected' ? 'primary' : 'outline'}
+                      variant={statusFilter === 'rejected' ? 'destructive' : 'outline'}
                       className="rounded-full"
                       onClick={() => setStatusFilter('rejected')}
                     >
                       <span className="material-symbols-outlined text-sm">cancel</span>
-                      Tu choi
+                      Từ chối
                     </Button>
                   </div>
                 </div>
               </div>
 
-              {/* List */}
               <div className="flex-1 overflow-auto px-4 py-4">
                 {isLoading ? (
                   <div className="space-y-2">
@@ -411,7 +403,7 @@ export default function CoordinatorVolunteerRequestPage() {
                   </div>
                 ) : isError ? (
                   <div className="rounded-2xl border border-rose-200 bg-rose-500/5 px-4 py-4 text-sm text-rose-600">
-                    Khong tai duoc danh sach request volunteer.
+                    Không tải được danh sách request volunteer.
                   </div>
                 ) : filteredApplications.length === 0 ? (
                   <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-muted/10 p-6 text-center">
@@ -420,10 +412,10 @@ export default function CoordinatorVolunteerRequestPage() {
                     </span>
                     <div>
                       <p className="text-base font-semibold text-foreground">
-                        Khong co ho so phu hop
+                        Không có hồ sơ phù hợp
                       </p>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Thu thay doi tu khoa hoac trang thai can loc.
+                        Thử thay đổi từ khóa hoặc trạng thái cần lọc.
                       </p>
                     </div>
                   </div>
@@ -467,7 +459,9 @@ export default function CoordinatorVolunteerRequestPage() {
                               {app.phoneNumber || '--'}
                             </span>
                             <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] text-muted-foreground">
-                              <span className="material-symbols-outlined text-sm">diversity_3</span>
+                              <span className="material-symbols-outlined text-sm">
+                                {getPreferredTeamRoleIconName(app.preferredTeamRole)}
+                              </span>
                               {getPreferredTeamRoleText(app.preferredTeamRole)}
                             </span>
                             <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] text-muted-foreground">
@@ -481,7 +475,7 @@ export default function CoordinatorVolunteerRequestPage() {
                               {(app.skills || []).slice(0, 3).map((skill) => (
                                 <span
                                   key={`${app.volunteerProfileId}-${skill.skillId}`}
-                                  className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px]"
+                                  className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground"
                                 >
                                   {skill.name}
                                 </span>
@@ -500,13 +494,12 @@ export default function CoordinatorVolunteerRequestPage() {
                 )}
               </div>
 
-              {/* Pagination */}
               <div className="border-t border-border/70 px-5 py-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <p className="text-xs text-muted-foreground">
                     Trang {listPage}/{totalListPages} - {paginatedApplications.length}/
-                    {filteredApplications.length} ho so.
-                    {paging?.totalCount != null && ` Tong API: ${paging.totalCount}`}
+                    {filteredApplications.length} hồ sơ.
+                    {paging?.totalCount != null && ` Tổng hồ sơ: ${paging.totalCount}`}
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
@@ -517,7 +510,7 @@ export default function CoordinatorVolunteerRequestPage() {
                       onClick={() => setListPage((prev) => Math.max(1, prev - 1))}
                     >
                       <span className="material-symbols-outlined text-sm">chevron_left</span>
-                      Prev
+                      Trước
                     </Button>
                     {listPageItems.map((item, index) =>
                       item === 'ellipsis' ? (
@@ -543,11 +536,11 @@ export default function CoordinatorVolunteerRequestPage() {
                       disabled={listPage >= totalListPages}
                       onClick={() => setListPage((prev) => Math.min(totalListPages, prev + 1))}
                     >
-                      Next
+                      Sau
                       <span className="material-symbols-outlined text-sm">chevron_right</span>
                     </Button>
                     <div className="flex items-center gap-2 rounded-full border border-border px-2 py-1">
-                      <span className="text-xs text-muted-foreground">Toi trang</span>
+                      <span className="text-xs text-muted-foreground">Tới trang:</span>
                       <Input
                         value={pageInput}
                         onChange={(e) => setPageInput(e.target.value.replace(/[^0-9]/g, ''))}
@@ -562,7 +555,7 @@ export default function CoordinatorVolunteerRequestPage() {
                         className="h-8 px-2"
                         onClick={handleJumpToPage}
                       >
-                        Di
+                        Đi
                       </Button>
                     </div>
                   </div>
@@ -571,24 +564,22 @@ export default function CoordinatorVolunteerRequestPage() {
             </CardContent>
           </Card>
 
-          {/* Right: detail panel */}
           <div className="min-h-0 xl:max-h-[calc(100vh-4rem)] xl:overflow-y-auto xl:pr-1">
             {!selectedApplication ? (
               <Card className="h-full rounded-2xl border-border bg-card">
                 <CardContent className="flex min-h-[520px] items-center justify-center text-muted-foreground">
-                  Chon mot request o cot trai de xem ho so chi tiet.
+                  Chọn một request ở cột trái để xem hồ sơ chi tiết.
                 </CardContent>
               </Card>
             ) : (
               <div className="space-y-4 pb-2">
-                {/* Identity card */}
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                   <Card className="rounded-2xl border-border bg-card lg:col-span-2">
                     <CardContent className="p-5">
                       <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-gradient-to-br from-primary/5 via-background to-background p-5">
                         <div>
                           <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                            Ho so ung vien
+                            Hồ sơ ứng viên
                           </p>
                           <h2 className="mt-1 text-2xl font-black">
                             {selectedApplication.fullName}
@@ -609,13 +600,13 @@ export default function CoordinatorVolunteerRequestPage() {
 
                       <div className="mt-4 flex flex-wrap gap-2">
                         <span className="rounded-full border border-primary/10 bg-primary/5 px-2.5 py-1 text-xs text-muted-foreground">
-                          Tuoi:{' '}
+                          Tuổi:{' '}
                           <span className="font-medium text-foreground">
                             {getAgeTextFromDob(selectedApplication.dateOfBirth)}
                           </span>
                         </span>
                         <span className="rounded-full border border-primary/10 bg-primary/5 px-2.5 py-1 text-xs text-muted-foreground">
-                          Gioi tinh:{' '}
+                          Giới tính:{' '}
                           <span className="font-medium text-foreground">
                             {selectedApplication.gender || '--'}
                           </span>
@@ -626,8 +617,11 @@ export default function CoordinatorVolunteerRequestPage() {
                             {getVolunteerStatusText(selectedApplication.status)}
                           </span>
                         </span>
-                        <span className="rounded-full border border-primary/10 bg-primary/5 px-2.5 py-1 text-xs text-muted-foreground">
-                          Vai tro:{' '}
+                        <span className="inline-flex items-center gap-1 rounded-full border border-primary/10 bg-primary/5 px-2.5 py-1 text-xs text-muted-foreground">
+                          <span className="material-symbols-outlined text-sm text-foreground">
+                            {getPreferredTeamRoleIconName(selectedApplication.preferredTeamRole)}
+                          </span>
+                          Vai trò:{' '}
                           <span className="font-medium text-foreground">
                             {getPreferredTeamRoleText(selectedApplication.preferredTeamRole)}
                           </span>
@@ -635,7 +629,7 @@ export default function CoordinatorVolunteerRequestPage() {
                       </div>
 
                       <div className="mt-4 rounded-2xl border border-border bg-background/80 p-3">
-                        <p className="mb-1 text-xs uppercase text-muted-foreground">Dia chi</p>
+                        <p className="mb-1 text-xs uppercase text-muted-foreground">Địa chỉ</p>
                         <p className="text-sm font-medium">{selectedApplication.address || '--'}</p>
                       </div>
                     </CardContent>
@@ -648,11 +642,13 @@ export default function CoordinatorVolunteerRequestPage() {
                         <p className="break-all font-medium">{selectedApplication.email || '--'}</p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase text-muted-foreground">So dien thoai</p>
+                        <p className="text-xs uppercase text-muted-foreground">Số điện thoại</p>
                         <p className="font-medium">{selectedApplication.phoneNumber || '--'}</p>
                       </div>
+                    </CardContent>
+                    <CardContent className="p-5 border-t border-border">
                       <div>
-                        <p className="text-xs uppercase text-muted-foreground">Ngay ung tuyen</p>
+                        <p className="text-xs uppercase text-muted-foreground">Ngày ứng tuyển</p>
                         <p className="font-medium">
                           {formatDateTimeVN(selectedApplication.appliedAt)}
                         </p>
@@ -661,11 +657,10 @@ export default function CoordinatorVolunteerRequestPage() {
                   </Card>
                 </div>
 
-                {/* Skills & certificates */}
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                   <Card className="rounded-2xl border-border bg-card">
                     <CardContent className="p-5">
-                      <p className="mb-3 text-xs uppercase text-muted-foreground">Ky nang</p>
+                      <p className="mb-3 text-xs uppercase text-muted-foreground">Kỹ năng</p>
                       <div className="flex flex-wrap gap-2">
                         {selectedApplication.skills?.length ? (
                           selectedApplication.skills.map((s) => (
@@ -677,13 +672,13 @@ export default function CoordinatorVolunteerRequestPage() {
                             </span>
                           ))
                         ) : (
-                          <span className="text-sm text-muted-foreground">Chua co ky nang</span>
+                          <span className="text-sm text-muted-foreground">Chưa có kỹ năng</span>
                         )}
                       </div>
                       <div className="mt-5">
-                        <p className="mb-1 text-xs uppercase text-muted-foreground">Mo ta</p>
+                        <p className="mb-1 text-xs uppercase text-muted-foreground">Mô tả</p>
                         <p className="text-sm leading-relaxed text-foreground">
-                          {selectedApplication.descriptions || 'Khong co mo ta'}
+                          {selectedApplication.descriptions || 'Không có mô tả'}
                         </p>
                       </div>
                     </CardContent>
@@ -691,7 +686,7 @@ export default function CoordinatorVolunteerRequestPage() {
 
                   <Card className="rounded-2xl border-border bg-card">
                     <CardContent className="p-5">
-                      <p className="mb-3 text-xs uppercase text-muted-foreground">Chung chi</p>
+                      <p className="mb-3 text-xs uppercase text-muted-foreground">Chứng chỉ</p>
                       {selectedApplication.certificates?.length ? (
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           {selectedApplication.certificates.map((cert, idx) => (
@@ -701,7 +696,7 @@ export default function CoordinatorVolunteerRequestPage() {
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <p className="line-clamp-2 text-sm font-semibold">
-                                  {cert.name || 'Chung chi'}
+                                  {cert.name || 'Chứng chỉ'}
                                 </p>
                                 {cert.fileUrl ? (
                                   <a
@@ -710,22 +705,22 @@ export default function CoordinatorVolunteerRequestPage() {
                                     rel="noreferrer"
                                     className="shrink-0 text-[11px] font-semibold text-primary underline"
                                   >
-                                    Mo file
+                                    Mở file
                                   </a>
                                 ) : null}
                               </div>
                               <p className="mt-1 text-[11px] text-muted-foreground">
-                                Cap boi: {cert.issuedBy || 'Khong ro'}
+                                Cấp bởi: {cert.issuedBy || 'Khong ro'}
                               </p>
                               <div className="mt-2 space-y-1 text-[11px]">
                                 <p className="text-muted-foreground">
-                                  Ngay cap:{' '}
+                                  Ngày cấp:{' '}
                                   <span className="text-foreground">
                                     {formatDateVN(cert.issuedDate)}
                                   </span>
                                 </p>
                                 <p className="text-muted-foreground">
-                                  Het han:{' '}
+                                  Hết hạn:{' '}
                                   <span className="text-foreground">
                                     {formatDateVN(cert.expiryDate)}
                                   </span>
@@ -747,32 +742,29 @@ export default function CoordinatorVolunteerRequestPage() {
                           ))}
                         </div>
                       ) : (
-                        <p className="text-sm text-muted-foreground">Chua co chung chi</p>
+                        <p className="text-sm text-muted-foreground">Chưa có chứng chỉ</p>
                       )}
                     </CardContent>
                   </Card>
                 </div>
 
-                {/* Internal note */}
                 <Card className="rounded-2xl border-border bg-card">
                   <CardContent className="p-5">
-                    <p className="mb-2 text-xs uppercase text-muted-foreground">Ghi chu noi bo</p>
-                    <Textarea rows={4} placeholder="Nhap ghi chu noi bo cho ho so nay..." />
+                    <p className="mb-2 text-xs uppercase text-muted-foreground">Ghi chú nội bộ</p>
+                    <Textarea rows={4} placeholder="Nhập ghi chú nội bộ cho hồ sơ này..." />
                   </CardContent>
                 </Card>
 
-                {/* Reject reason banner */}
                 {selectedApplication.verificationStatus === 3 && (
                   <div className="rounded-2xl border border-rose-200 bg-rose-500/5 p-4">
-                    <p className="text-xs font-semibold uppercase text-rose-600">Ly do tu choi</p>
+                    <p className="text-xs font-semibold uppercase text-rose-600">Lý do từ chối</p>
                     <p className="mt-1 text-sm text-rose-700">
-                      {selectedApplication.reason || 'Khong co ly do cu the'}
+                      {selectedApplication.reason || 'Không có lý do cụ thể'}
                     </p>
                   </div>
                 )}
 
-                {/* Actions */}
-                <Card className="stick rounded-2xl border-border bg-card">
+                <Card className="sticky bottom-0 z-10 rounded-2xl border-border bg-card/95 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/85">
                   <CardContent className="space-y-3 p-5">
                     <div className="flex flex-wrap gap-3">
                       <Button
@@ -782,14 +774,12 @@ export default function CoordinatorVolunteerRequestPage() {
                         onClick={handleApprove}
                       >
                         <span className="material-symbols-outlined">check_circle</span>
-                        {approveStatus === 'pending' ? 'Dang xu ly...' : 'Chap nhan'}
+                        {approveStatus === 'pending' ? 'Đang xử lý...' : 'Chấp nhận'}
                       </Button>
-
                       <Button variant="outline" className="gap-2" disabled>
                         <span className="material-symbols-outlined">contact_support</span>
-                        Yeu cau bo sung (sap co)
+                        Yêu cầu bổ sung (sắp có)
                       </Button>
-
                       <Button
                         variant="outline"
                         className="gap-2 border-rose-200 text-rose-600 hover:bg-rose-500/10"
@@ -800,13 +790,13 @@ export default function CoordinatorVolunteerRequestPage() {
                         }}
                       >
                         <span className="material-symbols-outlined">close</span>
-                        Tu choi
+                        Từ chối
                       </Button>
                     </div>
-
                     {!isPendingSelected && (
                       <p className="text-xs text-muted-foreground">
-                        Chi request o trang thai Cho duyet moi co the chap nhan hoac tu choi.
+                        Chỉ Yêu cầu tình nguyện viên ở trạng thái Chờ duyệt mới có thể chấp nhận
+                        hoặc từ chối.
                       </p>
                     )}
                     {actionError ? <p className="text-sm text-rose-500">{actionError}</p> : null}
@@ -818,22 +808,21 @@ export default function CoordinatorVolunteerRequestPage() {
         </div>
       </div>
 
-      {/* Reject dialog */}
       <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Tu choi request volunteer</DialogTitle>
+            <DialogTitle>Từ chối request volunteer</DialogTitle>
             <DialogDescription>
-              Vui long nhap ly do tu choi. Ly do nay se duoc luu vao truong reason.
+              Vui lòng nhập lý do từ chối. Lý do này sẽ được lưu vào trường reason.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Ly do tu choi *</label>
+            <label className="text-sm font-medium">Lý do từ chối *</label>
             <Textarea
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="Nhap ly do tu choi..."
+              placeholder="Nhập lý do từ chối..."
               rows={4}
             />
           </div>
@@ -850,10 +839,10 @@ export default function CoordinatorVolunteerRequestPage() {
               }}
               disabled={rejectStatus === 'pending'}
             >
-              Huy
+              Hủy
             </Button>
             <Button variant="primary" onClick={handleReject} disabled={rejectStatus === 'pending'}>
-              {rejectStatus === 'pending' ? 'Dang xu ly...' : 'Xac nhan tu choi'}
+              {rejectStatus === 'pending' ? 'Đang xử lý...' : 'Xác nhận từ chối'}
             </Button>
           </DialogFooter>
         </DialogContent>
