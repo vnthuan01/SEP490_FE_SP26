@@ -6,13 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -20,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
+import { cn, formatVietnamesePhoneNumber } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRescueRequestManagement } from '@/hooks/useRescueRequestManagement';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
@@ -64,6 +57,33 @@ const formatMeters = (value?: number | null) =>
   value == null ? '-- m' : `${value.toLocaleString('vi-VN')} m`;
 const formatSeconds = (value?: number | null) =>
   value == null ? '-- giây' : `${value.toLocaleString('vi-VN')} giây`;
+
+const getDisasterTypeBadge = (type?: string | number | null): { cls: string; icon: string } => {
+  const t = String(type ?? '');
+  const map: Record<string, { cls: string; icon: string }> = {
+    Flood: { cls: 'border-blue-200 bg-blue-500/10 text-blue-700', icon: 'water' },
+    Earthquake: { cls: 'border-yellow-200 bg-yellow-500/10 text-yellow-700', icon: 'sensors' },
+    Fire: { cls: 'border-red-200 bg-red-500/10 text-red-700', icon: 'local_fire_department' },
+    Storm: { cls: 'border-indigo-200 bg-indigo-500/10 text-indigo-700', icon: 'storm' },
+    Landslide: { cls: 'border-orange-200 bg-orange-500/10 text-orange-700', icon: 'landslide' },
+  };
+  return map[t] ?? { cls: 'border-slate-200 bg-slate-500/10 text-slate-600', icon: 'warning' };
+};
+
+const getRescueRequestTypeBadge = (
+  type?: string | number | null,
+): { cls: string; icon: string } => {
+  const t = String(type ?? '');
+  const map: Record<string, { cls: string; icon: string }> = {
+    Emergency: { cls: 'border-red-300 bg-red-500/15 text-red-700', icon: 'emergency' },
+    Urgent: { cls: 'border-orange-300 bg-orange-500/15 text-orange-700', icon: 'priority_high' },
+    Normal: { cls: 'border-emerald-300 bg-emerald-500/15 text-emerald-700', icon: 'check_circle' },
+    '2': { cls: 'border-red-300 bg-red-500/15 text-red-700', icon: 'emergency' },
+    '1': { cls: 'border-orange-300 bg-orange-500/15 text-orange-700', icon: 'priority_high' },
+    '0': { cls: 'border-emerald-300 bg-emerald-500/15 text-emerald-700', icon: 'check_circle' },
+  };
+  return map[t] ?? { cls: 'border-slate-200 bg-slate-500/10 text-slate-600', icon: 'help' };
+};
 
 const attachmentTypeLabel = (type?: number | string | null) => {
   if (type === 0 || type === '0' || type === 'RequestEvidence') return 'Bằng chứng yêu cầu';
@@ -347,14 +367,23 @@ export default function CoordinatorRequestManagementPage() {
     if (!stationCoordinates) return;
 
     const stationMarkerElement = document.createElement('div');
-    stationMarkerElement.className = 'flex items-center gap-1';
+    stationMarkerElement.style.cssText = 'cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px';
     stationMarkerElement.innerHTML = `
-      <span style="width:10px;height:10px;background:#8b5cf6;border-radius:9999px;box-shadow:0 0 0 4px rgba(139,92,246,.25);"></span>
-      <span style="font-size:11px;font-weight:700;background:#6d28d9;color:#fff;padding:2px 6px;border-radius:9999px;white-space:nowrap;">Trạm hiện tại</span>
+      <div style="position:relative;width:46px;height:46px;display:flex;align-items:center;justify-content:center">
+        <div style="position:absolute;inset:0;border-radius:50%;background:rgba(109,40,217,0.15)"></div>
+        <div style="position:relative;z-index:1;background:linear-gradient(135deg,#6d28d9,#7c3aed);width:40px;height:40px;border-radius:50%;border:3px solid white;box-shadow:0 3px 10px rgba(109,40,217,0.5);display:flex;align-items:center;justify-content:center">
+          <span class="material-symbols-outlined" style="color:white;font-size:20px;font-variation-settings:'FILL' 1;">home_pin</span>
+        </div>
+      </div>
+      <div style="background:#6d28d9;color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:9999px;white-space:nowrap;box-shadow:0 1px 4px rgba(109,40,217,0.35);max-width:130px;overflow:hidden;text-overflow:ellipsis;">Trạm cứu hộ</div>
     `;
+
+    const stationPopup = new goongjs.Popup({ offset: [0, -56], closeButton: false })
+      .setHTML(`<div style="font-family:sans-serif;padding:2px 0;min-width:160px"><p style="font-weight:700;font-size:13px;margin:0 0 3px;color:#4c1d95">Trạm cứu hộ</p>${(station as any)?.name ? `<p style="font-size:12px;color:#374151;margin:0 0 2px">${(station as any).name}</p>` : ''}${coverageRadiusKm ? `<p style="font-size:11px;color:#7c3aed;margin:4px 0 0">Bán kính phủ sóng: <strong>${coverageRadiusKm} km</strong></p>` : ''}</div>`);
 
     stationMarkerRef.current = new goongjs.Marker({ element: stationMarkerElement })
       .setLngLat([stationCoordinates.lng, stationCoordinates.lat])
+      .setPopup(stationPopup)
       .addTo(map);
   }, [stationCoordinates]);
 
@@ -716,8 +745,8 @@ export default function CoordinatorRequestManagementPage() {
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-          <Card className="overflow-hidden border-border bg-card">
+        <div className="grid min-h-[calc(100vh-4rem)] grid-cols-1 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+          <Card className="overflow-hidden rounded-2xl border-border bg-card xl:h-[calc(100vh-4rem)]">
             <CardContent className="flex h-full flex-col p-0">
               <div className="border-b border-border/70 px-5 pb-4 pt-5">
                 <div className="space-y-4">
@@ -728,7 +757,7 @@ export default function CoordinatorRequestManagementPage() {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_170px]">
+                  <div className="grid grid-cols-1 gap-3 ">
                     <div className="relative">
                       <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-muted-foreground">
                         search
@@ -740,23 +769,6 @@ export default function CoordinatorRequestManagementPage() {
                         onChange={(e) => setSearch(e.target.value)}
                       />
                     </div>
-
-                    <Select
-                      value={verificationFilter}
-                      onValueChange={(value: 'all' | 'pending' | 'approved' | 'rejected') =>
-                        setVerificationFilter(value)
-                      }
-                    >
-                      <SelectTrigger className="h-11 border-border bg-background">
-                        <SelectValue placeholder="Lọc trạng thái" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Tất cả trạng thái</SelectItem>
-                        <SelectItem value="pending">Chờ xác minh</SelectItem>
-                        <SelectItem value="approved">Đã xác minh</SelectItem>
-                        <SelectItem value="rejected">Từ chối</SelectItem>
-                      </SelectContent>
-                    </Select>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -784,7 +796,7 @@ export default function CoordinatorRequestManagementPage() {
                     </Button>
                     <Button
                       size="sm"
-                      variant={verificationFilter === 'approved' ? 'primary' : 'outline'}
+                      variant={verificationFilter === 'approved' ? 'success' : 'outline'}
                       className="rounded-full"
                       onClick={() => setVerificationFilter('approved')}
                     >
@@ -793,7 +805,7 @@ export default function CoordinatorRequestManagementPage() {
                     </Button>
                     <Button
                       size="sm"
-                      variant={verificationFilter === 'rejected' ? 'primary' : 'outline'}
+                      variant={verificationFilter === 'rejected' ? 'destructive' : 'outline'}
                       className="rounded-full"
                       onClick={() => setVerificationFilter('rejected')}
                     >
@@ -866,12 +878,29 @@ export default function CoordinatorRequestManagementPage() {
                             </span>
                           </div>
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] text-muted-foreground">
-                              <span className="material-symbols-outlined text-sm">cyclone</span>
-                              {req.disasterType != null
-                                ? getDisasterTypeLabel(req.disasterType)
-                                : '--'}
-                            </span>
+                            {req.disasterType != null ? (
+                              (() => {
+                                const badge = getDisasterTypeBadge(req.disasterType);
+                                return (
+                                  <span
+                                    className={cn(
+                                      'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium',
+                                      badge.cls,
+                                    )}
+                                  >
+                                    <span className="material-symbols-outlined text-sm">
+                                      {badge.icon}
+                                    </span>
+                                    {getDisasterTypeLabel(req.disasterType)}
+                                  </span>
+                                );
+                              })()
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] text-muted-foreground">
+                                <span className="material-symbols-outlined text-sm">cyclone</span>
+                                --
+                              </span>
+                            )}
                             <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] text-muted-foreground">
                               <span className="material-symbols-outlined text-sm">route</span>
                               {formatKm(req.stationToRequestDistanceKm)}
@@ -963,273 +992,312 @@ export default function CoordinatorRequestManagementPage() {
             </CardContent>
           </Card>
 
-          <Card className="rounded-2xl border-border bg-card">
-            <CardContent className="p-4 md:p-6">
-              {!selected ? (
-                <div className="flex min-h-[520px] items-center justify-center rounded-2xl border border-dashed border-border bg-muted/10 p-6 text-center text-muted-foreground">
-                  Chon mot yeu cau de xem chi tiet.
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-gradient-to-br from-primary/5 via-background to-background p-5">
-                    <div>
-                      <h2 className="text-2xl font-black">{selected.reporterFullName || '--'}</h2>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Mã yêu cầu: {getRequestId(selected)}
-                      </p>
-                    </div>
-                    <span
-                      className={cn(
-                        'text-xs px-3 py-1 rounded-full border font-semibold',
-                        verificationStatusClass(verification?.status),
-                      )}
-                    >
-                      {verificationStatusText(verification?.status)}
-                    </span>
+          <div className="min-h-0 xl:max-h-[calc(100vh-4rem)] xl:overflow-y-auto xl:pr-1">
+            <Card className="rounded-2xl border-border bg-card">
+              <CardContent className="p-4 md:p-6">
+                {!selected ? (
+                  <div className="flex min-h-[520px] items-center justify-center rounded-2xl border border-dashed border-border bg-muted/10 p-6 text-center text-muted-foreground">
+                    Chọn một yêu cầu để xem chi tiết.
                   </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-gradient-to-br from-primary/5 via-background to-background p-5">
+                      <div>
+                        <h2 className="text-2xl font-black">{selected.reporterFullName || '--'}</h2>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Mã yêu cầu: {getRequestId(selected) || '--'}
+                        </p>
+                      </div>
+                      <span
+                        className={cn(
+                          'text-xs px-3 py-1 rounded-full border font-semibold',
+                          verificationStatusClass(verification?.status),
+                        )}
+                      >
+                        {verificationStatusText(verification?.status)}
+                      </span>
+                    </div>
 
-                  <div className="space-y-4">
-                    <div className="overflow-hidden rounded-2xl border border-border p-4 space-y-3">
-                      <p className="text-sm font-semibold">A. Thông tin yêu cầu</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-xs uppercase text-muted-foreground font-semibold">
-                            Loại thiên tai
-                          </p>
-                          <p className="text-sm">
-                            {selected.disasterType != null
-                              ? getDisasterTypeLabel(selected.disasterType)
-                              : '--'}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase text-muted-foreground font-semibold">
-                            Loại yêu cầu cứu hộ
-                          </p>
-                          <p className="text-sm">
-                            {selected.rescueRequestType != null
-                              ? getRescueRequestTypeLabel(selected.rescueRequestType)
-                              : '--'}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase text-muted-foreground font-semibold">
-                            Mức ưu tiên
-                          </p>
-                          <p className="text-sm">{selected.priority ?? '--'}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase text-muted-foreground font-semibold">
-                            Số điện thoại người báo tin
-                          </p>
-                          <p className="text-sm">{selected.reporterPhone || '--'}</p>
-                        </div>
-                        <div className="md:col-span-2">
-                          <p className="text-xs uppercase text-muted-foreground font-semibold">
-                            Mô tả
-                          </p>
-                          <p className="text-sm">{selected.description || 'Không có mô tả'}</p>
+                    <div className="space-y-4">
+                      <div className="overflow-hidden rounded-2xl border border-border p-4 space-y-3">
+                        <p className="text-sm font-semibold">A. Thông tin yêu cầu</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Loại thiên tai
+                            </p>
+                            {selected.disasterType != null ? (
+                              (() => {
+                                const badge = getDisasterTypeBadge(selected.disasterType);
+                                return (
+                                  <span
+                                    className={cn(
+                                      'mt-1 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
+                                      badge.cls,
+                                    )}
+                                  >
+                                    <span className="material-symbols-outlined text-sm">
+                                      {badge.icon}
+                                    </span>
+                                    {getDisasterTypeLabel(selected.disasterType)}
+                                  </span>
+                                );
+                              })()
+                            ) : (
+                              <p className="text-sm">--</p>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Loại yêu cầu cứu hộ
+                            </p>
+                            {selected.rescueRequestType != null ? (
+                              (() => {
+                                const badge = getRescueRequestTypeBadge(selected.rescueRequestType);
+                                return (
+                                  <span
+                                    className={cn(
+                                      'mt-1 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
+                                      badge.cls,
+                                    )}
+                                  >
+                                    <span className="material-symbols-outlined text-sm">
+                                      {badge.icon}
+                                    </span>
+                                    {getRescueRequestTypeLabel(selected.rescueRequestType)}
+                                  </span>
+                                );
+                              })()
+                            ) : (
+                              <p className="text-sm">--</p>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Mức ưu tiên
+                            </p>
+                            <p className="text-sm">{selected.priority ?? '--'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Số điện thoại người báo tin
+                            </p>
+                            <p className="text-sm">
+                              {formatVietnamesePhoneNumber(selected.reporterPhone) || '--'}
+                            </p>
+                          </div>
+                          <div className="md:col-span-2">
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Mô tả
+                            </p>
+                            <p className="text-sm">{selected.description || 'Không có mô tả'}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="rounded-2xl border border-border p-4 space-y-3">
-                      <p className="text-sm font-semibold">B. Vị trí</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="md:col-span-2">
-                          <p className="text-xs uppercase text-muted-foreground font-semibold">
-                            Địa chỉ
-                          </p>
-                          <p className="text-sm">{selected.address || 'Chưa cập nhật'}</p>
+                      <div className="rounded-2xl border border-border p-4 space-y-3">
+                        <p className="text-sm font-semibold">B. Vị trí</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="md:col-span-2">
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Địa chỉ
+                            </p>
+                            <p className="text-sm">{selected.address || 'Chưa cập nhật'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Vĩ độ
+                            </p>
+                            <p className="text-sm">{selected.latitude ?? '--'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Kinh độ
+                            </p>
+                            <p className="text-sm">{selected.longitude ?? '--'}</p>
+                          </div>
+                          <div className="md:col-span-2">
+                            <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
+                              Bản đồ vị trí yêu cầu
+                            </p>
+                            <div className="overflow-hidden rounded-2xl border border-border bg-accent/20">
+                              {!GOONG_MAP_KEY ? (
+                                <p className="p-3 text-sm text-muted-foreground">
+                                  Thiếu VITE_GOONG_MAP_KEY để hiển thị bản đồ.
+                                </p>
+                              ) : (
+                                <>
+                                  <div ref={requestMapContainerRef} className="h-[320px] w-full" />
+                                  {!selectedCoordinates ? (
+                                    <p className="p-3 text-xs text-muted-foreground">
+                                      Yêu cầu này chưa có tọa độ hợp lệ để ghim vị trí.
+                                    </p>
+                                  ) : null}
+                                </>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-xs uppercase text-muted-foreground font-semibold">
-                            Vĩ độ
-                          </p>
-                          <p className="text-sm">{selected.latitude ?? '--'}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase text-muted-foreground font-semibold">
-                            Kinh độ
-                          </p>
-                          <p className="text-sm">{selected.longitude ?? '--'}</p>
-                        </div>
-                        <div className="md:col-span-2">
-                          <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
-                            Bản đồ vị trí yêu cầu
-                          </p>
-                          <div className="overflow-hidden rounded-2xl border border-border bg-accent/20">
-                            {!GOONG_MAP_KEY ? (
-                              <p className="p-3 text-sm text-muted-foreground">
-                                Thiếu VITE_GOONG_MAP_KEY để hiển thị bản đồ.
-                              </p>
-                            ) : (
-                              <>
-                                <div ref={requestMapContainerRef} className="h-[320px] w-full" />
-                                {!selectedCoordinates ? (
-                                  <p className="p-3 text-xs text-muted-foreground">
-                                    Yêu cầu này chưa có tọa độ hợp lệ để ghim vị trí.
-                                  </p>
-                                ) : null}
-                              </>
-                            )}
+                      </div>
+
+                      <div className="rounded-2xl border border-border p-4 space-y-3">
+                        <p className="text-sm font-semibold">
+                          C. Khoảng cách & thời gian di chuyển
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Thời gian tạo
+                            </p>
+                            <p className="text-sm">{formatDate(selected.createdAt)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Khoảng cách (km)
+                            </p>
+                            <p className="text-sm">
+                              {formatKm(selected.stationToRequestDistanceKm)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Thời gian di chuyển (phút)
+                            </p>
+                            <p className="text-sm">
+                              {formatMin(selected.stationToRequestDurationMinutes)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Khoảng cách (m)
+                            </p>
+                            <p className="text-sm">
+                              {formatMeters(selected.stationToRequestDistanceMeters)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Thời gian di chuyển (giây)
+                            </p>
+                            <p className="text-sm">
+                              {formatSeconds(selected.stationToRequestDurationSeconds)}
+                            </p>
                           </div>
                         </div>
                       </div>
                     </div>
 
+                    <div className="overflow-hidden rounded-2xl border border-border p-4 space-y-3">
+                      <p className="text-sm font-semibold">D. Tệp đính kèm</p>
+                      {selected.attachments?.length ? (
+                        <div className="space-y-4">
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
+                              RequestEvidence (0) · Bằng chứng yêu cầu
+                            </p>
+                            {requestEvidenceAttachments.length ? (
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+                                {requestEvidenceAttachments.map((att) => (
+                                  <a
+                                    key={att.attachmentId}
+                                    href={att.fileUrl || '#'}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="overflow-hidden rounded-2xl border border-border bg-accent/30"
+                                    title={attachmentTypeLabel(att.attachmentType)}
+                                  >
+                                    <img
+                                      src={att.fileUrl || ''}
+                                      alt="attachment"
+                                      className="w-full h-28 object-cover"
+                                      onError={(e) => {
+                                        (e.currentTarget as HTMLImageElement).style.display =
+                                          'none';
+                                      }}
+                                    />
+                                  </a>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">
+                                Không có bằng chứng yêu cầu.
+                              </p>
+                            )}
+                          </div>
+
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
+                              CompletionEvidence (1) · Bằng chứng hoàn thành
+                            </p>
+                            {completionEvidenceAttachments.length ? (
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+                                {completionEvidenceAttachments.map((att) => (
+                                  <a
+                                    key={att.attachmentId}
+                                    href={att.fileUrl || '#'}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="overflow-hidden rounded-2xl border border-border bg-accent/30"
+                                    title={attachmentTypeLabel(att.attachmentType)}
+                                  >
+                                    <img
+                                      src={att.fileUrl || ''}
+                                      alt="attachment"
+                                      className="w-full h-28 object-cover"
+                                      onError={(e) => {
+                                        (e.currentTarget as HTMLImageElement).style.display =
+                                          'none';
+                                      }}
+                                    />
+                                  </a>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">
+                                Không có bằng chứng hoàn thành.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Không có ảnh đính kèm.</p>
+                      )}
+                    </div>
+
                     <div className="rounded-2xl border border-border p-4 space-y-3">
-                      <p className="text-sm font-semibold">C. Khoảng cách & thời gian di chuyển</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <p className="text-sm font-semibold">E. Xác minh yêu cầu</p>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
-                          <p className="text-xs uppercase text-muted-foreground font-semibold">
-                            Thời gian tạo
+                          <p className="text-xs uppercase text-muted-foreground mb-1">
+                            Phương thức xác minh
                           </p>
-                          <p className="text-sm">{formatDate(selected.createdAt)}</p>
+                          <select
+                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                            value={verifyMethod}
+                            onChange={(e) => setVerifyMethod(Number(e.target.value))}
+                          >
+                            {[0, 1, 2, 3, 4, 5].map((m) => (
+                              <option key={m} value={m}>
+                                {verificationMethodLabel(m)}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         <div>
-                          <p className="text-xs uppercase text-muted-foreground font-semibold">
-                            Khoảng cách (km)
+                          <p className="text-xs uppercase text-muted-foreground mb-1">
+                            Ghi chú xác minh
                           </p>
-                          <p className="text-sm">{formatKm(selected.stationToRequestDistanceKm)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase text-muted-foreground font-semibold">
-                            Thời gian di chuyển (phút)
-                          </p>
-                          <p className="text-sm">
-                            {formatMin(selected.stationToRequestDurationMinutes)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase text-muted-foreground font-semibold">
-                            Khoảng cách (m)
-                          </p>
-                          <p className="text-sm">
-                            {formatMeters(selected.stationToRequestDistanceMeters)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase text-muted-foreground font-semibold">
-                            Thời gian di chuyển (giây)
-                          </p>
-                          <p className="text-sm">
-                            {formatSeconds(selected.stationToRequestDurationSeconds)}
-                          </p>
+                          <Textarea
+                            value={verifyNote}
+                            onChange={(e) => setVerifyNote(e.target.value)}
+                            placeholder="Ghi chú xác minh (không bắt buộc)"
+                            rows={2}
+                          />
                         </div>
                       </div>
-                    </div>
-                  </div>
 
-                  <div className="overflow-hidden rounded-2xl border border-border p-4 space-y-3">
-                    <p className="text-sm font-semibold">D. Tệp đính kèm</p>
-                    {selected.attachments?.length ? (
-                      <div className="space-y-4">
-                        <div>
-                          <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
-                            RequestEvidence (0) · Bằng chứng yêu cầu
-                          </p>
-                          {requestEvidenceAttachments.length ? (
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-                              {requestEvidenceAttachments.map((att) => (
-                                <a
-                                  key={att.attachmentId}
-                                  href={att.fileUrl || '#'}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="overflow-hidden rounded-2xl border border-border bg-accent/30"
-                                  title={attachmentTypeLabel(att.attachmentType)}
-                                >
-                                  <img
-                                    src={att.fileUrl || ''}
-                                    alt="attachment"
-                                    className="w-full h-28 object-cover"
-                                    onError={(e) => {
-                                      (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                    }}
-                                  />
-                                </a>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">
-                              Không có bằng chứng yêu cầu.
-                            </p>
-                          )}
-                        </div>
-
-                        <div>
-                          <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
-                            CompletionEvidence (1) · Bằng chứng hoàn thành
-                          </p>
-                          {completionEvidenceAttachments.length ? (
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-                              {completionEvidenceAttachments.map((att) => (
-                                <a
-                                  key={att.attachmentId}
-                                  href={att.fileUrl || '#'}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="overflow-hidden rounded-2xl border border-border bg-accent/30"
-                                  title={attachmentTypeLabel(att.attachmentType)}
-                                >
-                                  <img
-                                    src={att.fileUrl || ''}
-                                    alt="attachment"
-                                    className="w-full h-28 object-cover"
-                                    onError={(e) => {
-                                      (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                    }}
-                                  />
-                                </a>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">
-                              Không có bằng chứng hoàn thành.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Không có ảnh đính kèm.</p>
-                    )}
-                  </div>
-
-                  <div className="rounded-2xl border border-border p-4 space-y-3">
-                    <p className="text-sm font-semibold">E. Xác minh yêu cầu</p>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <p className="text-xs uppercase text-muted-foreground mb-1">
-                          Phương thức xác minh
-                        </p>
-                        <select
-                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                          value={verifyMethod}
-                          onChange={(e) => setVerifyMethod(Number(e.target.value))}
-                        >
-                          {[0, 1, 2, 3, 4, 5].map((m) => (
-                            <option key={m} value={m}>
-                              {verificationMethodLabel(m)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase text-muted-foreground mb-1">
-                          Ghi chú xác minh
-                        </p>
-                        <Textarea
-                          value={verifyNote}
-                          onChange={(e) => setVerifyNote(e.target.value)}
-                          placeholder="Ghi chú xác minh (không bắt buộc)"
-                          rows={2}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3">
+                      {/* <div className="flex flex-wrap gap-3">
                       <Button
                         variant="primary"
                         onClick={handleVerify}
@@ -1248,23 +1316,55 @@ export default function CoordinatorRequestManagementPage() {
                       >
                         Từ chối
                       </Button>
+                    </div> */}
                     </div>
+
+                    {verification?.status === 2 && (
+                      <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-4">
+                        <p className="text-xs uppercase font-semibold text-red-600">
+                          Lý do từ chối
+                        </p>
+                        <p className="text-sm text-red-700 mt-1">
+                          {verification.reason || 'Không có lý do'}
+                        </p>
+                      </div>
+                    )}
+
+                    <Card className="sticky bottom-0 z-10 rounded-2xl border-border bg-card/95 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/85">
+                      <CardContent className="space-y-3 p-5">
+                        <div className="flex flex-wrap gap-3">
+                          <Button
+                            variant="primary"
+                            onClick={handleVerify}
+                            disabled={!isPending || verifyStatus === 'pending'}
+                          >
+                            {verifyStatus === 'pending' ? 'Đang xác minh...' : 'Xác minh'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="text-red-600 border-red-500/30 hover:bg-red-500/10"
+                            onClick={() => {
+                              setActionError('');
+                              setIsRejectOpen(true);
+                            }}
+                            disabled={!isPending || rejectStatus === 'pending'}
+                          >
+                            Từ chối
+                          </Button>
+                        </div>
+                        {!isPending && (
+                          <p className="text-xs text-muted-foreground">
+                            Chỉ yêu cầu ở trạng thái Chờ xác minh mới có thể xác minh hoặc từ chối.
+                          </p>
+                        )}
+                        {actionError ? <p className="text-sm text-red-500">{actionError}</p> : null}
+                      </CardContent>
+                    </Card>
                   </div>
-
-                  {verification?.status === 2 && (
-                    <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
-                      <p className="text-xs uppercase font-semibold text-red-600">Lý do từ chối</p>
-                      <p className="text-sm text-red-700 mt-1">
-                        {verification.reason || 'Không có lý do'}
-                      </p>
-                    </div>
-                  )}
-
-                  {actionError ? <p className="text-sm text-red-500">{actionError}</p> : null}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 
