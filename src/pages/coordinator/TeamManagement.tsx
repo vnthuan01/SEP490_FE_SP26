@@ -33,7 +33,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
-import { useUnassignedVolunteers } from '@/hooks/useVolunteerProfiles';
+import { useVolunteerProfiles } from '@/hooks/useVolunteerProfiles';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
 import { toast } from 'sonner';
 import type { TeamStatus } from '@/enums/beEnums';
@@ -193,10 +193,9 @@ export default function CoordinatorTeamManagementPage() {
   const { members, addMembersBulk, addMembersBulkStatus, promoteToLeader, removeMember } =
     useTeamMembers(selectedTeamId || '');
 
-  const { profiles } = useUnassignedVolunteers({
+  const { profiles } = useVolunteerProfiles({
     pageIndex: 1,
     pageSize: 200,
-    verificationStatus: VerificationStatus.Approved,
   });
 
   const { campaigns, isLoading: isLoadingCampaigns } = useCampaigns({
@@ -286,8 +285,8 @@ export default function CoordinatorTeamManagementPage() {
       (members || []).map((member: any) => String(member.userId ?? member.id ?? '')),
     );
     return (profiles || []).filter((profile: any) => {
-      const id = String(profile.userId ?? profile.volunteerProfileId ?? '');
-      return id && !memberIds.has(id);
+      const userId = String(profile.userId ?? profile.volunteerProfileId ?? '');
+      return userId && !memberIds.has(userId);
     });
   }, [members, profiles]);
 
@@ -350,16 +349,8 @@ export default function CoordinatorTeamManagementPage() {
       return;
     }
 
-    try {
-      await addMembersBulk({
-        volunteerIds: selectedVolunteerIds,
-      });
-      setSelectedVolunteerIds([]);
-      toast.success('Thao tác hoàn tất');
-      setIsManageMembersOpen(false);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Có lỗi xảy ra khi lưu vào hệ thống.');
-    }
+    await addMembersBulk({ volunteerIds: selectedVolunteerIds });
+    setSelectedVolunteerIds([]);
   };
 
   const handlePromoteLeader = async (userId: string) => {
@@ -1052,11 +1043,9 @@ export default function CoordinatorTeamManagementPage() {
                             )}
                           </p>
                           <p className="text-xs text-muted-foreground truncate">
-                            {member.isLeader || member.role === 1 || String(member.role) === '1'
-                              ? 'Trưởng nhóm'
-                              : String(member.role) === '2'
-                                ? 'Thành viên'
-                                : member.roleName || member.role || 'Thành viên'}
+                            {member.isLeader
+                              ? 'Leader'
+                              : member.roleName || member.role || 'Member'}
                           </p>
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover/member:opacity-100 transition-opacity">
@@ -1245,11 +1234,7 @@ export default function CoordinatorTeamManagementPage() {
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {member.isLeader || member.role === 1 || String(member.role) === '1'
-                          ? 'Trưởng nhóm'
-                          : String(member.role) === '2'
-                            ? 'Thành viên'
-                            : member.roleName || member.role || 'Thành viên'}
+                        {member.isLeader ? 'Leader' : member.roleName || member.role || 'Member'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">

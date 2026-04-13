@@ -6,13 +6,13 @@ import {
 } from '@/services/rescueRequestService';
 
 export const RESCUE_REQUEST_MANAGEMENT_QUERY_KEYS = {
-  list: (pageNumber: number, pageSize: number) =>
-    ['rescue-request-management', 'list', pageNumber, pageSize] as const,
+  normalPending: (pageNumber: number, pageSize: number) =>
+    ['rescue-request-management', 'normal-pending', pageNumber, pageSize] as const,
 };
 
-const isEmergencyType = (value: unknown) => {
-  if (typeof value === 'string') return value.trim().toLowerCase() === 'emergency';
-  if (typeof value === 'number') return value === 1;
+const isNormalType = (value: unknown) => {
+  if (typeof value === 'string') return value.trim().toLowerCase() === 'normal';
+  if (typeof value === 'number') return value === 0;
   return false;
 };
 
@@ -20,21 +20,13 @@ export function useRescueRequestManagement(pageNumber = 1, pageSize = 10) {
   const queryClient = useQueryClient();
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: RESCUE_REQUEST_MANAGEMENT_QUERY_KEYS.list(pageNumber, pageSize),
+    queryKey: RESCUE_REQUEST_MANAGEMENT_QUERY_KEYS.normalPending(pageNumber, pageSize),
     queryFn: async () => {
-      // Lấy toàn bộ request rồi sắp xếp: Emergency trước, sau đó đến các request còn lại theo priority giảm dần
+      // Lấy toàn bộ request rồi lọc Normal ở FE để thấy cả Pending/Approved/Rejected
       const res = await rescueRequestService.getRequests(undefined, pageNumber, pageSize);
-      const sortedItems = [...(res.items || [])].sort((a, b) => {
-        const emergencyOrder =
-          Number(isEmergencyType(b.rescueRequestType)) -
-          Number(isEmergencyType(a.rescueRequestType));
-        if (emergencyOrder !== 0) return emergencyOrder;
-
-        return (Number(b.priority) || 0) - (Number(a.priority) || 0);
-      });
-
+      const normalItems = (res.items || []).filter((item) => isNormalType(item.rescueRequestType));
       return {
-        items: sortedItems,
+        items: normalItems,
         paging: res.paging,
       };
     },
@@ -50,7 +42,7 @@ export function useRescueRequestManagement(pageNumber = 1, pageSize = 10) {
     }) => rescueRequestService.verifyRequest(requestId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: RESCUE_REQUEST_MANAGEMENT_QUERY_KEYS.list(pageNumber, pageSize),
+        queryKey: RESCUE_REQUEST_MANAGEMENT_QUERY_KEYS.normalPending(pageNumber, pageSize),
       });
     },
   });
@@ -71,7 +63,7 @@ export function useRescueRequestManagement(pageNumber = 1, pageSize = 10) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: RESCUE_REQUEST_MANAGEMENT_QUERY_KEYS.list(pageNumber, pageSize),
+        queryKey: RESCUE_REQUEST_MANAGEMENT_QUERY_KEYS.normalPending(pageNumber, pageSize),
       });
     },
   });

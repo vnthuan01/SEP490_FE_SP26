@@ -12,8 +12,6 @@ import { handleHookError } from './hookErrorUtils';
 export const VOLUNTEER_PROFILE_QUERY_KEYS = {
   all: ['volunteerProfiles'] as const,
   list: (params?: SearchVolunteerProfileParams) => ['volunteerProfiles', 'list', params] as const,
-  unassigned: (params?: SearchVolunteerProfileParams) =>
-    ['volunteerProfiles', 'unassigned', params] as const,
   myProfile: ['volunteerProfiles', 'myProfile'] as const,
   pending: (params?: SearchVolunteerProfileApplicationsParams) =>
     ['volunteerProfiles', 'pending', params] as const,
@@ -32,38 +30,6 @@ export function useVolunteerProfiles(params?: SearchVolunteerProfileParams) {
     queryKey: VOLUNTEER_PROFILE_QUERY_KEYS.list(params),
     queryFn: async () => {
       const response = await volunteerProfileService.getAll(params);
-      return response.data;
-    },
-  });
-
-  return {
-    profiles: profilesData?.items || [],
-    profilesPagination: profilesData
-      ? {
-          currentPage: profilesData.currentPage,
-          totalPages: profilesData.totalPages,
-          pageSize: profilesData.pageSize,
-          totalCount: profilesData.totalCount,
-          hasPrevious: profilesData.hasPrevious,
-          hasNext: profilesData.hasNext,
-        }
-      : null,
-    isLoadingProfiles,
-    isErrorProfiles,
-    refetchProfiles,
-  };
-}
-
-export function useUnassignedVolunteers(params?: SearchVolunteerProfileParams) {
-  const {
-    data: profilesData,
-    isLoading: isLoadingProfiles,
-    isError: isErrorProfiles,
-    refetch: refetchProfiles,
-  } = useQuery({
-    queryKey: VOLUNTEER_PROFILE_QUERY_KEYS.unassigned(params),
-    queryFn: async () => {
-      const response = await volunteerProfileService.getUnassigned(params);
       return response.data;
     },
   });
