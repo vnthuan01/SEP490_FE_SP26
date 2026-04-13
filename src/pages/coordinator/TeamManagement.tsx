@@ -33,7 +33,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
-import { useVolunteerProfiles } from '@/hooks/useVolunteerProfiles';
+import { useUnassignedVolunteers } from '@/hooks/useVolunteerProfiles';
 import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
 import { toast } from 'sonner';
 import type { TeamStatus } from '@/enums/beEnums';
@@ -41,6 +41,7 @@ import {
   CampaignTeamRole,
   CampaignTeamStatus,
   TeamStatusLabel,
+  VerificationStatus,
   getCampaignStatusClass,
   getCampaignStatusLabel,
   getCampaignTypeLabel,
@@ -195,9 +196,10 @@ export default function CoordinatorTeamManagementPage() {
   const { members, addMembersBulk, addMembersBulkStatus, promoteToLeader, removeMember } =
     useTeamMembers(selectedTeamId || '');
 
-  const { profiles } = useVolunteerProfiles({
+  const { profiles } = useUnassignedVolunteers({
     pageIndex: 1,
     pageSize: 200,
+    verificationStatus: VerificationStatus.Approved,
   });
 
   const { campaigns, isLoading: isLoadingCampaigns } = useCampaigns({
@@ -290,8 +292,8 @@ export default function CoordinatorTeamManagementPage() {
       (members || []).map((member: any) => String(member.userId ?? member.id ?? '')),
     );
     return (profiles || []).filter((profile: any) => {
-      const userId = String(profile.userId ?? profile.volunteerProfileId ?? '');
-      return userId && !memberIds.has(userId);
+      const id = String(profile.userId ?? profile.volunteerProfileId ?? '');
+      return id && !memberIds.has(id);
     });
   }, [members, profiles]);
 
@@ -354,8 +356,16 @@ export default function CoordinatorTeamManagementPage() {
       return;
     }
 
-    await addMembersBulk({ volunteerIds: selectedVolunteerIds });
-    setSelectedVolunteerIds([]);
+    try {
+      await addMembersBulk({
+        volunteerIds: selectedVolunteerIds,
+      });
+      setSelectedVolunteerIds([]);
+      toast.success('Thao tác hoàn tất');
+      setIsManageMembersOpen(false);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Có lỗi xảy ra khi lưu vào hệ thống.');
+    }
   };
 
   const handlePromoteLeader = async (userId: string) => {

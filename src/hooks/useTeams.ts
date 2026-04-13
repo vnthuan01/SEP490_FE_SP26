@@ -1,5 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query';
 import { teamService } from '@/services/teamService';
+import { rescueRequestService } from '@/services/rescueRequestService';
 import type {
   CreateTeamPayload,
   UpdateTeamPayload,
@@ -401,4 +402,32 @@ export function useTeamJoinRequests(teamId?: string) {
     rejectRequest: rejectRequestMutation.mutateAsync,
     rejectRequestStatus: rejectRequestMutation.status,
   };
+}
+
+/**
+ * Lấy active-batch của nhiều team song song.
+ * Rule cho TeamAllocation: team nào còn active batch thì không cho assign thêm.
+ * Lý do: team đó đã có mission đang chạy hoặc đang trên đường xử lý.
+ */
+export function useTeamsActiveBatches(teamIds: string[]) {
+  const results = useQueries({
+    queries: teamIds.map((teamId) => ({
+      queryKey: ['teams', teamId, 'active-batch'] as const,
+      queryFn: () => rescueRequestService.getActiveBatch(teamId),
+      staleTime: 10_000,
+      retry: false,
+    })),
+  });
+
+  const busyTeamIds = new Set<string>();
+  results.forEach((result, index) => {
+    const batch = result.data;
+    if (!batch) return;
+    const hasActiveBatch = (batch.items || []).length > 0;
+    if (hasActiveBatch) busyTeamIds.add(teamIds[index]);
+  });
+
+  const isLoading = results.some((r) => r.isLoading);
+
+  return { busyTeamIds, isLoading };
 }

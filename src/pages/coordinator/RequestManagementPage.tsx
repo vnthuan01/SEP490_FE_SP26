@@ -28,6 +28,7 @@ import {
   getVerificationStatusClass,
   VerificationMethod,
   VerificationMethodLabel,
+  getPriorityLevelLabel,
 } from '@/enums/beEnums';
 
 const verificationStatusText = (status?: number | string | null) =>
@@ -83,6 +84,20 @@ const getRescueRequestTypeBadge = (
     '0': { cls: 'border-emerald-300 bg-emerald-500/15 text-emerald-700', icon: 'check_circle' },
   };
   return map[t] ?? { cls: 'border-slate-200 bg-slate-500/10 text-slate-600', icon: 'help' };
+};
+
+const getPriorityLevelBadge = (value?: string | number | null): { cls: string; icon: string } => {
+  const label = getPriorityLevelLabel(value).toLowerCase();
+  if (label === 'khẩn cấp') {
+    return { cls: 'border-red-300 bg-red-500/15 text-red-700', icon: 'emergency' };
+  }
+  if (label === 'cao') {
+    return { cls: 'border-orange-300 bg-orange-500/15 text-orange-700', icon: 'priority_high' };
+  }
+  if (label === 'trung bình') {
+    return { cls: 'border-yellow-300 bg-yellow-500/15 text-yellow-700', icon: 'flag' };
+  }
+  return { cls: 'border-emerald-300 bg-emerald-500/15 text-emerald-700', icon: 'check_circle' };
 };
 
 const attachmentTypeLabel = (type?: number | string | null) => {
@@ -226,6 +241,14 @@ export default function CoordinatorRequestManagementPage() {
       center: [108.2022, 16.0544],
       zoom: 5,
     });
+
+    const map = requestMapRef.current as any;
+    const handleMissingImage = (e: any) => {
+      if (!e?.id || map.hasImage?.(e.id)) return;
+      const bytes = new Uint8Array([0, 0, 0, 0]);
+      map.addImage(e.id, { width: 1, height: 1, data: bytes });
+    };
+    map.on('styleimagemissing', handleMissingImage);
   };
 
   const filtered = useMemo(() => {
@@ -1095,7 +1118,28 @@ export default function CoordinatorRequestManagementPage() {
                             <p className="text-xs uppercase text-muted-foreground font-semibold">
                               Mức ưu tiên
                             </p>
-                            <p className="text-sm">{selected.priority ?? '--'}</p>
+                            {(() => {
+                              const badge = getPriorityLevelBadge(selected.priorityLevel);
+                              return (
+                                <span
+                                  className={cn(
+                                    'mt-1 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
+                                    badge.cls,
+                                  )}
+                                >
+                                  <span className="material-symbols-outlined text-sm">
+                                    {badge.icon}
+                                  </span>
+                                  {getPriorityLevelLabel(selected.priorityLevel)}
+                                </span>
+                              );
+                            })()}
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Mức độ đánh giá
+                            </p>
+                            <p>{selected.priority ?? 'Không rõ'}/100</p>
                           </div>
                           <div>
                             <p className="text-xs uppercase text-muted-foreground font-semibold">
