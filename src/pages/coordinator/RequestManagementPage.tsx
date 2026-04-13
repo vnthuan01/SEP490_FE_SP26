@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import goongjs, { type Map as GoongMap, type Marker } from '@goongmaps/goong-js';
+import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,11 +14,13 @@ import {
 } from '@/components/ui/dialog';
 import { cn, formatVietnamesePhoneNumber } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
+import { CoordinatorListPagination } from './components/CoordinatorListPagination';
+import { usePrefetchedDirectionsRoute } from './components/usePrefetchedDirectionsRoute';
 import { useRescueRequestManagement } from '@/hooks/useRescueRequestManagement';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import type { RescueRequestItem } from '@/services/rescueRequestService';
-import { getDirections } from '@/services/goongService';
 import { coordinatorNavGroups } from './components/sidebarConfig';
+import { RequestLocationMapCard } from './components/RequestLocationMapCard';
 import { toast } from 'sonner';
 import {
   getDisasterTypeLabel,
@@ -106,81 +107,7 @@ const attachmentTypeLabel = (type?: number | string | null) => {
   return 'Khác';
 };
 
-const ROUTE_SOURCE_ID = 'request-route-source';
-const ROUTE_LAYER_ID = 'request-route-layer';
-const COVERAGE_SOURCE_ID = 'station-coverage-source';
-const COVERAGE_FILL_LAYER_ID = 'station-coverage-fill';
-const COVERAGE_OUTLINE_LAYER_ID = 'station-coverage-outline';
 const REQUEST_LIST_PAGE_SIZE = 5;
-
-const buildPageItems = (currentPage: number, totalPages: number) => {
-  if (totalPages <= 1) return [1];
-
-  const pages = new Set<number>([1, totalPages, currentPage]);
-  if (currentPage > 1) pages.add(currentPage - 1);
-  if (currentPage < totalPages) pages.add(currentPage + 1);
-
-  const sorted = Array.from(pages).sort((a, b) => a - b);
-  const items: Array<number | 'ellipsis'> = [];
-
-  sorted.forEach((page, index) => {
-    const prev = sorted[index - 1];
-    if (prev && page - prev > 1) items.push('ellipsis');
-    items.push(page);
-  });
-
-  return items;
-};
-
-function decodePolyline(encoded: string): Array<[number, number]> {
-  const coordinates: Array<[number, number]> = [];
-  let index = 0;
-  let lat = 0;
-  let lng = 0;
-
-  while (index < encoded.length) {
-    let b: number;
-    let shift = 0;
-    let result = 0;
-
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-
-    const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lat += dlat;
-
-    shift = 0;
-    result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-
-    const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lng += dlng;
-
-    coordinates.push([lng / 1e5, lat / 1e5]);
-  }
-
-  return coordinates;
-}
-
-function buildCirclePolygon(lat: number, lng: number, radiusKm: number, points = 72): number[][] {
-  const ring: number[][] = [];
-  const latRadius = radiusKm / 111;
-  const lngRadius = radiusKm / (111 * Math.cos((lat * Math.PI) / 180));
-
-  for (let i = 0; i <= points; i += 1) {
-    const angle = (2 * Math.PI * i) / points;
-    ring.push([lng + lngRadius * Math.cos(angle), lat + latRadius * Math.sin(angle)]);
-  }
-
-  return ring;
-}
 
 const GOONG_MAP_KEY = import.meta.env.VITE_GOONG_MAP_KEY || '';
 const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY || '';
@@ -203,8 +130,11 @@ export default function CoordinatorRequestManagementPage() {
     'all' | 'pending' | 'approved' | 'rejected'
   >('all');
   const [selectedId, setSelectedId] = useState('');
-  const [listPage, setListPage] = useState(1);
-  const [pageInput, setPageInput] = useState('1');
+  // listPageState tracks { key: filterKey, page } — changing filters resets page to 1
+  const [listPageState, setListPageState] = useState<{ key: string; page: number }>({
+    key: '',
+    page: 1,
+  });
 
   const [verifyMethod, setVerifyMethod] = useState(1);
   const [verifyNote, setVerifyNote] = useState('');
@@ -215,41 +145,7 @@ export default function CoordinatorRequestManagementPage() {
   const [rejectNote, setRejectNote] = useState('');
 
   const [actionError, setActionError] = useState('');
-
-  const requestMapContainerRef = useRef<HTMLDivElement | null>(null);
-  const requestMapRef = useRef<GoongMap | null>(null);
-  const requestMarkerRef = useRef<Marker | null>(null);
-  const stationMarkerRef = useRef<Marker | null>(null);
-
-  // Callback ref: inits map the instant the container div first appears in DOM.
-  // This is faster than useEffect([], []) which runs after mount when the
-  // container may not exist yet (it lives inside a conditional render block).
-  const requestMapCallbackRef = (node: HTMLDivElement | null) => {
-    requestMapContainerRef.current = node;
-    if (!node) {
-      requestMarkerRef.current?.remove();
-      stationMarkerRef.current?.remove();
-      requestMapRef.current?.remove();
-      requestMapRef.current = null;
-      return;
-    }
-    if (!GOONG_MAP_KEY || requestMapRef.current) return;
-    goongjs.accessToken = GOONG_MAP_KEY;
-    requestMapRef.current = new goongjs.Map({
-      container: node,
-      style: 'https://tiles.goong.io/assets/goong_map_web.json',
-      center: [108.2022, 16.0544],
-      zoom: 5,
-    });
-
-    const map = requestMapRef.current as any;
-    const handleMissingImage = (e: any) => {
-      if (!e?.id || map.hasImage?.(e.id)) return;
-      const bytes = new Uint8Array([0, 0, 0, 0]);
-      map.addImage(e.id, { width: 1, height: 1, data: bytes });
-    };
-    map.on('styleimagemissing', handleMissingImage);
-  };
+  const { prefetchRoute } = usePrefetchedDirectionsRoute(GOONG_API_KEY);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -297,24 +193,16 @@ export default function CoordinatorRequestManagementPage() {
 
   const totalListPages = Math.max(1, Math.ceil(filtered.length / REQUEST_LIST_PAGE_SIZE));
 
-  useEffect(() => {
-    setListPage(1);
-  }, [search, verificationFilter]);
-
-  useEffect(() => {
-    if (listPage > totalListPages) {
-      setListPage(totalListPages);
-    }
-  }, [listPage, totalListPages]);
-
-  useEffect(() => {
-    setPageInput(String(listPage));
-  }, [listPage]);
+  // Derive filterKey and effective page — when filter changes, page resets to 1
+  const filterKey = `${search}|${verificationFilter}`;
+  const listPage = listPageState.key === filterKey ? listPageState.page : 1;
+  const effectiveListPage = Math.min(Math.max(1, listPage), totalListPages);
+  const setListPage = (page: number) => setListPageState({ key: filterKey, page });
 
   const paginatedRequests = useMemo(() => {
-    const start = (listPage - 1) * REQUEST_LIST_PAGE_SIZE;
+    const start = (effectiveListPage - 1) * REQUEST_LIST_PAGE_SIZE;
     return filtered.slice(start, start + REQUEST_LIST_PAGE_SIZE);
-  }, [filtered, listPage]);
+  }, [filtered, effectiveListPage]);
 
   // No auto-fallback: effectiveSelectedId is exactly what the user clicked.
   // The old fallback to filtered[0] caused map to try to plot coordinates
@@ -357,6 +245,24 @@ export default function CoordinatorRequestManagementPage() {
     return null;
   }, [station]);
 
+  useEffect(() => {
+    const firstVisible = paginatedRequests[0];
+    if (!firstVisible) return;
+
+    const destination =
+      Number.isFinite(Number(firstVisible.latitude)) &&
+      Number.isFinite(Number(firstVisible.longitude))
+        ? { lat: Number(firstVisible.latitude), lng: Number(firstVisible.longitude) }
+        : null;
+
+    prefetchRoute(stationCoordinates, destination);
+  }, [paginatedRequests, prefetchRoute, stationCoordinates]);
+
+  // Warm Directions API cache when selection + station coords are available
+  useEffect(() => {
+    prefetchRoute(stationCoordinates, selectedCoordinates);
+  }, [selectedCoordinates, stationCoordinates, prefetchRoute]);
+
   const requestEvidenceAttachments = useMemo(
     () =>
       (selected?.attachments || []).filter(
@@ -379,271 +285,6 @@ export default function CoordinatorRequestManagementPage() {
       ),
     [selected?.attachments],
   );
-
-  useEffect(() => {
-    const map = requestMapRef.current;
-    if (!map) return;
-
-    if (stationMarkerRef.current) {
-      stationMarkerRef.current.remove();
-      stationMarkerRef.current = null;
-    }
-
-    if (!stationCoordinates) return;
-
-    const stationMarkerElement = document.createElement('div');
-    stationMarkerElement.style.cssText =
-      'cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px';
-    stationMarkerElement.innerHTML = `
-      <div style="position:relative;width:46px;height:46px;display:flex;align-items:center;justify-content:center">
-        <div style="position:absolute;inset:0;border-radius:50%;background:rgba(109,40,217,0.12)"></div>
-        <div style="position:relative;z-index:1;background:linear-gradient(135deg,#6d28d9,#7c3aed);width:40px;height:40px;border-radius:50%;border:3px solid white;box-shadow:0 3px 10px rgba(109,40,217,0.5);display:flex;align-items:center;justify-content:center">
-          <span class="material-symbols-outlined" style="color:white;font-size:22px;font-variation-settings:'FILL' 1;">apartment</span>
-        </div>
-      </div>
-      <div style="background:#6d28d9;color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:9999px;white-space:nowrap;box-shadow:0 1px 4px rgba(109,40,217,0.35);">Trụ sở</div>
-    `;
-
-    const stationPopup = new goongjs.Popup({ offset: [0, -56], closeButton: false }).setHTML(
-      `<div style="font-family:sans-serif;padding:2px 0;min-width:160px"><p style="font-weight:700;font-size:13px;margin:0 0 3px;color:#4c1d95">Trạm cứu hộ</p>${(station as any)?.name ? `<p style="font-size:12px;color:#374151;margin:0 0 2px">${(station as any).name}</p>` : ''}${coverageRadiusKm ? `<p style="font-size:11px;color:#7c3aed;margin:4px 0 0">Bán kính phủ sóng: <strong>${coverageRadiusKm} km</strong></p>` : ''}</div>`,
-    );
-
-    stationMarkerRef.current = new goongjs.Marker({ element: stationMarkerElement })
-      .setLngLat([stationCoordinates.lng, stationCoordinates.lat])
-      .setPopup(stationPopup)
-      .addTo(map);
-  }, [stationCoordinates, station, coverageRadiusKm]);
-
-  useEffect(() => {
-    const map = requestMapRef.current;
-    if (!map) return;
-
-    const drawCoverage = () => {
-      if ((map as any).getLayer(COVERAGE_FILL_LAYER_ID)) {
-        try {
-          (map as any).removeLayer(COVERAGE_FILL_LAYER_ID);
-        } catch (_error) {
-          // Ignore cleanup errors
-        }
-      }
-      if ((map as any).getLayer(COVERAGE_OUTLINE_LAYER_ID)) {
-        try {
-          (map as any).removeLayer(COVERAGE_OUTLINE_LAYER_ID);
-        } catch (_error) {
-          // Ignore cleanup errors
-        }
-      }
-      if ((map as any).getSource(COVERAGE_SOURCE_ID)) {
-        try {
-          (map as any).removeSource(COVERAGE_SOURCE_ID);
-        } catch (_error) {
-          // Ignore cleanup errors
-        }
-      }
-
-      if (!stationCoordinates || !coverageRadiusKm) return;
-
-      const circleRing = buildCirclePolygon(
-        stationCoordinates.lat,
-        stationCoordinates.lng,
-        coverageRadiusKm,
-      );
-
-      (map as any).addSource(COVERAGE_SOURCE_ID, {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          properties: { radiusKm: coverageRadiusKm },
-          geometry: { type: 'Polygon', coordinates: [circleRing] },
-        },
-      });
-
-      (map as any).addLayer({
-        id: COVERAGE_FILL_LAYER_ID,
-        type: 'fill',
-        source: COVERAGE_SOURCE_ID,
-        paint: {
-          'fill-color': '#a78bfa',
-          'fill-opacity': 0.16,
-        },
-      });
-
-      (map as any).addLayer({
-        id: COVERAGE_OUTLINE_LAYER_ID,
-        type: 'line',
-        source: COVERAGE_SOURCE_ID,
-        paint: {
-          'line-color': '#7c3aed',
-          'line-width': 2,
-          'line-dasharray': [2, 1],
-        },
-      });
-    };
-
-    if ((map as any).isStyleLoaded()) {
-      drawCoverage();
-      return;
-    }
-
-    map.on('load', drawCoverage);
-    return () => {
-      map.off('load', drawCoverage);
-    };
-  }, [stationCoordinates, coverageRadiusKm]);
-
-  useEffect(() => {
-    const map = requestMapRef.current;
-    if (!map) return;
-
-    if (requestMarkerRef.current) {
-      requestMarkerRef.current.remove();
-      requestMarkerRef.current = null;
-    }
-
-    if (!selectedCoordinates) return;
-
-    const markerElement = document.createElement('div');
-    markerElement.style.cssText =
-      'cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px';
-    markerElement.innerHTML = `
-      <div style="position:relative;width:46px;height:46px;display:flex;align-items:center;justify-content:center">
-        <div style="position:absolute;inset:0;border-radius:50%;background:rgba(239,68,68,0.18);animation:req-ring 1.8s ease-out infinite"></div>
-        <style>@keyframes req-ring{0%{transform:scale(1);opacity:0.6}100%{transform:scale(2);opacity:0}}</style>
-        <div style="position:relative;z-index:1;background:linear-gradient(135deg,#dc2626,#ef4444);width:40px;height:40px;border-radius:50%;border:3px solid white;box-shadow:0 3px 10px rgba(239,68,68,0.55);display:flex;align-items:center;justify-content:center">
-          <span class="material-symbols-outlined" style="color:white;font-size:22px;font-variation-settings:'FILL' 1;">person_alert</span>
-        </div>
-      </div>
-      <div style="background:#dc2626;color:white;font-size:10px;font-weight:800;padding:2px 9px;border-radius:9999px;white-space:nowrap;box-shadow:0 1px 4px rgba(220,38,38,0.4);letter-spacing:0.04em;">SOS</div>
-    `;
-
-    const popup = new goongjs.Popup({ offset: [0, -56], closeButton: false }).setHTML(
-      `<div style="font-family:sans-serif;padding:2px 0;min-width:180px"><p style="font-weight:700;font-size:13px;margin:0 0 4px;color:#991b1b">Vị trí yêu cầu cứu hộ</p>${selected?.reporterFullName ? `<p style="font-size:12px;color:#374151;margin:0 0 2px"><strong>Người báo:</strong> ${selected.reporterFullName}</p>` : ''}${selected?.reporterPhone ? `<p style="font-size:12px;color:#374151;margin:0 0 2px"><strong>SĐT:</strong> ${selected.reporterPhone}</p>` : ''}${selected?.address ? `<p style="font-size:11px;color:#6b7280;margin:4px 0 0">${selected.address}</p>` : ''}${selected?.disasterType ? `<p style="font-size:11px;color:#ef4444;font-weight:600;margin:4px 0 0">Loại: ${selected.disasterType}</p>` : ''}</div>`,
-    );
-
-    requestMarkerRef.current = new goongjs.Marker({ element: markerElement })
-      .setLngLat([selectedCoordinates.lng, selectedCoordinates.lat])
-      .setPopup(popup)
-      .addTo(map);
-
-    requestMarkerRef.current.togglePopup();
-
-    (map as any).flyTo({
-      center: [selectedCoordinates.lng, selectedCoordinates.lat],
-      zoom: 14,
-      speed: 2.5,
-      curve: 1,
-    });
-  }, [selectedCoordinates, selected]);
-
-  useEffect(() => {
-    const map = requestMapRef.current;
-    if (!map || !GOONG_API_KEY) return;
-
-    const drawRoute = async () => {
-      if ((map as any).getLayer(ROUTE_LAYER_ID)) {
-        try {
-          (map as any).removeLayer(ROUTE_LAYER_ID);
-        } catch (_error) {
-          // Ignore cleanup errors
-        }
-      }
-      if ((map as any).getSource(ROUTE_SOURCE_ID)) {
-        try {
-          (map as any).removeSource(ROUTE_SOURCE_ID);
-        } catch (_error) {
-          // Ignore cleanup errors
-        }
-      }
-
-      if (!stationCoordinates || !selectedCoordinates) return;
-
-      const direction = await getDirections(
-        stationCoordinates,
-        selectedCoordinates,
-        'car',
-        GOONG_API_KEY,
-      );
-      const route = direction?.routes?.[0];
-      const overviewPoints = route?.overview_polyline?.points;
-
-      let coords: Array<[number, number]> = [];
-
-      if (overviewPoints) {
-        coords = decodePolyline(overviewPoints);
-      } else {
-        const stepPolylines = (route?.legs || [])
-          .flatMap((leg: any) => leg?.steps || [])
-          .map((step: any) => step?.polyline?.points)
-          .filter((p: unknown): p is string => typeof p === 'string' && p.length > 0);
-
-        for (const p of stepPolylines) {
-          const partial = decodePolyline(p);
-          if (!partial.length) continue;
-
-          if (
-            coords.length > 0 &&
-            partial.length > 0 &&
-            coords[coords.length - 1][0] === partial[0][0] &&
-            coords[coords.length - 1][1] === partial[0][1]
-          ) {
-            coords.push(...partial.slice(1));
-          } else {
-            coords.push(...partial);
-          }
-        }
-      }
-
-      if (coords.length < 2) {
-        console.warn('Direction API returned no drawable polyline', direction);
-        return;
-      }
-
-      (map as any).addSource(ROUTE_SOURCE_ID, {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates: coords,
-          },
-        },
-      });
-
-      (map as any).addLayer({
-        id: ROUTE_LAYER_ID,
-        type: 'line',
-        source: ROUTE_SOURCE_ID,
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': '#2563eb',
-          'line-width': 4,
-          'line-opacity': 0.85,
-        },
-      });
-
-      const bounds = new goongjs.LngLatBounds();
-      bounds.extend([stationCoordinates.lng, stationCoordinates.lat]);
-      bounds.extend([selectedCoordinates.lng, selectedCoordinates.lat]);
-      coords.forEach((c) => bounds.extend(c));
-      (map as any).fitBounds(bounds, { padding: 50, maxZoom: 14, duration: 700 });
-    };
-
-    if ((map as any).isStyleLoaded()) {
-      void drawRoute();
-      return;
-    }
-
-    const handleLoad = () => {
-      void drawRoute();
-    };
-
-    map.on('load', handleLoad);
-
-    return () => {
-      map.off('load', handleLoad);
-    };
-  }, [stationCoordinates, selectedCoordinates]);
 
   const handleVerify = async () => {
     if (!selected) return;
@@ -692,18 +333,6 @@ export default function CoordinatorRequestManagementPage() {
       toast.error(msg);
     }
   };
-
-  const handleJumpToPage = () => {
-    const nextPage = Number(pageInput);
-    if (!Number.isFinite(nextPage)) {
-      setPageInput(String(listPage));
-      return;
-    }
-
-    setListPage(Math.min(Math.max(1, Math.trunc(nextPage)), totalListPages));
-  };
-
-  const listPageItems = buildPageItems(listPage, totalListPages);
 
   return (
     <DashboardLayout navGroups={coordinatorNavGroups}>
@@ -893,7 +522,23 @@ export default function CoordinatorRequestManagementPage() {
                       return (
                         <button
                           key={id}
-                          onClick={() => setSelectedId(id)}
+                          onClick={() => {
+                            setSelectedId(id);
+                            const destination =
+                              Number.isFinite(Number(req.latitude)) &&
+                              Number.isFinite(Number(req.longitude))
+                                ? { lat: Number(req.latitude), lng: Number(req.longitude) }
+                                : null;
+                            prefetchRoute(stationCoordinates, destination);
+                          }}
+                          onMouseEnter={() => {
+                            const destination =
+                              Number.isFinite(Number(req.latitude)) &&
+                              Number.isFinite(Number(req.longitude))
+                                ? { lat: Number(req.latitude), lng: Number(req.longitude) }
+                                : null;
+                            prefetchRoute(stationCoordinates, destination);
+                          }}
                           className={cn(
                             'w-full rounded-2xl border border-border p-4 text-left transition-all',
                             isActive
@@ -963,73 +608,18 @@ export default function CoordinatorRequestManagementPage() {
               </div>
 
               <div className="border-t border-border/70 px-5 py-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <p className="text-xs text-muted-foreground">
-                    Trang {listPage}/{totalListPages} - Hiển thị {paginatedRequests.length} /{' '}
-                    {filtered.length} yêu cầu lọc được.
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1"
-                      disabled={listPage <= 1}
-                      onClick={() => setListPage((prev) => Math.max(1, prev - 1))}
-                    >
-                      <span className="material-symbols-outlined text-sm">chevron_left</span>
-                      Prev
-                    </Button>
-                    {listPageItems.map((item, index) =>
-                      item === 'ellipsis' ? (
-                        <span
-                          key={`ellipsis-${index}`}
-                          className="px-1 text-sm text-muted-foreground"
-                        >
-                          ...
-                        </span>
-                      ) : (
-                        <Button
-                          key={item}
-                          size="sm"
-                          variant={item === listPage ? 'primary' : 'outline'}
-                          className="min-w-9"
-                          onClick={() => setListPage(item)}
-                        >
-                          {item}
-                        </Button>
-                      ),
-                    )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1"
-                      disabled={listPage >= totalListPages}
-                      onClick={() => setListPage((prev) => Math.min(totalListPages, prev + 1))}
-                    >
-                      Next
-                      <span className="material-symbols-outlined text-sm">chevron_right</span>
-                    </Button>
-                    <div className="flex items-center gap-2 rounded-full border border-border px-2 py-1">
-                      <span className="text-xs text-muted-foreground">Tới trang</span>
-                      <Input
-                        value={pageInput}
-                        onChange={(e) => setPageInput(e.target.value.replace(/[^0-9]/g, ''))}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleJumpToPage();
-                        }}
-                        className="h-8 w-14 border-0 px-2 text-center shadow-none focus-visible:ring-0"
-                      />
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 px-2"
-                        onClick={handleJumpToPage}
-                      >
-                        Đi
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+                <CoordinatorListPagination
+                  currentPage={effectiveListPage}
+                  totalPages={totalListPages}
+                  onPageChange={setListPage}
+                  labels={{ previous: 'Prev', next: 'Next', jumpTo: 'Tới trang', go: 'Đi' }}
+                  summary={
+                    <>
+                      Trang {effectiveListPage}/{totalListPages} - Hiển thị{' '}
+                      {paginatedRequests.length} / {filtered.length} yêu cầu lọc được.
+                    </>
+                  }
+                />
               </div>
             </CardContent>
           </Card>
@@ -1183,22 +773,15 @@ export default function CoordinatorRequestManagementPage() {
                             <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
                               Bản đồ vị trí yêu cầu
                             </p>
-                            <div className="overflow-hidden rounded-2xl border border-border bg-accent/20">
-                              {!GOONG_MAP_KEY ? (
-                                <p className="p-3 text-sm text-muted-foreground">
-                                  Thiếu VITE_GOONG_MAP_KEY để hiển thị bản đồ.
-                                </p>
-                              ) : (
-                                <>
-                                  <div ref={requestMapCallbackRef} className="h-[320px] w-full" />
-                                  {!selectedCoordinates ? (
-                                    <p className="p-3 text-xs text-muted-foreground">
-                                      Yêu cầu này chưa có tọa độ hợp lệ để ghim vị trí.
-                                    </p>
-                                  ) : null}
-                                </>
-                              )}
-                            </div>
+                            <RequestLocationMapCard
+                              selected={selected}
+                              station={station}
+                              stationCoordinates={stationCoordinates}
+                              selectedCoordinates={selectedCoordinates}
+                              coverageRadiusKm={coverageRadiusKm}
+                              goongMapKey={GOONG_MAP_KEY}
+                              goongApiKey={import.meta.env.VITE_GOONG_API_KEY || ''}
+                            />
                           </div>
                         </div>
                       </div>

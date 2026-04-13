@@ -177,6 +177,77 @@ export interface PlaceDetailResponse {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Directions response cache
+// ---------------------------------------------------------------------------
+
+interface _DirectionsCacheEntry {
+  data: DirectionsResponse;
+  expiresAt: number;
+}
+
+const _directionsCache = new Map<string, _DirectionsCacheEntry>();
+const _directionsInflight = new Map<string, Promise<DirectionsResponse | null>>();
+const DIRECTIONS_CACHE_TTL = 60_000; // 60 seconds
+
+function _directionsCacheKey(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+  vehicle: string,
+  alternatives: boolean,
+): string {
+  return `${origin.lat.toFixed(4)},${origin.lng.toFixed(4)}|${destination.lat.toFixed(4)},${destination.lng.toFixed(4)}|${vehicle}|${alternatives}`;
+}
+
+/**
+ * Same as getDirections but caches responses for DIRECTIONS_CACHE_TTL ms.
+ * Cache key is based on coordinates rounded to 4 decimal places (~11 m precision).
+ * Returns null on failure without poisoning the cache.
+ */
+export async function getDirectionsCached(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+  vehicle: 'car' | 'bike' | 'foot' | 'truck' = 'car',
+  apiKey: string,
+  alternatives = false,
+): Promise<DirectionsResponse | null> {
+  const key = _directionsCacheKey(origin, destination, vehicle, alternatives);
+  const now = Date.now();
+  const cached = _directionsCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.data;
+  }
+
+  const inflight = _directionsInflight.get(key);
+  if (inflight) {
+    return inflight;
+  }
+
+  const requestPromise = getDirections(origin, destination, vehicle, apiKey, alternatives)
+    .then((data) => {
+      _directionsInflight.delete(key);
+      if (data) {
+        _directionsCache.set(key, { data, expiresAt: Date.now() + DIRECTIONS_CACHE_TTL });
+      }
+      return data;
+    })
+    .catch((error) => {
+      _directionsInflight.delete(key);
+      console.error('Error resolving cached directions:', error);
+      return null;
+    });
+
+  _directionsInflight.set(key, requestPromise);
+
+  const data = await requestPromise;
+  if (data) {
+    _directionsCache.set(key, { data, expiresAt: Date.now() + DIRECTIONS_CACHE_TTL });
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+
 /**
  * Calculate distance and duration from headquarters to a location
  * @param origin - Headquarters coordinates

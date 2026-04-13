@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import goongjs, { type Map as GoongMap, type Marker } from '@goongmaps/goong-js';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { CoordinatorListPagination } from './components/CoordinatorListPagination';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -11,45 +11,15 @@ import {
   rescueRequestService,
   type RescueRequestDetail,
   type RescueOperationDetail,
-  type TeamLocationDto,
 } from '@/services/rescueRequestService';
-import { teamService, type TeamTrackingPoint } from '@/services/teamService';
 import { coordinatorNavGroups } from './components/sidebarConfig';
+import { MissionTrackingMapSection } from './components/MissionTrackingMapSection';
+import { usePrefetchedDirectionsRoute } from './components/usePrefetchedDirectionsRoute';
+import { useMissionTrackingData } from './components/useMissionTrackingData';
 import { getDisasterTypeLabel, getRescueRequestTypeLabel } from '@/enums/beEnums';
-import { getDirections } from '@/services/goongService';
 
 const GOONG_MAP_KEY = import.meta.env.VITE_GOONG_MAP_KEY || '';
 const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY || '';
-
-function decodePolyline(encoded: string): Array<[number, number]> {
-  const coordinates: Array<[number, number]> = [];
-  let index = 0;
-  let lat = 0;
-  let lng = 0;
-  while (index < encoded.length) {
-    let b: number;
-    let shift = 0;
-    let result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-    const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lat += dlat;
-    shift = 0;
-    result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-    const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lng += dlng;
-    coordinates.push([lng / 1e5, lat / 1e5]);
-  }
-  return coordinates;
-}
 
 const OPERATION_STATUS_STEPS = [
   { key: 'Pending', label: 'Chờ xử lý', icon: 'schedule', color: '#9ca3af' },
@@ -141,37 +111,6 @@ const getRequestId = (r: { requestId?: string; rescueRequestId?: string; id?: st
 
 const MISSION_PAGE_SIZE = 5;
 
-const buildPageItems = (currentPage: number, totalPages: number): Array<number | 'ellipsis'> => {
-  if (totalPages <= 1) return [1];
-  const pages = new Set<number>([1, totalPages, currentPage]);
-  if (currentPage > 1) pages.add(currentPage - 1);
-  if (currentPage < totalPages) pages.add(currentPage + 1);
-  const sorted = Array.from(pages).sort((a, b) => a - b);
-  const items: Array<number | 'ellipsis'> = [];
-  sorted.forEach((page, index) => {
-    const prev = sorted[index - 1];
-    if (prev && page - prev > 1) items.push('ellipsis');
-    items.push(page);
-  });
-  return items;
-};
-
-function safeRemoveLayer(map: any, id: string) {
-  try {
-    if (map.getLayer(id)) map.removeLayer(id);
-  } catch (_error) {
-    void _error;
-  }
-}
-
-function safeRemoveSource(map: any, id: string) {
-  try {
-    if (map.getSource(id)) map.removeSource(id);
-  } catch (_error) {
-    void _error;
-  }
-}
-
 function OperationTimeline({ status }: { status?: string | null }) {
   const stepIndex = OPERATION_STATUS_STEPS.findIndex((s) => s.key === status);
   const isCancelled = status === 'Cancelled';
@@ -253,72 +192,57 @@ export default function MissionTrackingPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<number | undefined>(undefined);
   const [listPage, setListPage] = useState(1);
-  const [pageInput, setPageInput] = useState('1');
 
   const [selectedId, setSelectedId] = useState('');
-  const [detail, setDetail] = useState<RescueRequestDetail | null>(null);
-  const [isDetailLoading, setIsDetailLoading] = useState(false);
-
-  const [teamLocation, setTeamLocation] = useState<TeamLocationDto | null>(null);
-  const [trackingPoints, setTrackingPoints] = useState<TeamTrackingPoint[]>([]);
+  const [selectedListRequest, setSelectedListRequest] = useState<RescueRequestDetail | null>(null);
   const [isRecalculating, setIsRecalculating] = useState(false);
 
-  const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<GoongMap | null>(null);
-  const victimMarkerRef = useRef<Marker | null>(null);
-  const teamMarkerRef = useRef<Marker | null>(null);
-  const detailIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { prefetchRoute } = usePrefetchedDirectionsRoute(GOONG_API_KEY);
 
-  const currentOperation = useMemo<RescueOperationDetail | null>(() => {
-    if (!detail?.rescueOperations?.length) return null;
-    const ops = [...(detail.rescueOperations ?? [])] as RescueOperationDetail[];
-    ops.sort((a, b) => new Date(b.startedAt ?? 0).getTime() - new Date(a.startedAt ?? 0).getTime());
-    return ops[0];
-  }, [detail]);
+  // ── Hook-based data flow ──────────────────────────────────────────────────
+  const { detail, isDetailLoading, currentOperation, teamLocation, trackingPoints, refetchDetail } =
+    useMissionTrackingData({
+      selectedId,
+      selectedListRequest,
+      enabled: !!selectedId,
+    });
 
-  const opStatus = currentOperation?.status ?? null;
+  // ── Derived state ─────────────────────────────────────────────────────────
+  const listOperation = useMemo<RescueOperationDetail | null>(() => {
+    const ops = selectedListRequest?.rescueOperations as RescueOperationDetail[] | undefined;
+    return ops?.[0] ?? null;
+  }, [selectedListRequest]);
+
+  const activeDetail = detail ?? selectedListRequest;
+  const activeOperation = currentOperation ?? listOperation;
+
+  const opStatus = activeOperation?.status ?? null;
   const isEnRoute = opStatus === 'EnRoute';
   const isRescuing = opStatus === 'Rescuing';
   const isCompleted = opStatus === 'RescueCompleted';
-  const isPostMission = isRescuing || isCompleted;
   const showMap = isEnRoute || isRescuing;
-
-  const victimCoords = useMemo(() => {
-    const lat = Number(detail?.latitude);
-    const lng = Number(detail?.longitude);
-    if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) return null;
-    return { lat, lng };
-  }, [detail?.latitude, detail?.longitude]);
-
-  const teamCoords = useMemo(() => {
-    const lat = teamLocation?.currentLatitude ?? detail?.assignedRescueTeam?.currentLatitude;
-    const lng = teamLocation?.currentLongitude ?? detail?.assignedRescueTeam?.currentLongitude;
-    if (!lat || !lng) return null;
-    return { lat, lng };
-  }, [teamLocation, detail?.assignedRescueTeam]);
 
   const completionAttachments = useMemo(
     () =>
-      (detail?.attachments ?? []).filter(
+      (activeDetail?.attachments ?? []).filter(
         (a) =>
           a.attachmentType === 1 ||
           a.attachmentType === '1' ||
           a.attachmentType === 'CompletionEvidence',
       ),
-    [detail?.attachments],
+    [activeDetail?.attachments],
   );
 
   const requestEvidenceAttachments = useMemo(
     () =>
-      (detail?.attachments ?? []).filter(
+      (activeDetail?.attachments ?? []).filter(
         (a) =>
           a.attachmentType === 'RequestEvidence' ||
           a.attachmentType === 0 ||
           a.attachmentType === '0' ||
           a.attachmentType == null,
       ),
-    [detail?.attachments],
+    [activeDetail?.attachments],
   );
 
   const filteredRequests = useMemo(() => {
@@ -345,25 +269,10 @@ export default function MissionTrackingPage() {
     if (listPage > totalListPages) setListPage(totalListPages);
   }, [listPage, totalListPages]);
 
-  useEffect(() => {
-    setPageInput(String(listPage));
-  }, [listPage]);
-
   const paginatedRequests = useMemo(() => {
     const start = (listPage - 1) * MISSION_PAGE_SIZE;
     return filteredRequests.slice(start, start + MISSION_PAGE_SIZE);
   }, [filteredRequests, listPage]);
-
-  const listPageItems = buildPageItems(listPage, totalListPages);
-
-  const handleJumpToPage = () => {
-    const nextPage = Number(pageInput);
-    if (!Number.isFinite(nextPage)) {
-      setPageInput(String(listPage));
-      return;
-    }
-    setListPage(Math.min(Math.max(1, Math.trunc(nextPage)), totalListPages));
-  };
 
   const missionStats = useMemo(() => {
     const statuses = requests.map(
@@ -380,6 +289,7 @@ export default function MissionTrackingPage() {
     };
   }, [requests]);
 
+  // ── List fetching ─────────────────────────────────────────────────────────
   const loadList = useCallback(async () => {
     try {
       setIsListError(false);
@@ -397,302 +307,72 @@ export default function MissionTrackingPage() {
     loadList();
   }, [loadList]);
 
-  const loadDetail = useCallback(async (id: string) => {
-    if (!id) return;
-    setIsDetailLoading(true);
-    try {
-      const data = await rescueRequestService.getById(id);
-      setDetail(data);
-    } catch {
-      toast.error('Không tải được chi tiết yêu cầu.');
-    } finally {
-      setIsDetailLoading(false);
-    }
-  }, []);
-
+  // ── Prefetch: warm route cache on first visible item ──────────────────────
   useEffect(() => {
-    if (!selectedId) {
-      setDetail(null);
-      return;
-    }
-    loadDetail(selectedId);
-    if (detailIntervalRef.current) clearInterval(detailIntervalRef.current);
-    detailIntervalRef.current = setInterval(() => loadDetail(selectedId), 30_000);
-    return () => {
-      if (detailIntervalRef.current) clearInterval(detailIntervalRef.current);
-    };
-  }, [selectedId, loadDetail]);
+    const firstVisible = paginatedRequests[0];
+    if (!firstVisible) return;
 
-  const stopLocationPolling = useCallback(() => {
-    if (locationIntervalRef.current) {
-      clearInterval(locationIntervalRef.current);
-      locationIntervalRef.current = null;
-    }
-  }, []);
-
-  const startLocationPolling = useCallback(
-    (requestId: string) => {
-      stopLocationPolling();
-      const poll = async () => {
-        try {
-          const loc = await rescueRequestService.getTeamLocation(requestId);
-          setTeamLocation(loc);
-          if (loc.operationStatus !== 'EnRoute') {
-            stopLocationPolling();
-            loadDetail(requestId);
+    const origin =
+      Number.isFinite(Number(firstVisible.assignedRescueTeam?.currentLatitude)) &&
+      Number.isFinite(Number(firstVisible.assignedRescueTeam?.currentLongitude))
+        ? {
+            lat: Number(firstVisible.assignedRescueTeam?.currentLatitude),
+            lng: Number(firstVisible.assignedRescueTeam?.currentLongitude),
           }
-        } catch {
-          void 0;
-        }
-      };
-      void poll();
-      locationIntervalRef.current = setInterval(poll, 8_000);
+        : null;
+    const destination =
+      Number.isFinite(Number(firstVisible.latitude)) &&
+      Number.isFinite(Number(firstVisible.longitude))
+        ? { lat: Number(firstVisible.latitude), lng: Number(firstVisible.longitude) }
+        : null;
+
+    prefetchRoute(origin, destination);
+  }, [paginatedRequests, prefetchRoute]);
+
+  // ── Secondary prefetch: warm cache when detail loads ─────────────────────
+  useEffect(() => {
+    if (!detail) return;
+    const origin =
+      Number.isFinite(Number(detail.assignedRescueTeam?.currentLatitude)) &&
+      Number.isFinite(Number(detail.assignedRescueTeam?.currentLongitude))
+        ? {
+            lat: Number(detail.assignedRescueTeam?.currentLatitude),
+            lng: Number(detail.assignedRescueTeam?.currentLongitude),
+          }
+        : null;
+    const destination =
+      Number.isFinite(Number(detail.latitude)) && Number.isFinite(Number(detail.longitude))
+        ? { lat: Number(detail.latitude), lng: Number(detail.longitude) }
+        : null;
+    prefetchRoute(origin, destination);
+  }, [detail, prefetchRoute]);
+
+  // ── Mission selection ─────────────────────────────────────────────────────
+  const handleSelectMission = useCallback(
+    (rid: string, req: RescueRequestDetail) => {
+      setSelectedId(rid);
+      setSelectedListRequest(req);
+
+      // Fire-and-forget prefetch on click
+      const origin =
+        Number.isFinite(Number(req.assignedRescueTeam?.currentLatitude)) &&
+        Number.isFinite(Number(req.assignedRescueTeam?.currentLongitude))
+          ? {
+              lat: Number(req.assignedRescueTeam?.currentLatitude),
+              lng: Number(req.assignedRescueTeam?.currentLongitude),
+            }
+          : null;
+      const destination =
+        Number.isFinite(Number(req.latitude)) && Number.isFinite(Number(req.longitude))
+          ? { lat: Number(req.latitude), lng: Number(req.longitude) }
+          : null;
+
+      prefetchRoute(origin, destination);
     },
-    [stopLocationPolling, loadDetail],
+    [prefetchRoute],
   );
 
-  useEffect(() => {
-    setTeamLocation(null);
-    if (isEnRoute && selectedId) startLocationPolling(selectedId);
-    else stopLocationPolling();
-    return stopLocationPolling;
-  }, [isEnRoute, selectedId, startLocationPolling, stopLocationPolling]);
-
-  useEffect(() => {
-    const teamId = detail?.assignedRescueTeam?.teamId;
-    if (!teamId || (!isEnRoute && !isPostMission)) {
-      setTrackingPoints([]);
-      return;
-    }
-    teamService
-      .getTrackingPoints(teamId, 200)
-      .then((res) => {
-        const pts: TeamTrackingPoint[] = Array.isArray(res.data) ? res.data : [];
-        const opId = currentOperation?.rescueOperationId;
-        setTrackingPoints(opId ? pts.filter((p) => p.rescueOperationId === opId) : pts);
-      })
-      .catch(() => {
-        void 0;
-      });
-  }, [
-    detail?.assignedRescueTeam?.teamId,
-    isEnRoute,
-    isPostMission,
-    currentOperation?.rescueOperationId,
-  ]);
-
-  const mapCallbackRef = useCallback((node: HTMLDivElement | null) => {
-    mapContainerRef.current = node;
-    if (!node) {
-      victimMarkerRef.current?.remove();
-      teamMarkerRef.current?.remove();
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
-      return;
-    }
-    if (!GOONG_MAP_KEY || mapRef.current) return;
-    goongjs.accessToken = GOONG_MAP_KEY;
-    mapRef.current = new goongjs.Map({
-      container: node,
-      style: 'https://tiles.goong.io/assets/goong_map_web.json',
-      center: [108.2022, 16.0544],
-      zoom: 5,
-    });
-  }, []);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    victimMarkerRef.current?.remove();
-    victimMarkerRef.current = null;
-    if (!victimCoords) return;
-    const el = document.createElement('div');
-    el.style.cssText =
-      'cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px';
-    el.innerHTML = `
-      <div style="position:relative;width:46px;height:46px;display:flex;align-items:center;justify-content:center">
-        <div style="position:absolute;inset:0;border-radius:50%;background:rgba(239,68,68,0.18);animation:victim-ring 1.8s ease-out infinite"></div>
-        <style>@keyframes victim-ring{0%{transform:scale(1);opacity:0.6}100%{transform:scale(2.2);opacity:0}}</style>
-        <div style="position:relative;z-index:1;background:linear-gradient(135deg,#dc2626,#ef4444);width:40px;height:40px;border-radius:50%;border:3px solid white;box-shadow:0 3px 10px rgba(239,68,68,0.5);display:flex;align-items:center;justify-content:center">
-          <span class="material-symbols-outlined" style="color:white;font-size:22px;font-variation-settings:'FILL' 1;">person_alert</span>
-        </div>
-      </div>
-      <div style="background:#dc2626;color:white;font-size:10px;font-weight:800;padding:2px 9px;border-radius:9999px;white-space:nowrap;box-shadow:0 1px 4px rgba(220,38,38,0.4);letter-spacing:0.04em;">SOS</div>
-    `;
-
-    const victimPopup = new goongjs.Popup({ offset: [0, -56], closeButton: false }).setHTML(
-      `<div style="font-family:sans-serif;padding:2px 0;min-width:180px"><p style="font-weight:700;font-size:13px;margin:0 0 4px;color:#991b1b">Vị trí nạn nhân</p>${detail?.reporterFullName ? `<p style="font-size:12px;margin:0 0 2px;color:#374151"><strong>Người báo:</strong> ${detail.reporterFullName}</p>` : ''}${detail?.reporterPhone ? `<p style="font-size:12px;margin:0 0 2px;color:#374151"><strong>SĐT:</strong> ${detail.reporterPhone}</p>` : ''}${detail?.address ? `<p style="font-size:11px;color:#6b7280;margin:4px 0 0">${detail.address}</p>` : ''}</div>`,
-    );
-
-    victimMarkerRef.current = new goongjs.Marker({ element: el })
-      .setLngLat([victimCoords.lng, victimCoords.lat])
-      .setPopup(victimPopup)
-      .addTo(map);
-
-    victimMarkerRef.current.togglePopup();
-    (map as any).flyTo({
-      center: [victimCoords.lng, victimCoords.lat],
-      zoom: 13,
-      speed: 2.5,
-      curve: 1,
-    });
-  }, [victimCoords, detail]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    if (!showMap) {
-      teamMarkerRef.current?.remove();
-      teamMarkerRef.current = null;
-      return;
-    }
-    if (!teamCoords) return;
-    if (!teamMarkerRef.current) {
-      const el = document.createElement('div');
-      el.style.cssText =
-        'cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px';
-      el.innerHTML = `
-        <div style="position:relative;width:46px;height:46px;display:flex;align-items:center;justify-content:center">
-          <div style="position:absolute;inset:0;border-radius:50%;background:rgba(37,99,235,0.2);animation:team-ring 1.6s ease-out infinite"></div>
-          <style>@keyframes team-ring{0%{transform:scale(1);opacity:0.6}100%{transform:scale(2.2);opacity:0}}</style>
-          <div style="position:relative;z-index:1;background:linear-gradient(135deg,#1d4ed8,#2563eb);width:40px;height:40px;border-radius:50%;border:3px solid white;box-shadow:0 3px 10px rgba(37,99,235,0.55);display:flex;align-items:center;justify-content:center;animation:team-pulse 2s ease-in-out infinite">
-            <style>@keyframes team-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}</style>
-            <span class="material-symbols-outlined" style="color:white;font-size:20px;font-variation-settings:'FILL' 1;">local_shipping</span>
-          </div>
-        </div>
-        <div style="background:#1e3a8a;color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:9999px;white-space:nowrap;box-shadow:0 1px 4px rgba(30,58,138,0.35);">Đội cứu hộ</div>
-      `;
-
-      const teamPopup = new goongjs.Popup({ offset: [0, -56], closeButton: false }).setHTML(
-        `<div style="font-family:sans-serif;padding:2px 0;min-width:160px"><p style="font-weight:700;font-size:13px;margin:0 0 4px;color:#1e40af">Đội cứu hộ</p>${currentOperation?.teamName ? `<p style="font-size:12px;color:#374151;margin:0 0 2px">${currentOperation.teamName}</p>` : ''}${currentOperation?.stationName ? `<p style="font-size:11px;color:#6b7280;margin:0 0 2px">Trạm: ${currentOperation.stationName}</p>` : ''}${opStatus ? `<p style="font-size:11px;color:#2563eb;font-weight:600;margin:4px 0 0">Trạng thái: ${opStatus}</p>` : ''}</div>`,
-      );
-
-      teamMarkerRef.current = new goongjs.Marker({ element: el })
-        .setLngLat([teamCoords.lng, teamCoords.lat])
-        .setPopup(teamPopup)
-        .addTo(map);
-    } else {
-      teamMarkerRef.current.setLngLat([teamCoords.lng, teamCoords.lat]);
-    }
-  }, [showMap, teamCoords, currentOperation, opStatus]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const draw = () => {
-      safeRemoveLayer(map, 'track-line');
-      safeRemoveSource(map, 'track');
-      if (trackingPoints.length < 2) return;
-      const coords = trackingPoints.map((p) => [p.longitude, p.latitude]);
-      (map as any).addSource('track', {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          properties: {},
-          geometry: { type: 'LineString', coordinates: coords },
-        },
-      });
-      (map as any).addLayer({
-        id: 'track-line',
-        type: 'line',
-        source: 'track',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#22c55e', 'line-width': 4, 'line-opacity': 0.85 },
-      });
-    };
-    if ((map as any).isStyleLoaded()) draw();
-    else (map as any).once('load', draw);
-    return () => {
-      safeRemoveLayer(map, 'track-line');
-      safeRemoveSource(map, 'track');
-    };
-  }, [trackingPoints]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !teamCoords || !victimCoords) return;
-    let cancelled = false;
-    const drawRoute = async () => {
-      safeRemoveLayer(map, 'direction-line');
-      safeRemoveSource(map, 'direction');
-      let coords: Array<[number, number]> = [];
-      if (GOONG_API_KEY) {
-        const direction = await getDirections(
-          { lat: teamCoords.lat, lng: teamCoords.lng },
-          { lat: victimCoords.lat, lng: victimCoords.lng },
-          'car',
-          GOONG_API_KEY,
-        );
-        if (cancelled) return;
-        const route = direction?.routes?.[0];
-        const overviewPoints = route?.overview_polyline?.points;
-        coords = overviewPoints
-          ? decodePolyline(overviewPoints)
-          : [
-              [teamCoords.lng, teamCoords.lat],
-              [victimCoords.lng, victimCoords.lat],
-            ];
-      }
-      if (coords.length < 2)
-        coords = [
-          [teamCoords.lng, teamCoords.lat],
-          [victimCoords.lng, victimCoords.lat],
-        ];
-      if (cancelled || !(map as any).isStyleLoaded()) return;
-      (map as any).addSource('direction', {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          properties: {},
-          geometry: { type: 'LineString', coordinates: coords },
-        },
-      });
-      (map as any).addLayer({
-        id: 'direction-line',
-        type: 'line',
-        source: 'direction',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': '#2563eb',
-          'line-width': 4,
-          'line-opacity': 0.85,
-          ...(GOONG_API_KEY ? {} : { 'line-dasharray': [4, 3] }),
-        },
-      });
-    };
-    if ((map as any).isStyleLoaded()) void drawRoute();
-    else (map as any).once('load', () => void drawRoute());
-    return () => {
-      cancelled = true;
-      safeRemoveLayer(map, 'direction-line');
-      safeRemoveSource(map, 'direction');
-    };
-  }, [teamCoords, victimCoords]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !teamCoords || !victimCoords) return;
-    (map as any).fitBounds(
-      [
-        [Math.min(teamCoords.lng, victimCoords.lng), Math.min(teamCoords.lat, victimCoords.lat)],
-        [Math.max(teamCoords.lng, victimCoords.lng), Math.max(teamCoords.lat, victimCoords.lat)],
-      ],
-      { padding: 80, maxZoom: 15, duration: 1200 },
-    );
-  }, [teamCoords, victimCoords]);
-
-  // Resize map when it becomes visible to avoid blank/cropped rendering
-  useEffect(() => {
-    if (!showMap) return;
-    const map = mapRef.current;
-    if (!map) return;
-    // Small delay gives the browser time to recalculate layout
-    const id = setTimeout(() => (map as any).resize(), 50);
-    return () => clearTimeout(id);
-  }, [showMap]);
-
+  // ── ETA recalculate ───────────────────────────────────────────────────────
   const handleRecalculateEta = async () => {
     const teamId = detail?.assignedRescueTeam?.teamId;
     if (!teamId) return;
@@ -700,7 +380,7 @@ export default function MissionTrackingPage() {
     try {
       await rescueRequestService.recalculateEta(teamId);
       toast.success('Đã tính lại ETA thành công.');
-      if (selectedId) loadDetail(selectedId);
+      refetchDetail();
     } catch {
       toast.error('Không thể tính lại ETA.');
     } finally {
@@ -713,7 +393,7 @@ export default function MissionTrackingPage() {
       <div className="space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="space-y-2">
-            <h1 className="text-3xl font-black text-primary md:text-4xl">Theo dõi mission</h1>
+            <h1 className="text-3xl font-black text-primary md:text-4xl">Theo dõi cứu hộ</h1>
             <p className="max-w-2xl text-sm text-muted-foreground md:text-base">
               Quan sát hành trình cứu hộ realtime, bản đồ di chuyển, timeline trạng thái và bằng
               chứng hoàn thành.
@@ -731,7 +411,7 @@ export default function MissionTrackingPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Tổng mission
+                    Tổng yêu cầu
                   </p>
                   <p className="mt-3 text-3xl font-black text-foreground">{missionStats.total}</p>
                 </div>
@@ -796,9 +476,9 @@ export default function MissionTrackingPage() {
               <div className="border-b border-border/70 px-5 pb-4 pt-5">
                 <div className="space-y-4">
                   <div className="space-y-1">
-                    <h2 className="text-xl font-black text-foreground">Danh sách mission</h2>
+                    <h2 className="text-xl font-black text-foreground">Danh sách yêu cầu</h2>
                     <p className="text-xs text-muted-foreground">
-                      Chọn mission để xem hành trình cứu hộ, bản đồ realtime và bằng chứng hoàn
+                      Chọn yêu cầu để xem hành trình cứu hộ, bản đồ realtime và bằng chứng hoàn
                       thành.
                     </p>
                   </div>
@@ -871,7 +551,7 @@ export default function MissionTrackingPage() {
                   </div>
                 ) : isListError ? (
                   <div className="rounded-2xl border border-rose-200 bg-rose-500/5 px-4 py-4 text-sm text-rose-600">
-                    Không tải được danh sách mission.
+                    Không tải được danh sách yêu cầu.
                   </div>
                 ) : filteredRequests.length === 0 ? (
                   <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-muted/10 p-6 text-center">
@@ -880,7 +560,7 @@ export default function MissionTrackingPage() {
                     </span>
                     <div>
                       <p className="text-base font-semibold text-foreground">
-                        Không có mission phù hợp
+                        Không có yêu cầu phù hợp
                       </p>
                       <p className="mt-1 text-sm text-muted-foreground">
                         Hãy thử thay đổi từ khóa tìm kiếm hoặc trạng thái cần lọc.
@@ -900,7 +580,23 @@ export default function MissionTrackingPage() {
                       return (
                         <button
                           key={rid}
-                          onClick={() => setSelectedId(rid)}
+                          onClick={() => handleSelectMission(rid, req)}
+                          onMouseEnter={() => {
+                            const origin =
+                              Number.isFinite(Number(req.assignedRescueTeam?.currentLatitude)) &&
+                              Number.isFinite(Number(req.assignedRescueTeam?.currentLongitude))
+                                ? {
+                                    lat: Number(req.assignedRescueTeam?.currentLatitude),
+                                    lng: Number(req.assignedRescueTeam?.currentLongitude),
+                                  }
+                                : null;
+                            const destination =
+                              Number.isFinite(Number(req.latitude)) &&
+                              Number.isFinite(Number(req.longitude))
+                                ? { lat: Number(req.latitude), lng: Number(req.longitude) }
+                                : null;
+                            prefetchRoute(origin, destination);
+                          }}
                           className={cn(
                             'w-full rounded-2xl border border-border p-4 text-left transition-all',
                             isActive
@@ -963,70 +659,17 @@ export default function MissionTrackingPage() {
               </div>
 
               <div className="border-t border-border/70 px-5 py-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <p className="text-xs text-muted-foreground">
-                    Trang {listPage}/{totalListPages} — {paginatedRequests.length}/
-                    {filteredRequests.length} mission
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1"
-                      disabled={listPage <= 1}
-                      onClick={() => setListPage((prev) => Math.max(1, prev - 1))}
-                    >
-                      <span className="material-symbols-outlined text-sm">chevron_left</span>
-                      Trước
-                    </Button>
-                    {listPageItems.map((item, index) =>
-                      item === 'ellipsis' ? (
-                        <span key={`ell-${index}`} className="px-1 text-sm text-muted-foreground">
-                          ...
-                        </span>
-                      ) : (
-                        <Button
-                          key={item}
-                          size="sm"
-                          variant={item === listPage ? 'primary' : 'outline'}
-                          className="min-w-9"
-                          onClick={() => setListPage(item as number)}
-                        >
-                          {item}
-                        </Button>
-                      ),
-                    )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1"
-                      disabled={listPage >= totalListPages}
-                      onClick={() => setListPage((prev) => Math.min(totalListPages, prev + 1))}
-                    >
-                      Sau
-                      <span className="material-symbols-outlined text-sm">chevron_right</span>
-                    </Button>
-                    <div className="flex items-center gap-2 rounded-full border border-border px-2 py-1">
-                      <span className="text-xs text-muted-foreground">Tới trang:</span>
-                      <Input
-                        value={pageInput}
-                        onChange={(e) => setPageInput(e.target.value.replace(/[^0-9]/g, ''))}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleJumpToPage();
-                        }}
-                        className="h-8 w-14 border-0 px-2 text-center shadow-none focus-visible:ring-0"
-                      />
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 px-2"
-                        onClick={handleJumpToPage}
-                      >
-                        Đi
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+                <CoordinatorListPagination
+                  currentPage={listPage}
+                  totalPages={totalListPages}
+                  onPageChange={setListPage}
+                  summary={
+                    <>
+                      Trang {listPage}/{totalListPages} — {paginatedRequests.length}/
+                      {filteredRequests.length} nhiệm vụ
+                    </>
+                  }
+                />
               </div>
             </CardContent>
           </Card>
@@ -1039,17 +682,15 @@ export default function MissionTrackingPage() {
                     <span className="material-symbols-outlined mb-3 text-5xl text-muted-foreground/40">
                       radar
                     </span>
-                    <p className="text-muted-foreground">
-                      Chọn một yêu cầu để xem chi tiết mission.
-                    </p>
+                    <p className="text-muted-foreground">Chọn một yêu cầu để xem chi tiết.</p>
                   </div>
-                ) : isDetailLoading && !detail ? (
+                ) : isDetailLoading && !activeDetail ? (
                   <div className="space-y-4">
                     <Skeleton className="h-8 w-48" />
                     <Skeleton className="h-24" />
                     <Skeleton className="h-40" />
                   </div>
-                ) : !detail ? (
+                ) : !activeDetail ? (
                   <p className="text-sm text-red-500">Không tải được chi tiết.</p>
                 ) : (
                   <div className="space-y-6">
@@ -1058,15 +699,16 @@ export default function MissionTrackingPage() {
                         <span
                           className={cn(
                             'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold',
-                            REQUEST_TYPE_COLOR[String(detail.rescueRequestType ?? '')] ??
+                            REQUEST_TYPE_COLOR[String(activeDetail.rescueRequestType ?? '')] ??
                               'bg-gray-200 text-gray-700',
                           )}
                         >
-                          {getRescueRequestTypeLabel(detail.rescueRequestType)?.toUpperCase() ??
-                            'THƯỜNG'}
+                          {getRescueRequestTypeLabel(
+                            activeDetail.rescueRequestType,
+                          )?.toUpperCase() ?? 'THƯỜNG'}
                         </span>
                         {(() => {
-                          const db = DISASTER_TYPE_BADGE[String(detail.disasterType ?? '')];
+                          const db = DISASTER_TYPE_BADGE[String(activeDetail.disasterType ?? '')];
                           return db ? (
                             <span
                               className={cn(
@@ -1075,16 +717,16 @@ export default function MissionTrackingPage() {
                               )}
                             >
                               <span className="material-symbols-outlined text-sm">{db.icon}</span>
-                              {getDisasterTypeLabel(detail.disasterType)}
+                              {getDisasterTypeLabel(activeDetail.disasterType)}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground">
                               <span className="material-symbols-outlined text-sm">warning</span>
-                              {getDisasterTypeLabel(detail.disasterType) || '--'}
+                              {getDisasterTypeLabel(activeDetail.disasterType) || '--'}
                             </span>
                           );
                         })()}
-                        {currentOperation &&
+                        {activeOperation &&
                           (() => {
                             const sb = getStatusBadge(opStatus);
                             return (
@@ -1106,23 +748,23 @@ export default function MissionTrackingPage() {
                             <span className="material-symbols-outlined text-base text-muted-foreground mt-0.5">
                               location_on
                             </span>
-                            <p>{detail.address || 'Chưa có địa chỉ'}</p>
+                            <p>{activeDetail.address || 'Chưa có địa chỉ'}</p>
                           </div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="material-symbols-outlined text-base text-muted-foreground">
                               person
                             </span>
-                            <p>{detail.reporterFullName || '--'}</p>
-                            {detail.reporterPhone && (
+                            <p>{activeDetail.reporterFullName || '--'}</p>
+                            {activeDetail.reporterPhone && (
                               <>
                                 <span className="material-symbols-outlined text-base text-muted-foreground">
                                   phone
                                 </span>
                                 <a
-                                  href={`tel:${detail.reporterPhone}`}
+                                  href={`tel:${activeDetail.reporterPhone}`}
                                   className="text-primary hover:underline"
                                 >
-                                  {detail.reporterPhone}
+                                  {activeDetail.reporterPhone}
                                 </a>
                               </>
                             )}
@@ -1131,145 +773,76 @@ export default function MissionTrackingPage() {
                             <span className="material-symbols-outlined text-base text-muted-foreground">
                               schedule
                             </span>
-                            <p>{formatDate(detail.createdAt)}</p>
+                            <p>{formatDate(activeDetail.createdAt)}</p>
                           </div>
                         </div>
 
-                        {detail.description && (
+                        {activeDetail.description && (
                           <>
                             <div className="mt-4 rounded-2xl bg-accent/30 border border-border p-3 text-sm italic text-muted-foreground">
-                              "{detail.description}"
+                              "{activeDetail.description}"
                             </div>
                           </>
                         )}
                       </div>
                     </div>
-                    {currentOperation && (
+                    {activeOperation && (
                       <div className="space-y-3">
                         <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">
                           Trạng thái operation
                         </p>
                         <OperationTimeline status={opStatus} />
                         <div className="flex flex-wrap items-center gap-3 text-sm">
-                          {currentOperation.teamName && (
+                          {activeOperation.teamName && (
                             <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
                               <span className="material-symbols-outlined text-blue-600 text-base">
                                 groups
                               </span>
                               <span className="font-medium text-blue-700">
-                                {currentOperation.teamName}
+                                {activeOperation.teamName}
                               </span>
                             </div>
                           )}
-                          {currentOperation.stationName && (
+                          {activeOperation.stationName && (
                             <div className="flex items-center gap-1.5 text-muted-foreground">
                               <span className="material-symbols-outlined text-base">home_pin</span>
-                              {currentOperation.stationName}
+                              {activeOperation.stationName}
                             </div>
                           )}
-                          {currentOperation.startedAt && (
+                          {activeOperation.startedAt && (
                             <div className="flex items-center gap-1.5 text-muted-foreground">
                               <span className="material-symbols-outlined text-base">
                                 play_arrow
                               </span>
-                              {formatDate(currentOperation.startedAt)}
+                              {formatDate(activeOperation.startedAt)}
                             </div>
                           )}
                           {isEnRoute && (
                             <EtaBadge
                               minutes={
                                 teamLocation?.estimatedMinutesToArrival ??
-                                detail.assignedRescueTeam?.estimatedMinutesToArrival
+                                activeDetail.assignedRescueTeam?.estimatedMinutesToArrival
                               }
                             />
                           )}
                         </div>
                       </div>
                     )}
-                    <div className={showMap ? 'space-y-3' : 'invisible h-0 overflow-hidden'}>
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <p className="text-xs uppercase font-semibold text-muted-foreground tracking-wider flex items-center gap-1.5">
-                          <span className="material-symbols-outlined text-base text-blue-500">
-                            {isEnRoute ? 'directions_car' : 'local_fire_department'}
-                          </span>
-                          {isEnRoute
-                            ? 'Bản đồ realtime — Team đang di chuyển'
-                            : 'Team đang cứu hộ tại hiện trường'}
-                        </p>
-                        <div className="flex items-center gap-2">
-                          {isEnRoute && teamLocation && (
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                              {formatDate(teamLocation.lastTrackedAt)}
-                            </div>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-1.5 text-xs"
-                            onClick={handleRecalculateEta}
-                            disabled={isRecalculating}
-                          >
-                            <span className="material-symbols-outlined text-sm">calculate</span>
-                            {isRecalculating ? 'Đang tính...' : 'Recalculate ETA'}
-                          </Button>
-                        </div>
-                      </div>
-                      {isEnRoute && teamLocation && (
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="rounded-lg bg-blue-50 border border-blue-200 p-2 text-center">
-                            <p className="text-[10px] text-blue-600 font-semibold uppercase">ETA</p>
-                            <p className="text-lg font-black text-blue-700">
-                              {teamLocation.estimatedMinutesToArrival ?? '--'}
-                              <span className="text-xs font-normal"> phút</span>
-                            </p>
-                          </div>
-                          <div className="rounded-lg bg-green-50 border border-green-200 p-2 text-center">
-                            <p className="text-[10px] text-green-600 font-semibold uppercase">
-                              Khoảng cách
-                            </p>
-                            <p className="text-lg font-black text-green-700">
-                              {teamLocation.distanceKmToVictim?.toFixed(1) ?? '--'}
-                              <span className="text-xs font-normal"> km</span>
-                            </p>
-                          </div>
-                          <div className="rounded-lg bg-purple-50 border border-purple-200 p-2 text-center">
-                            <p className="text-[10px] text-purple-600 font-semibold uppercase">
-                              Điểm GPS
-                            </p>
-                            <p className="text-lg font-black text-purple-700">
-                              {trackingPoints.length}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                      {isRescuing && (
-                        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-orange-50 border border-orange-300">
-                          <span className="material-symbols-outlined text-orange-500 text-2xl">
-                            local_fire_department
-                          </span>
-                          <div>
-                            <p className="font-bold text-orange-800">
-                              Team đang cứu hộ tại hiện trường
-                            </p>
-                            <p className="text-xs text-orange-600">Polling vị trí đã dừng.</p>
-                          </div>
-                        </div>
-                      )}
-                      {!GOONG_MAP_KEY ? (
-                        <div className="rounded-xl border border-border bg-accent/20 p-6 text-sm text-muted-foreground text-center">
-                          Thiếu{' '}
-                          <code className="font-mono bg-accent px-1 rounded">
-                            VITE_GOONG_MAP_KEY
-                          </code>{' '}
-                          để hiển thị bản đồ.
-                        </div>
-                      ) : (
-                        <div className="rounded-xl overflow-hidden border border-border shadow-sm">
-                          <div ref={mapCallbackRef} style={{ height: '380px', width: '100%' }} />
-                        </div>
-                      )}
-                    </div>
+                    <MissionTrackingMapSection
+                      detail={activeDetail}
+                      currentOperation={activeOperation}
+                      opStatus={opStatus}
+                      showMap={showMap}
+                      isEnRoute={isEnRoute}
+                      isRescuing={isRescuing}
+                      teamLocation={teamLocation}
+                      trackingPoints={trackingPoints}
+                      isRecalculating={isRecalculating}
+                      onRecalculateEta={handleRecalculateEta}
+                      goongMapKey={GOONG_MAP_KEY}
+                      goongApiKey={GOONG_API_KEY}
+                      formatDate={formatDate}
+                    />
                     {isCompleted && (
                       <div className="rounded-xl border border-green-200 bg-green-50 p-5 space-y-4">
                         <div className="flex items-center gap-2">
