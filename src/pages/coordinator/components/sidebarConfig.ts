@@ -18,6 +18,11 @@ export const coordinatorProjects = [
     path: '/portal/coordinator/mission-tracking',
     icon: 'radar',
   },
+  {
+    label: 'Smart Dispatch',
+    path: '/portal/coordinator/dispatch',
+    icon: 'alt_route',
+  },
 
   {
     label: 'Kho vận & Nhu yếu phẩm',

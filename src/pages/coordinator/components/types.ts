@@ -54,6 +54,7 @@ export interface Team {
   status: 'available' | 'moving' | 'rescuing' | 'lost-contact';
   currentAssignment?: string;
   area?: string; // e.g., 'Lệ Thủy, Quảng Bình'
+  disabledReason?: string;
 }
 
 export interface Headquarters {

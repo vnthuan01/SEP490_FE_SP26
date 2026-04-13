@@ -28,6 +28,7 @@ import {
   getVerificationStatusClass,
   VerificationMethod,
   VerificationMethodLabel,
+  getPriorityLevelLabel,
 } from '@/enums/beEnums';
 
 const verificationStatusText = (status?: number | string | null) =>
