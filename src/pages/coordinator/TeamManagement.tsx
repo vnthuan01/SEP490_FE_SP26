@@ -123,7 +123,7 @@ export default function CoordinatorTeamManagementPage() {
     refetch: refetchInStation,
   } = useTeamsInStation(reliefStationId);
 
-  const { teams: allTeamsRaw, isLoadingTeams, refetchTeams, createTeam } = useTeams();
+  const { teams: allTeamsRaw, isLoadingTeams, refetchTeams, createTeam, updateTeam } = useTeams();
 
   // Unified refetch
   const refetch = reliefStationId ? refetchInStation : refetchTeams;
@@ -153,6 +153,13 @@ export default function CoordinatorTeamManagementPage() {
   const [selectedCampaignInitialStatus, setSelectedCampaignInitialStatus] = useState<string>(
     String(CampaignTeamStatus.Invited),
   );
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editStatus, setEditStatus] = useState(0);
+  const [editError, setEditError] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [viewCampaignId, setViewCampaignId] = useState('');
   const navigate = useNavigate();
 
   const isLoading = isLoadingStation || isLoadingTeamList;
@@ -173,17 +180,12 @@ export default function CoordinatorTeamManagementPage() {
     }));
   }, [rawTeamList]);
 
+  // Không auto-select khi load — chờ user tự click vào nhóm
   useEffect(() => {
     if (!teams.length) {
       setSelectedTeamId(undefined);
-      return;
     }
-
-    const exists = teams.some((team) => team.id === selectedTeamId);
-    if (!selectedTeamId || !exists) {
-      setSelectedTeamId(teams[0].id);
-    }
-  }, [teams, selectedTeamId]);
+  }, [teams]);
 
   const selectedTeam = useMemo(
     () => teams.find((t) => t.id === selectedTeamId),
@@ -205,6 +207,9 @@ export default function CoordinatorTeamManagementPage() {
   const { summary: selectedCampaignSummary } = useCampaignSummary(selectedCampaignId || '');
   const { teams: assignedCampaignTeams, isLoading: isLoadingAssignedCampaignTeams } =
     useCampaignTeams(selectedCampaignId || '');
+  const { teams: viewCampaignTeams, isLoading: isLoadingViewCampaignTeams } = useCampaignTeams(
+    viewCampaignId || '',
+  );
   const { mutateAsync: assignTeamToCampaign, status: assignTeamToCampaignStatus } =
     useAssignTeamToCampaign();
   const { mutateAsync: updateCampaignTeamStatus } = useUpdateCampaignTeamStatus();
@@ -262,7 +267,7 @@ export default function CoordinatorTeamManagementPage() {
     getTeamStatusClass(parseEnumValue(status));
 
   const getStatusLabel = (status: number | LegacyStatus) =>
-    TeamStatusLabel[parseEnumValue(status) as TeamStatus] ?? 'Khong xac dinh';
+    TeamStatusLabel[parseEnumValue(status) as TeamStatus] ?? 'Không xác định';
 
   const handleJumpToPage = () => {
     const nextPage = Number(pageInput);
@@ -410,6 +415,45 @@ export default function CoordinatorTeamManagementPage() {
     }
   };
 
+  const handleOpenEdit = (team: TeamItem) => {
+    setEditName(team.name);
+    setEditDescription(team.description || '');
+    setEditStatus(Number(parseEnumValue(team.status)));
+    setEditError('');
+    setIsEditOpen(true);
+  };
+
+  const handleEditTeam = async () => {
+    if (!selectedTeamId) return;
+    const trimmedName = editName.trim();
+    if (!trimmedName) {
+      setEditError('Tên đội ngũ là bắt buộc.');
+      return;
+    }
+    try {
+      setIsEditing(true);
+      setEditError('');
+      await updateTeam({
+        id: selectedTeamId,
+        data: {
+          name: trimmedName,
+          description: editDescription.trim(),
+          status: editStatus,
+          leaderId: '',
+        },
+      });
+      setIsEditOpen(false);
+      await refetch();
+      toast.success('Cập nhật đội ngũ thành công!');
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || 'Không thể cập nhật đội ngũ.';
+      setEditError(msg);
+      toast.error(msg);
+    } finally {
+      setIsEditing(false);
+    }
+  };
+
   return (
     <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -466,7 +510,7 @@ export default function CoordinatorTeamManagementPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Tong so nhom
+                  Tổng số nhóm
                 </p>
                 <p className="mt-3 text-3xl font-black text-foreground">{stats.total}</p>
               </div>
@@ -481,7 +525,7 @@ export default function CoordinatorTeamManagementPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Dang hoat dong
+                  Đang hoạt động
                 </p>
                 <p className="mt-3 text-3xl font-black text-emerald-600">{stats.active}</p>
               </div>
@@ -496,7 +540,7 @@ export default function CoordinatorTeamManagementPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Tinh nguyen vien
+                  Tình nguyện viên
                 </p>
                 <p className="mt-3 text-3xl font-black text-rose-600">{stats.members}</p>
               </div>
@@ -511,7 +555,7 @@ export default function CoordinatorTeamManagementPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Khu vuc
+                  Khu vực
                 </p>
                 <p className="mt-3 text-3xl font-black text-violet-600">{stats.areas}</p>
               </div>
@@ -530,9 +574,9 @@ export default function CoordinatorTeamManagementPage() {
               <div className="border-b border-border/70 px-5 pb-4 pt-5">
                 <div className="space-y-4">
                   <div className="space-y-1">
-                    <h2 className="text-xl font-black text-foreground">Danh sach nhom</h2>
+                    <h2 className="text-xl font-black text-foreground">Danh sách nhóm</h2>
                     <p className="text-xs text-muted-foreground">
-                      Hien thi 6 dong moi trang, co tim kiem va loc trang thai.
+                      Hiển thị 6 dòng mỗi trang, có tìm kiếm và lọc trạng thái.
                     </p>
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
@@ -542,7 +586,7 @@ export default function CoordinatorTeamManagementPage() {
                       </span>
                       <Input
                         className="h-11 border-border bg-background pl-10"
-                        placeholder="Tim ten nhom, khu vuc, truong nhom..."
+                        placeholder="Tìm tên nhóm, khu vực, trưởng nhóm..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                       />
@@ -552,13 +596,13 @@ export default function CoordinatorTeamManagementPage() {
                       onValueChange={(value: TeamStatusFilter) => setTeamStatusFilter(value)}
                     >
                       <SelectTrigger className="h-11 border-border bg-background">
-                        <SelectValue placeholder="Loc trang thai" />
+                        <SelectValue placeholder="Lọc trạng thái" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Tat ca trang thai</SelectItem>
-                        <SelectItem value="active">Dang hoat dong</SelectItem>
-                        <SelectItem value="idle">San sang</SelectItem>
-                        <SelectItem value="other">Khac</SelectItem>
+                        <SelectItem value="all">Tất cả trạng thái</SelectItem>
+                        <SelectItem value="active">Đang hoạt động</SelectItem>
+                        <SelectItem value="idle">Sẵn sàng</SelectItem>
+                        <SelectItem value="other">Khác</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -570,7 +614,7 @@ export default function CoordinatorTeamManagementPage() {
                       onClick={() => setTeamStatusFilter('all')}
                     >
                       <span className="material-symbols-outlined text-sm">apps</span>
-                      Tat ca
+                      Tất cả
                     </Button>
                     <Button
                       size="sm"
@@ -583,7 +627,7 @@ export default function CoordinatorTeamManagementPage() {
                       onClick={() => setTeamStatusFilter('active')}
                     >
                       <span className="material-symbols-outlined text-sm">bolt</span>
-                      Dang hoat dong
+                      Đang hoạt động
                     </Button>
                     <Button
                       size="sm"
@@ -594,7 +638,7 @@ export default function CoordinatorTeamManagementPage() {
                       <span className="material-symbols-outlined text-sm">
                         radio_button_checked
                       </span>
-                      San sang
+                      Sẵn sàng
                     </Button>
                     <Button
                       size="sm"
@@ -603,7 +647,7 @@ export default function CoordinatorTeamManagementPage() {
                       onClick={() => setTeamStatusFilter('other')}
                     >
                       <span className="material-symbols-outlined text-sm">tune</span>
-                      Khac
+                      Khác
                     </Button>
                   </div>
                 </div>
@@ -730,7 +774,14 @@ export default function CoordinatorTeamManagementPage() {
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                              <button className="text-muted-foreground hover:text-primary transition-colors">
+                              <button
+                                className="text-muted-foreground hover:text-primary transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedTeamId(team.id);
+                                  handleOpenEdit(team);
+                                }}
+                              >
                                 <span className="material-symbols-outlined">edit</span>
                               </button>
                             </td>
@@ -745,8 +796,8 @@ export default function CoordinatorTeamManagementPage() {
               <div className="border-t border-border/70 px-5 py-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <p className="text-xs text-muted-foreground">
-                    Trang {listPage}/{totalListPages} - Hien thi {paginatedTeams.length} /{' '}
-                    {filteredTeams.length} nhom.
+                    Trang {listPage}/{totalListPages} - Hiển thị {paginatedTeams.length} /{' '}
+                    {filteredTeams.length} nhóm.
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
@@ -757,7 +808,7 @@ export default function CoordinatorTeamManagementPage() {
                       onClick={() => setListPage((prev) => Math.max(1, prev - 1))}
                     >
                       <span className="material-symbols-outlined text-sm">chevron_left</span>
-                      Prev
+                      Trước
                     </Button>
                     {listPageItems.map((item, index) =>
                       item === 'ellipsis' ? (
@@ -786,11 +837,11 @@ export default function CoordinatorTeamManagementPage() {
                       disabled={listPage >= totalListPages}
                       onClick={() => setListPage((prev) => Math.min(totalListPages, prev + 1))}
                     >
-                      Next
+                      Sau
                       <span className="material-symbols-outlined text-sm">chevron_right</span>
                     </Button>
                     <div className="flex items-center gap-2 rounded-full border border-border px-2 py-1">
-                      <span className="text-xs text-muted-foreground">Toi trang</span>
+                      <span className="text-xs text-muted-foreground">Tới trang</span>
                       <Input
                         value={pageInput}
                         onChange={(e) => setPageInput(e.target.value.replace(/[^0-9]/g, ''))}
@@ -805,7 +856,7 @@ export default function CoordinatorTeamManagementPage() {
                         className="h-8 px-2"
                         onClick={handleJumpToPage}
                       >
-                        Di
+                        Đi
                       </Button>
                     </div>
                   </div>
@@ -842,7 +893,11 @@ export default function CoordinatorTeamManagementPage() {
                     >
                       <span className="material-symbols-outlined">campaign</span>
                     </button>
-                    <button className="p-2 text-muted-foreground hover:text-slate-900 dark:hover:text-foreground hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors">
+                    <button
+                      className="p-2 text-muted-foreground hover:text-slate-900 dark:hover:text-foreground hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors"
+                      onClick={() => selectedTeam && handleOpenEdit(selectedTeam)}
+                      title="Chỉnh sửa đội ngũ"
+                    >
                       <span className="material-symbols-outlined">edit</span>
                     </button>
                     <button className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
@@ -898,61 +953,73 @@ export default function CoordinatorTeamManagementPage() {
                     </Button>
                   </div>
 
-                  {selectedCampaignId ? (
-                    isLoadingAssignedCampaignTeams ? (
-                      <p className="text-sm text-muted-foreground">
-                        Đang tải phân công chiến dịch...
-                      </p>
-                    ) : assignedCampaignTeams.length === 0 ? (
+                  {/* Campaign viewer — pick any campaign and see its team list */}
+                  {availableCampaigns.length > 0 && (
+                    <Select value={viewCampaignId} onValueChange={setViewCampaignId}>
+                      <SelectTrigger className="h-9 text-xs">
+                        <SelectValue placeholder="Chọn chiến dịch để xem đội tham gia..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableCampaigns.map((c) => (
+                          <SelectItem key={c.campaignId} value={c.campaignId}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  {viewCampaignId ? (
+                    isLoadingViewCampaignTeams ? (
+                      <p className="text-sm text-muted-foreground">Đang tải...</p>
+                    ) : viewCampaignTeams.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
                         Chiến dịch này chưa có đội nào được gán.
                       </p>
                     ) : (
-                      <div className="space-y-3">
-                        {assignedCampaignTeams.map((assignment) => {
+                      <div className="space-y-2">
+                        {viewCampaignTeams.map((assignment) => {
                           const isCurrentTeam =
                             String(assignment.teamId) === String(selectedTeam.id);
                           return (
                             <div
                               key={assignment.campaignTeamId}
                               className={cn(
-                                'rounded-lg border p-3 space-y-3',
+                                'rounded-2xl border p-3 space-y-2',
                                 isCurrentTeam
                                   ? 'border-primary/40 bg-primary/5'
                                   : 'border-border bg-background',
                               )}
                             >
-                              <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start justify-between gap-2">
                                 <div>
-                                  <p className="font-medium text-foreground">
+                                  <p className="text-sm font-semibold text-foreground">
                                     {assignment.teamName}
                                   </p>
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Vai trò:{' '}
-                                    {CAMPAIGN_TEAM_ROLE_LABEL[assignment.role] || assignment.role}
-                                  </p>
                                   <p className="text-xs text-muted-foreground">
-                                    Thành viên: {assignment.memberCount}
+                                    {CAMPAIGN_TEAM_ROLE_LABEL[assignment.role] ||
+                                      `Vai trò #${assignment.role}`}
+                                    {' · '}
+                                    {assignment.memberCount} thành viên
                                   </p>
                                 </div>
-                                <span className="inline-flex items-center rounded-full border border-border px-2.5 py-1 text-xs font-medium text-foreground">
-                                  {CAMPAIGN_TEAM_STATUS_LABEL[assignment.status] ||
-                                    assignment.status}
+                                <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-foreground">
+                                  {CAMPAIGN_TEAM_STATUS_LABEL[assignment.status] ??
+                                    String(assignment.status)}
                                 </span>
                               </div>
-
-                              {isCurrentTeam && selectedCampaignId && (
-                                <div className="flex flex-wrap items-center gap-2">
+                              {isCurrentTeam && (
+                                <div className="flex flex-wrap gap-2">
                                   <Select
                                     onValueChange={(value) =>
                                       handleUpdateAssignedTeamStatus(
-                                        selectedCampaignId,
+                                        viewCampaignId,
                                         assignment.teamId,
                                         Number(value),
                                       )
                                     }
                                   >
-                                    <SelectTrigger className="w-[220px]">
+                                    <SelectTrigger className="h-8 w-auto min-w-[160px] text-xs">
                                       <SelectValue placeholder="Cập nhật trạng thái" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -968,12 +1035,9 @@ export default function CoordinatorTeamManagementPage() {
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    className="text-destructive"
+                                    className="text-xs text-destructive"
                                     onClick={() =>
-                                      handleRemoveAssignedTeam(
-                                        selectedCampaignId,
-                                        assignment.teamId,
-                                      )
+                                      handleRemoveAssignedTeam(viewCampaignId, assignment.teamId)
                                     }
                                     disabled={removeTeamFromCampaignStatus === 'pending'}
                                   >
@@ -988,7 +1052,7 @@ export default function CoordinatorTeamManagementPage() {
                     )
                   ) : (
                     <p className="text-sm text-muted-foreground">
-                      Chọn một chiến dịch trong hộp thoại gán để xem chi tiết phân công đội.
+                      Chọn chiến dịch phía trên để xem danh sách đội tham gia.
                     </p>
                   )}
                 </div>
@@ -1038,14 +1102,17 @@ export default function CoordinatorTeamManagementPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-slate-900 dark:text-foreground truncate">
                             {toDisplayText(
-                              member.displayName ?? member.fullName ?? member.name,
-                              'Không tên',
+                              member.volunteerName ??
+                                member.displayName ??
+                                member.fullName ??
+                                member.name,
+                              member.email || 'Không rõ tên',
                             )}
                           </p>
                           <p className="text-xs text-muted-foreground truncate">
                             {member.isLeader
-                              ? 'Leader'
-                              : member.roleName || member.role || 'Member'}
+                              ? '⭐ Trưởng nhóm'
+                              : member.roleName || member.role || 'Thành viên'}
                           </p>
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover/member:opacity-100 transition-opacity">
@@ -1229,12 +1296,17 @@ export default function CoordinatorTeamManagementPage() {
                     <div>
                       <p className="font-medium text-sm text-foreground">
                         {toDisplayText(
-                          member.displayName ?? member.fullName ?? member.name,
-                          'Không tên',
+                          member.volunteerName ??
+                            member.displayName ??
+                            member.fullName ??
+                            member.name,
+                          member.email || 'Không rõ tên',
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {member.isLeader ? 'Leader' : member.roleName || member.role || 'Member'}
+                        {member.isLeader
+                          ? '⭐ Trưởng nhóm'
+                          : member.roleName || member.role || 'Thành viên'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1246,7 +1318,7 @@ export default function CoordinatorTeamManagementPage() {
                           onClick={() => handlePromoteLeader(String(member.userId ?? member.id))}
                         >
                           <span className="material-symbols-outlined text-sm">military_tech</span>
-                          Promote Leader
+                          Đặt làm trưởng nhóm
                         </Button>
                       )}
                       <Button
@@ -1439,6 +1511,67 @@ export default function CoordinatorTeamManagementPage() {
               }
             >
               {assignTeamToCampaignStatus === 'pending' ? 'Đang gán...' : 'Gán đội vào chiến dịch'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit Team Dialog ── */}
+      <Dialog
+        open={isEditOpen}
+        onOpenChange={(open) => {
+          setIsEditOpen(open);
+          if (!open) setEditError('');
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa đội ngũ</DialogTitle>
+            <DialogDescription>Cập nhật tên, mô tả và trạng thái của đội ngũ.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Tên đội ngũ *</label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="VD: Đội hỗ trợ Quảng Bình"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Mô tả</label>
+              <Textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Mô tả vai trò hoặc khu vực phụ trách"
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Trạng thái</label>
+              <Select value={String(editStatus)} onValueChange={(v) => setEditStatus(Number(v))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn trạng thái" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Nháp</SelectItem>
+                  <SelectItem value="1">Đang hoạt động</SelectItem>
+                  <SelectItem value="2">Không hoạt động</SelectItem>
+                  <SelectItem value="3">Đình chỉ</SelectItem>
+                  <SelectItem value="4">Lưu trữ</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {editError ? <p className="text-sm text-red-500">{editError}</p> : null}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)} disabled={isEditing}>
+              Hủy
+            </Button>
+            <Button onClick={handleEditTeam} disabled={isEditing}>
+              {isEditing ? 'Đang lưu...' : 'Lưu thay đổi'}
             </Button>
           </DialogFooter>
         </DialogContent>
