@@ -92,6 +92,25 @@ const toDisplayText = (value: unknown, fallback = ''): string => {
   return fallback;
 };
 
+type TeamStatusFilter = 'all' | 'active' | 'idle' | 'other';
+
+const TEAM_PAGE_SIZE = 6;
+
+const buildPageItems = (currentPage: number, totalPages: number): Array<number | 'ellipsis'> => {
+  if (totalPages <= 1) return [1];
+  const pages = new Set<number>([1, totalPages, currentPage]);
+  if (currentPage > 1) pages.add(currentPage - 1);
+  if (currentPage < totalPages) pages.add(currentPage + 1);
+  const sorted = Array.from(pages).sort((a, b) => a - b);
+  const items: Array<number | 'ellipsis'> = [];
+  sorted.forEach((page, index) => {
+    const prev = sorted[index - 1];
+    if (prev && page - prev > 1) items.push('ellipsis');
+    items.push(page);
+  });
+  return items;
+};
+
 export default function CoordinatorTeamManagementPage() {
   const { station, isLoading: isLoadingStation } = useMyReliefStation();
   const reliefStationId = station?.reliefStationId;
@@ -115,6 +134,9 @@ export default function CoordinatorTeamManagementPage() {
 
   const [selectedTeamId, setSelectedTeamId] = useState<string>();
   const [searchTerm, setSearchTerm] = useState('');
+  const [teamStatusFilter, setTeamStatusFilter] = useState<TeamStatusFilter>('all');
+  const [listPage, setListPage] = useState(1);
+  const [pageInput, setPageInput] = useState('1');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
   const [isCampaignAssignmentOpen, setIsCampaignAssignmentOpen] = useState(false);
@@ -191,13 +213,23 @@ export default function CoordinatorTeamManagementPage() {
     useRemoveTeamFromCampaign();
 
   const filteredTeams = useMemo(() => {
-    return teams.filter(
-      (t) =>
+    return teams.filter((t) => {
+      const matchesSearch =
         t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (t.leader || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (t.area || '').toLowerCase().includes(searchTerm.toLowerCase()),
-    );
-  }, [searchTerm, teams]);
+        (t.area || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const statusValue = Number(parseEnumValue(t.status));
+      const matchesFilter =
+        teamStatusFilter === 'all'
+          ? true
+          : teamStatusFilter === 'active'
+            ? statusValue === 1
+            : teamStatusFilter === 'idle'
+              ? statusValue === 0
+              : statusValue !== 0 && statusValue !== 1;
+      return matchesSearch && matchesFilter;
+    });
+  }, [searchTerm, teamStatusFilter, teams]);
 
   const stats = {
     total: teams.length,
@@ -206,11 +238,41 @@ export default function CoordinatorTeamManagementPage() {
     areas: new Set(teams.map((t) => t.area).filter(Boolean)).size,
   };
 
+  const totalListPages = Math.max(1, Math.ceil(filteredTeams.length / TEAM_PAGE_SIZE));
+
+  useEffect(() => {
+    setListPage(1);
+  }, [searchTerm, teamStatusFilter]);
+
+  useEffect(() => {
+    if (listPage > totalListPages) setListPage(totalListPages);
+  }, [listPage, totalListPages]);
+
+  useEffect(() => {
+    setPageInput(String(listPage));
+  }, [listPage]);
+
+  const paginatedTeams = useMemo(() => {
+    const start = (listPage - 1) * TEAM_PAGE_SIZE;
+    return filteredTeams.slice(start, start + TEAM_PAGE_SIZE);
+  }, [filteredTeams, listPage]);
+
+  const listPageItems = buildPageItems(listPage, totalListPages);
+
   const getStatusBadge = (status: number | LegacyStatus) =>
     getTeamStatusClass(parseEnumValue(status));
 
   const getStatusLabel = (status: number | LegacyStatus) =>
-    TeamStatusLabel[parseEnumValue(status) as TeamStatus] ?? 'Không xác định';
+    TeamStatusLabel[parseEnumValue(status) as TeamStatus] ?? 'Khong xac dinh';
+
+  const handleJumpToPage = () => {
+    const nextPage = Number(pageInput);
+    if (!Number.isFinite(nextPage)) {
+      setPageInput(String(listPage));
+      return;
+    }
+    setListPage(Math.min(Math.max(1, Math.trunc(nextPage)), totalListPages));
+  };
 
   const resetCreateForm = () => {
     setName('');
@@ -359,15 +421,14 @@ export default function CoordinatorTeamManagementPage() {
 
   return (
     <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
-      {/* PAGE HEADER */}
-      <div className="flex flex-wrap justify-between items-end gap-4 mb-8">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-2">
           <h1 className="text-4xl text-primary font-black">Quản lý nhóm cứu trợ</h1>
           <p className="text-muted-foreground text-lg">
             Theo dõi và điều phối các đội tình nguyện tại các khu vực bị ảnh hưởng.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => {
               navigate('/portal/coordinator/volunteer-allocation');
@@ -394,7 +455,7 @@ export default function CoordinatorTeamManagementPage() {
                     }}
                     disabled={isLoadingStation}
                   >
-                    <span className="material-symbols-outlined">add</span>
+                    <span className="material-symbols-outlined">group_add</span>
                   </Button>
                 </span>
               </TooltipTrigger>
@@ -408,235 +469,364 @@ export default function CoordinatorTeamManagementPage() {
         </div>
       </div>
 
-      {/* STATS OVERVIEW */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Card className="bg-card dark:bg-card border-border hover:border-primary/50 transition-colors group">
-          <CardContent className="p-6 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <p className="text-muted-foreground dark:text-muted-foreground text-sm font-semibold uppercase tracking-wider">
-                Tổng số nhóm
-              </p>
-              <div className="size-8 rounded-full bg-blue-500/20 dark:bg-blue-500/30 flex items-center justify-center text-blue-400 group-hover:bg-blue-500 group-hover:text-white transition-all">
-                <span className="material-symbols-outlined text-lg">groups</span>
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="border-border bg-card">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Tong so nhom
+                </p>
+                <p className="mt-3 text-3xl font-black text-foreground">{stats.total}</p>
+              </div>
+              <div className="flex size-11 items-center justify-center rounded-2xl border border-sky-200 bg-sky-500/10 text-sky-600">
+                <span className="material-symbols-outlined">groups</span>
               </div>
             </div>
-            <p className="text-foreground dark:text-foreground text-4xl font-black">
-              {stats.total}
-            </p>
           </CardContent>
         </Card>
-        <Card className="bg-card dark:bg-card border-border hover:border-primary/50 transition-colors group relative overflow-hidden">
-          <div className="absolute right-10 top-6 p-4 opacity-10 ">
-            <span className="material-symbols-outlined text-6xl text-green-300 group-hover:text-green-500 transition-all">
-              check_circle
-            </span>
-          </div>
-          <CardContent className="p-6 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <p className="text-muted-foreground dark:text-muted-foreground text-sm font-semibold uppercase tracking-wider">
-                Đang hoạt động
-              </p>
-              <div className="size-8 rounded-full bg-green-500/20 dark:bg-green-500/30 flex items-center justify-center text-green-400 group-hover:bg-green-500 group-hover:text-white transition-all">
-                <span className="material-symbols-outlined text-lg">bolt</span>
+        <Card className="border-border bg-card">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Dang hoat dong
+                </p>
+                <p className="mt-3 text-3xl font-black text-emerald-600">{stats.active}</p>
+              </div>
+              <div className="flex size-11 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-500/10 text-emerald-600">
+                <span className="material-symbols-outlined">bolt</span>
               </div>
             </div>
-            <p className="text-foreground dark:text-foreground text-4xl font-black ">
-              {stats.active}
-            </p>
           </CardContent>
         </Card>
-        <Card className="bg-card dark:bg-card border-border hover:border-primary/50 transition-colors group">
-          <CardContent className="p-6 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <p className="text-muted-foreground dark:text-muted-foreground text-sm font-semibold uppercase tracking-wider">
-                Tình nguyện viên
-              </p>
-              <div className="size-8 rounded-full bg-red-500/20 dark:bg-red-500/30 flex items-center justify-center text-red-400 group-hover:bg-red-500 group-hover:text-white transition-all">
-                <span className="material-symbols-outlined text-lg">volunteer_activism</span>
+        <Card className="border-border bg-card">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Tinh nguyen vien
+                </p>
+                <p className="mt-3 text-3xl font-black text-rose-600">{stats.members}</p>
+              </div>
+              <div className="flex size-11 items-center justify-center rounded-2xl border border-rose-200 bg-rose-500/10 text-rose-600">
+                <span className="material-symbols-outlined">volunteer_activism</span>
               </div>
             </div>
-            <p className="text-foreground dark:text-foreground text-4xl font-black">
-              {stats.members}
-            </p>
           </CardContent>
         </Card>
-        <Card className="bg-card dark:bg-card border-border hover:border-primary/50 transition-colors group">
-          <CardContent className="p-6 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <p className="text-muted-foreground dark:text-muted-foreground text-sm font-semibold uppercase tracking-wider">
-                Khu vực
-              </p>
-              <div className="size-8 rounded-full bg-purple-500/20 dark:bg-purple-500/30 flex items-center justify-center text-purple-400 group-hover:bg-purple-500 group-hover:text-white transition-all">
-                <span className="material-symbols-outlined text-lg">location_on</span>
+        <Card className="border-border bg-card">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Khu vuc
+                </p>
+                <p className="mt-3 text-3xl font-black text-violet-600">{stats.areas}</p>
+              </div>
+              <div className="flex size-11 items-center justify-center rounded-2xl border border-violet-200 bg-violet-500/10 text-violet-600">
+                <span className="material-symbols-outlined">location_on</span>
               </div>
             </div>
-            <p className="text-foreground dark:text-foreground text-4xl font-black">
-              {stats.areas} Tỉnh/TP
-            </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* MAIN CONTENT SPLIT */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-22rem)]">
-        {/* LEFT: GROUP LIST (TABLE) */}
-        <div className="lg:col-span-2 flex flex-col gap-4 h-full">
-          {/* Search & Filter */}
-          <div className="flex gap-3">
-            <div className="relative flex-1">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-muted-foreground">
-                <span className="material-symbols-outlined">search</span>
-              </div>
-              <input
-                className="block w-full pl-10 pr-3 py-3 border border-slate-200 dark:border-border rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary sm:text-sm"
-                placeholder="Tìm nhóm theo tên, khu vực, trưởng nhóm..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <Button variant="outline" className="gap-2 h-auto">
-              <span className="material-symbols-outlined">filter_list</span>
-              Bộ lọc
-            </Button>
-          </div>
-
-          {!isLoading && !reliefStationId && (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 text-amber-800 dark:text-amber-300 px-4 py-3 text-sm flex items-start gap-2">
-              <span className="material-symbols-outlined text-amber-500 shrink-0 mt-0.5">
-                warning
-              </span>
-              <div>
-                <p className="font-semibold">Bạn chưa được phân vào trạm cứu trợ nào.</p>
-                <p className="text-amber-700 dark:text-amber-400 mt-0.5">
-                  Chức năng tạo đội ngũ bị vô hiệu. Đang hiển thị tất cả đội ngũ trong hệ thống (chỉ
-                  đọc).
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Table */}
-          <div className="flex-1 overflow-auto rounded-xl border border-border bg-card dark:bg-card custom-scrollbar">
-            {isLoading ? (
-              <div className="p-4 space-y-3">
-                {[1, 2, 3, 4, 5].map((k) => (
-                  <Skeleton key={k} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : filteredTeams.length === 0 ? (
-              <div className="h-full min-h-[320px] flex flex-col items-center justify-center gap-3 text-center p-6">
-                <span className="material-symbols-outlined text-5xl text-muted-foreground">
-                  {searchTerm ? 'search_off' : 'groups'}
-                </span>
-                <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
-                  {searchTerm
-                    ? 'Không tìm thấy đội ngũ phù hợp'
-                    : teams.length === 0
-                      ? 'Chưa có đội ngũ nào'
-                      : 'Không có kết quả'}
-                </p>
-                <p className="text-sm text-muted-foreground max-w-md">
-                  {searchTerm
-                    ? 'Thử thay đổi từ khóa tìm kiếm.'
-                    : reliefStationId
-                      ? 'Hãy tạo đội ngũ đầu tiên để bắt đầu quản lý và phân công tình nguyện viên.'
-                      : 'Liên hệ quản lý để được phân vào trạm, sau đó có thể tạo đội ngũ.'}
-                </p>
-                {!searchTerm && reliefStationId && (
-                  <Button className="gap-2" onClick={() => setIsCreateOpen(true)}>
-                    <span className="material-symbols-outlined">add</span>
-                    Tạo đội ngũ mới
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <table className="w-full text-left border-collapse">
-                <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900 z-10">
-                  <tr className="border-b border-slate-200 dark:border-border">
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      Tên nhóm
-                    </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      Khu vực
-                    </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      Trưởng nhóm
-                    </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      Thành viên
-                    </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      Trạng thái
-                    </th>
-                    <th className="px-6 py-4"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 dark:divide-border-dark">
-                  {filteredTeams.map((team) => (
-                    <tr
-                      key={team.id}
-                      onClick={() => setSelectedTeamId(team.id)}
-                      className={cn(
-                        'cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-muted',
-                        selectedTeamId === team.id ? 'bg-primary/10' : '',
-                      )}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(340px,0.9fr)]">
+        <div className="flex min-h-[560px] flex-col gap-4">
+          <Card className="overflow-hidden rounded-2xl border-border bg-card">
+            <CardContent className="flex h-full flex-col p-0">
+              <div className="border-b border-border/70 px-5 pb-4 pt-5">
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <h2 className="text-xl font-black text-foreground">Danh sach nhom</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Hien thi 6 dong moi trang, co tim kiem va loc trang thai.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
+                    <div className="relative">
+                      <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-muted-foreground">
+                        search
+                      </span>
+                      <Input
+                        className="h-11 border-border bg-background pl-10"
+                        placeholder="Tim ten nhom, khu vuc, truong nhom..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                    </div>
+                    <Select
+                      value={teamStatusFilter}
+                      onValueChange={(value: TeamStatusFilter) => setTeamStatusFilter(value)}
                     >
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div
+                      <SelectTrigger className="h-11 border-border bg-background">
+                        <SelectValue placeholder="Loc trang thai" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tat ca trang thai</SelectItem>
+                        <SelectItem value="active">Dang hoat dong</SelectItem>
+                        <SelectItem value="idle">San sang</SelectItem>
+                        <SelectItem value="other">Khac</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant={teamStatusFilter === 'all' ? 'primary' : 'outline'}
+                      className="rounded-full"
+                      onClick={() => setTeamStatusFilter('all')}
+                    >
+                      <span className="material-symbols-outlined text-sm">apps</span>
+                      Tat ca
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={teamStatusFilter === 'active' ? 'primary' : 'outline'}
+                      className={cn(
+                        'rounded-full',
+                        teamStatusFilter === 'active' &&
+                          'border-emerald-300 bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/20',
+                      )}
+                      onClick={() => setTeamStatusFilter('active')}
+                    >
+                      <span className="material-symbols-outlined text-sm">bolt</span>
+                      Dang hoat dong
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={teamStatusFilter === 'idle' ? 'primary' : 'outline'}
+                      className="rounded-full"
+                      onClick={() => setTeamStatusFilter('idle')}
+                    >
+                      <span className="material-symbols-outlined text-sm">
+                        radio_button_checked
+                      </span>
+                      San sang
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={teamStatusFilter === 'other' ? 'primary' : 'outline'}
+                      className="rounded-full"
+                      onClick={() => setTeamStatusFilter('other')}
+                    >
+                      <span className="material-symbols-outlined text-sm">tune</span>
+                      Khac
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {!isLoading && !reliefStationId && (
+                <div className="mx-5 mt-5 flex items-start gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                  <span className="material-symbols-outlined text-amber-500 shrink-0 mt-0.5">
+                    warning
+                  </span>
+                  <div>
+                    <p className="font-semibold">Bạn chưa được phân vào trạm cứu trợ nào.</p>
+                    <p className="text-amber-700 dark:text-amber-400 mt-0.5">
+                      Chức năng tạo đội ngũ bị vô hiệu. Đang hiển thị tất cả đội ngũ trong hệ thống
+                      (chỉ đọc).
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex-1 overflow-auto px-4 py-4 custom-scrollbar">
+                {isLoading ? (
+                  <div className="space-y-3 p-4">
+                    {[1, 2, 3, 4, 5, 6].map((k) => (
+                      <Skeleton key={k} className="h-12 w-full rounded-2xl" />
+                    ))}
+                  </div>
+                ) : filteredTeams.length === 0 ? (
+                  <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-muted/10 p-6 text-center">
+                    <span className="material-symbols-outlined text-5xl text-muted-foreground">
+                      {searchTerm ? 'search_off' : 'groups'}
+                    </span>
+                    <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
+                      {searchTerm
+                        ? 'Không tìm thấy đội ngũ phù hợp'
+                        : teams.length === 0
+                          ? 'Chưa có đội ngũ nào'
+                          : 'Không có kết quả'}
+                    </p>
+                    <p className="text-sm text-muted-foreground max-w-md">
+                      {searchTerm
+                        ? 'Thử thay đổi từ khóa tìm kiếm.'
+                        : reliefStationId
+                          ? 'Hãy tạo đội ngũ đầu tiên để bắt đầu quản lý và phân công tình nguyện viên.'
+                          : 'Liên hệ quản lý để được phân vào trạm, sau đó có thể tạo đội ngũ.'}
+                    </p>
+                    {!searchTerm && reliefStationId && (
+                      <Button className="gap-2" onClick={() => setIsCreateOpen(true)}>
+                        <span className="material-symbols-outlined">add</span>
+                        Tạo đội ngũ mới
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-2xl border border-border">
+                    <table className="min-w-[760px] w-full border-collapse text-left">
+                      <thead className="sticky top-0 z-10 bg-muted/40 backdrop-blur">
+                        <tr className="border-b border-slate-200 dark:border-border">
+                          <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Tên nhóm
+                          </th>
+                          <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Khu vực
+                          </th>
+                          <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Trưởng nhóm
+                          </th>
+                          <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Thành viên
+                          </th>
+                          <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Trạng thái
+                          </th>
+                          <th className="px-6 py-4"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 dark:divide-border-dark">
+                        {paginatedTeams.map((team) => (
+                          <tr
+                            key={team.id}
+                            onClick={() => setSelectedTeamId(team.id)}
                             className={cn(
-                              'size-2 rounded-full mr-3',
-                              selectedTeamId === team.id ? 'bg-primary' : 'bg-transparent',
-                            )}
-                          ></div>
-                          <span
-                            className={cn(
-                              'text-sm font-bold',
-                              selectedTeamId === team.id
-                                ? 'text-primary'
-                                : 'text-slate-900 dark:text-foreground',
+                              'cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-muted',
+                              selectedTeamId === team.id ? 'bg-primary/10' : '',
                             )}
                           >
-                            {team.name || 'Chưa đặt tên'}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                        {team.area || 'Chưa cập nhật'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-foreground">
-                        {team.leader || 'Chưa phân công'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                        {team.members || 0} người
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div
+                                  className={cn(
+                                    'size-2 rounded-full mr-3',
+                                    selectedTeamId === team.id ? 'bg-primary' : 'bg-transparent',
+                                  )}
+                                ></div>
+                                <span
+                                  className={cn(
+                                    'text-sm font-bold',
+                                    selectedTeamId === team.id
+                                      ? 'text-primary'
+                                      : 'text-slate-900 dark:text-foreground',
+                                  )}
+                                >
+                                  {team.name || 'Chưa đặt tên'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                              {team.area || 'Chưa cập nhật'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-foreground">
+                              {team.leader || 'Chưa phân công'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                              {team.members || 0} người
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span
+                                className={cn(
+                                  'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+                                  getStatusBadge(team.status),
+                                )}
+                              >
+                                {getStatusLabel(team.status)}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                              <button className="text-muted-foreground hover:text-primary transition-colors">
+                                <span className="material-symbols-outlined">edit</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-border/70 px-5 py-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    Trang {listPage}/{totalListPages} - Hien thi {paginatedTeams.length} /{' '}
+                    {filteredTeams.length} nhom.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1"
+                      disabled={listPage <= 1}
+                      onClick={() => setListPage((prev) => Math.max(1, prev - 1))}
+                    >
+                      <span className="material-symbols-outlined text-sm">chevron_left</span>
+                      Prev
+                    </Button>
+                    {listPageItems.map((item, index) =>
+                      item === 'ellipsis' ? (
                         <span
-                          className={cn(
-                            'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-                            getStatusBadge(team.status),
-                          )}
+                          key={`ellipsis-${index}`}
+                          className="px-1 text-sm text-muted-foreground"
                         >
-                          {getStatusLabel(team.status)}
+                          ...
                         </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button className="text-muted-foreground hover:text-primary transition-colors">
-                          <span className="material-symbols-outlined">edit</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+                      ) : (
+                        <Button
+                          key={item}
+                          size="sm"
+                          variant={item === listPage ? 'primary' : 'outline'}
+                          className="min-w-9"
+                          onClick={() => setListPage(item)}
+                        >
+                          {item}
+                        </Button>
+                      ),
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1"
+                      disabled={listPage >= totalListPages}
+                      onClick={() => setListPage((prev) => Math.min(totalListPages, prev + 1))}
+                    >
+                      Next
+                      <span className="material-symbols-outlined text-sm">chevron_right</span>
+                    </Button>
+                    <div className="flex items-center gap-2 rounded-full border border-border px-2 py-1">
+                      <span className="text-xs text-muted-foreground">Toi trang</span>
+                      <Input
+                        value={pageInput}
+                        onChange={(e) => setPageInput(e.target.value.replace(/[^0-9]/g, ''))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleJumpToPage();
+                        }}
+                        className="h-8 w-14 border-0 px-2 text-center shadow-none focus-visible:ring-0"
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 px-2"
+                        onClick={handleJumpToPage}
+                      >
+                        Di
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* RIGHT: DETAIL PANEL */}
-        <div className="lg:col-span-1 flex flex-col h-full gap-4">
+        <div className="flex min-h-[560px] flex-col gap-4">
           {selectedTeam ? (
-            <div className="rounded-xl border border-border bg-card dark:bg-card flex flex-col h-full overflow-hidden shadow-lg">
+            <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
               {/* Header */}
               <div className="p-6 border-b border-slate-200 dark:border-border shrink-0">
                 <div className="flex justify-between items-start mb-4">
@@ -692,7 +882,7 @@ export default function CoordinatorTeamManagementPage() {
                 <p className="mt-4 text-sm text-muted-foreground">
                   {selectedTeam.description?.trim() || 'Chưa có mô tả cho đội ngũ này.'}
                 </p>
-                <div className="mt-4 rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                <div className="mt-4 rounded-2xl border border-border bg-muted/20 p-4 space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-foreground">
@@ -812,7 +1002,7 @@ export default function CoordinatorTeamManagementPage() {
                   )}
                 </div>
                 {/* Mini Map Preview Placeholder */}
-                <div className="mt-4 w-full h-32 rounded-lg bg-slate-100 dark:bg-background relative flex items-center justify-center border border-slate-200 dark:border-border group cursor-pointer">
+                <div className="relative mt-4 flex h-32 w-full items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 dark:border-border dark:bg-background group cursor-pointer">
                   <div
                     className="absolute inset-0 bg-cover bg-center opacity-50 group-hover:opacity-75 transition-opacity"
                     style={{
@@ -902,7 +1092,7 @@ export default function CoordinatorTeamManagementPage() {
               </div>
 
               {/* Footer Action */}
-              <div className="p-4 border-t border-slate-200 dark:border-border bg-slate-50 dark:bg-background">
+              <div className="border-t border-slate-200 bg-slate-50 p-4 dark:border-border dark:bg-background">
                 <Button
                   variant="outline"
                   className="w-full gap-2 border-dashed bg-transparent hover:bg-slate-200 dark:hover:bg-white/5 text-slate-900 dark:text-foreground"
@@ -914,7 +1104,7 @@ export default function CoordinatorTeamManagementPage() {
               </div>
             </div>
           ) : (
-            <div className="rounded-xl border border-border bg-card dark:bg-card flex items-center justify-center h-full text-muted-foreground">
+            <div className="flex h-full items-center justify-center rounded-2xl border border-border bg-card text-muted-foreground">
               Chọn một nhóm để xem chi tiết
             </div>
           )}
