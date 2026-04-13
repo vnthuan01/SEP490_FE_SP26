@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { coordinatorNavGroups } from './components/sidebarConfig';
 import {
   VerificationStatus,
   VerificationStatusLabel,
@@ -243,7 +243,7 @@ export default function CoordinatorVolunteerRequestPage() {
   };
 
   return (
-    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+    <DashboardLayout navGroups={coordinatorNavGroups}>
       <div className="space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="space-y-2">

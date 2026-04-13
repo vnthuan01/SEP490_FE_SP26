@@ -34,7 +34,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { useUnassignedVolunteers } from '@/hooks/useVolunteerProfiles';
-import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { coordinatorNavGroups } from './components/sidebarConfig';
 import { toast } from 'sonner';
 import type { TeamStatus } from '@/enums/beEnums';
 import {
@@ -465,7 +465,7 @@ export default function CoordinatorTeamManagementPage() {
   };
 
   return (
-    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+    <DashboardLayout navGroups={coordinatorNavGroups}>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-2">
           <h1 className="text-4xl text-primary font-black">Quản lý nhóm cứu trợ</h1>

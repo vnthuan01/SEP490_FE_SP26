@@ -14,7 +14,7 @@ import {
   type TeamLocationDto,
 } from '@/services/rescueRequestService';
 import { teamService, type TeamTrackingPoint } from '@/services/teamService';
-import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { coordinatorNavGroups } from './components/sidebarConfig';
 import { getDisasterTypeLabel, getRescueRequestTypeLabel } from '@/enums/beEnums';
 import { getDirections } from '@/services/goongService';
 
@@ -709,7 +709,7 @@ export default function MissionTrackingPage() {
   };
 
   return (
-    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+    <DashboardLayout navGroups={coordinatorNavGroups}>
       <div className="space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="space-y-2">

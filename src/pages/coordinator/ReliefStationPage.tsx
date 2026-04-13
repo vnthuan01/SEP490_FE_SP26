@@ -18,7 +18,7 @@ import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { useGoongMap } from '@/hooks/useGoongMap';
 import { campaignService, type Campaign, type CampaignSummary } from '@/services/campaignService';
 import type { ReliefStationResponse } from '@/services/reliefStationService';
-import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { coordinatorNavGroups } from './components/sidebarConfig';
 import { cn } from '@/lib/utils';
 import {
   CampaignStatus,
@@ -691,7 +691,7 @@ export default function ReliefStationPage() {
     isLoadingCampaignSummaries || campaignDetailQueries.some((query) => query.isLoading);
 
   return (
-    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+    <DashboardLayout navGroups={coordinatorNavGroups}>
       <div className="space-y-6">
         <div className="mb-2">
           <h1 className="text-3xl md:text-4xl font-black text-primary leading-tight">

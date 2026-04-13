@@ -34,7 +34,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useVehicles, useVehicleTypes } from '@/hooks/useVehicles';
-import { managerNavItems, managerProjects } from './components/sidebarConfig';
+import { managerNavGroups } from './components/sidebarConfig';
 import { toast } from 'sonner';
 import { formatNumberVN } from '@/lib/utils';
 
@@ -184,7 +184,7 @@ export default function ManagerVehicleManagementPage() {
   };
 
   return (
-    <DashboardLayout projects={managerProjects} navItems={managerNavItems}>
+    <DashboardLayout navGroups={managerNavGroups}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>

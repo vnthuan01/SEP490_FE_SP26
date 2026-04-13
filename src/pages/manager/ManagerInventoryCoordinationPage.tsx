@@ -48,7 +48,7 @@ import {
   useSupplyTransfersByDestinationStation,
   useSupplyTransfersBySourceStation,
 } from '@/hooks/useSupplyTransfers';
-import { managerNavItems, managerProjects } from './components/sidebarConfig';
+import { managerNavGroups } from './components/sidebarConfig';
 import {
   ManagerTransactionHistoryDialog,
   ManagerTransferHistoryDialog,
@@ -1123,7 +1123,7 @@ export default function ManagerInventoryCoordinationPage() {
   };
 
   return (
-    <DashboardLayout projects={managerProjects} navItems={managerNavItems}>
+    <DashboardLayout navGroups={managerNavGroups}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>

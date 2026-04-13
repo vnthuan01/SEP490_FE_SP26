@@ -14,7 +14,7 @@ import { LocationList } from './components/LocationList';
 import { ReliefMap } from './components/ReliefMap';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { LocationDetailSheet } from './components/LocationDetailSheet';
-import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { coordinatorNavGroups } from './components/sidebarConfig';
 import { Skeleton } from '@/components/ui/skeleton';
 
 // ── API hooks ──
@@ -306,7 +306,7 @@ export default function CoordinatorTeamAllocationPage() {
   // ── loading state ──
   if (!GOONG_MAP_KEY) {
     return (
-      <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+      <DashboardLayout navGroups={coordinatorNavGroups}>
         <div className="flex items-center justify-center h-[calc(100vh-64px)]">
           <Card className="p-6">
             <CardContent className="text-center space-y-4">
@@ -437,7 +437,7 @@ export default function CoordinatorTeamAllocationPage() {
 
   // ── Normal mode with sidebar (same layout as original) ──
   return (
-    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+    <DashboardLayout navGroups={coordinatorNavGroups}>
       <div className="h-[calc(100vh-64px)] flex flex-col overflow-hidden">
         <FilterBar
           search={search}

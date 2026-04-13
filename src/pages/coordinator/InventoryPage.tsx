@@ -24,7 +24,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { CampaignAllocationDialog } from './components/CampaignAllocationDialog';
 import type { ExportItem } from '@/types/exportInventory';
 import { CreateInventoryItemDialog } from './components/CreateItem';
-import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { coordinatorNavGroups } from './components/sidebarConfig';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import {
   useAddStock,
@@ -1120,7 +1120,7 @@ export default function CoordinatorInventoryPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+    <DashboardLayout navGroups={coordinatorNavGroups}>
       <div>
         <div className="flex flex-col gap-1 mb-2">
           <h1 className="text-4xl text-primary font-black">Quản lý Kho Vật tư</h1>

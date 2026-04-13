@@ -4,7 +4,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { teamsData, volunteerRequestsData } from './components/mockData';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { coordinatorNavGroups } from './components/sidebarConfig';
 // import { Team, VolunteerRequest } from './components/types';
 
 // Mock data extension for the allocation page
@@ -61,7 +61,7 @@ export default function VolunteerAllocationPage() {
   };
 
   return (
-    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+    <DashboardLayout navGroups={coordinatorNavGroups}>
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between gap-6 mb-8 px-2">
         <div className="flex flex-col gap-2">

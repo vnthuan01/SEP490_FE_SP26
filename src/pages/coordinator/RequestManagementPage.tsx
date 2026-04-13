@@ -19,7 +19,7 @@ import { useRescueRequestManagement } from '@/hooks/useRescueRequestManagement';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import type { RescueRequestItem } from '@/services/rescueRequestService';
 import { getDirections } from '@/services/goongService';
-import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { coordinatorNavGroups } from './components/sidebarConfig';
 import { toast } from 'sonner';
 import {
   getDisasterTypeLabel,
@@ -706,7 +706,7 @@ export default function CoordinatorRequestManagementPage() {
   const listPageItems = buildPageItems(listPage, totalListPages);
 
   return (
-    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+    <DashboardLayout navGroups={coordinatorNavGroups}>
       <div className="space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="space-y-2">

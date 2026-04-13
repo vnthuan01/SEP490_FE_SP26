@@ -80,7 +80,7 @@ import type {
 } from '@/services/campaignService';
 import { campaignService } from '@/services/campaignService';
 import { toast } from 'sonner';
-import { managerNavItems, managerProjects } from './components/sidebarConfig';
+import { managerNavGroups } from './components/sidebarConfig';
 import { formatNumberInputVN, formatNumberVN, normalizeNumberInput } from '@/lib/utils';
 import {
   CampaignCompletionRule,
@@ -652,7 +652,7 @@ export default function ManagerCampaignPage() {
   );
 
   return (
-    <DashboardLayout projects={managerProjects} navItems={managerNavItems}>
+    <DashboardLayout navGroups={managerNavGroups}>
       <div className="flex flex-col gap-6 w-full max-w-full relative">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
