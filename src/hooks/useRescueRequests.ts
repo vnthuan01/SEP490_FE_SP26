@@ -17,7 +17,7 @@ export function useRescueRequests(options: UseRescueRequestsOptions = {}) {
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: RESCUE_REQUEST_QUERY_KEYS.list(pageNumber, pageSize, statusFilter),
-    queryFn: () => rescueRequestService.getRequests(statusFilter, pageNumber, pageSize),
+    queryFn: () => rescueRequestService.getMyStationRequests(statusFilter, pageNumber, pageSize),
   });
 
   return {

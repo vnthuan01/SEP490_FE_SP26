@@ -23,7 +23,7 @@ export function useRescueRequestManagement(pageNumber = 1, pageSize = 10) {
     queryKey: RESCUE_REQUEST_MANAGEMENT_QUERY_KEYS.list(pageNumber, pageSize),
     queryFn: async () => {
       // Lấy toàn bộ request rồi sắp xếp: Emergency trước, sau đó đến các request còn lại theo priority giảm dần
-      const res = await rescueRequestService.getRequests(undefined, pageNumber, pageSize);
+      const res = await rescueRequestService.getMyStationRequests(undefined, pageNumber, pageSize);
       const sortedItems = [...(res.items || [])].sort((a, b) => {
         const emergencyOrder =
           Number(isEmergencyType(b.rescueRequestType)) -

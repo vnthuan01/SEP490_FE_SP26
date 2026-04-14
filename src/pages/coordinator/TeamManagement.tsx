@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useNavigate } from 'react-router-dom';
 import { useTeamMembers, useTeams, useTeamsInStation } from '@/hooks/useTeams';
+import { VerificationStatus } from '@/enums/beEnums';
 import {
   useAssignTeamToCampaign,
   useCampaignSummary,

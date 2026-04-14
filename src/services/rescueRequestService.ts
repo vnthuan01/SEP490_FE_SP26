@@ -327,6 +327,23 @@ export const rescueRequestService = {
     return normalizeRescueRequestListResponse(response.data);
   },
 
+  /** GET /api/RescueRequest/my-station — chỉ lấy request của trạm moderator đang đăng nhập */
+  getMyStationRequests: async (
+    statusFilter?: number,
+    pageNumber = 1,
+    pageSize = 10,
+    extraParams?: Record<string, unknown>,
+  ) => {
+    const params: Record<string, unknown> = { pageNumber, pageSize, ...extraParams };
+    if (typeof statusFilter === 'number') {
+      params.statusFilter = statusFilter;
+    }
+
+    const response = await apiClient.get('/RescueRequest/my-station', { params });
+
+    return normalizeRescueRequestListResponse(response.data);
+  },
+
   getDispatchCandidates: async (teamId: string, pageNumber = 1, pageSize = 20, search?: string) => {
     const response = await apiClient.get('/RescueRequest/dispatch-candidates', {
       params: { teamId, pageNumber, pageSize, search: search || undefined },

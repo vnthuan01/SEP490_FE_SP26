@@ -305,7 +305,7 @@ export default function MissionTrackingPage() {
   const loadList = useCallback(async () => {
     try {
       setIsListError(false);
-      const result = await rescueRequestService.getRequests(statusFilter, 1, 50);
+      const result = await rescueRequestService.getMyStationRequests(statusFilter, 1, 50);
       setRequests(result.items as RescueRequestDetail[]);
     } catch {
       setIsListError(true);
