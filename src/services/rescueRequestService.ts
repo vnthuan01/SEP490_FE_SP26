@@ -48,6 +48,7 @@ export interface RescueRequestItem {
   weatherWindKph?: number | null;
   weatherPrecipMm?: number | null;
   weatherVisibilityKm?: number | null;
+  weatherHumidity?: number | null;
   weatherRiskScore?: number | null;
   weatherRiskLevel?: string | null;
   weatherObservedAt?: string | null;
@@ -101,6 +102,14 @@ export interface RescueRequestPaging {
 export interface RescueRequestListResult {
   items: RescueRequestItem[];
   paging: RescueRequestPaging | null;
+}
+
+export interface RescueRequestListQueryParams {
+  statusFilter?: number;
+  verificationStatus?: number;
+  pageNumber?: number;
+  pageSize?: number;
+  search?: string;
 }
 
 export interface DispatchCandidateItem {
@@ -317,13 +326,36 @@ export interface CompleteOperationPayload {
 
 export const rescueRequestService = {
   getRequests: async (statusFilter: number | undefined, pageNumber = 1, pageSize = 10) => {
-    const params: Record<string, number> = { pageNumber, pageSize };
+    const params: RescueRequestListQueryParams = { pageNumber, pageSize };
     if (typeof statusFilter === 'number') {
       params.statusFilter = statusFilter;
     }
 
     const response = await apiClient.get('/RescueRequest', { params });
 
+    return normalizeRescueRequestListResponse(response.data);
+  },
+
+  getMyStationRequests: async ({
+    statusFilter,
+    verificationStatus,
+    pageNumber = 1,
+    pageSize = 10,
+    search,
+  }: RescueRequestListQueryParams = {}) => {
+    const params: RescueRequestListQueryParams = { pageNumber, pageSize };
+
+    if (typeof statusFilter === 'number') {
+      params.statusFilter = statusFilter;
+    }
+    if (typeof verificationStatus === 'number') {
+      params.verificationStatus = verificationStatus;
+    }
+    if (search && search.trim()) {
+      params.search = search.trim();
+    }
+
+    const response = await apiClient.get('/RescueRequest/my-station', { params });
     return normalizeRescueRequestListResponse(response.data);
   },
 
