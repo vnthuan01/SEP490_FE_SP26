@@ -139,6 +139,7 @@ export default function CoordinatorTeamAllocationPage() {
     pageNumber: 1,
     pageSize: 200,
     statusFilter: 1, // Verified
+    scope: 'my-station',
   });
   const { teams: apiTeams } = useTeamsInStation(station?.reliefStationId);
   const firstTeamId = apiTeams?.[0]?.teamId;

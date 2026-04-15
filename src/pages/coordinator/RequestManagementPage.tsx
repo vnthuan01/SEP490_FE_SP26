@@ -12,6 +12,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { cn, formatVietnamesePhoneNumber } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CoordinatorListPagination } from './components/CoordinatorListPagination';
@@ -31,7 +40,7 @@ import {
   VerificationMethodLabel,
   getPriorityLevelLabel,
 } from '@/enums/beEnums';
-
+import * as React from 'react';
 const verificationStatusText = (status?: number | string | null) =>
   getVerificationStatusLabel(status);
 
@@ -53,12 +62,126 @@ const getRequestId = (req: RescueRequestItem) =>
 
 const getVerification = (req?: RescueRequestItem) => req?.verifications?.[0];
 
+type FilterChipProps = {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+  icon?: string;
+};
+
+const FilterChip = ({ active, children, onClick, icon }: FilterChipProps) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={cn(
+      'inline-flex h-10 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-medium whitespace-nowrap transition-colors',
+      active
+        ? 'border-blue-200 bg-blue-50 text-blue-600'
+        : 'border-gray-300 bg-white text-gray-700 hover:border-blue-200 hover:bg-blue-50/60 hover:text-blue-600',
+    )}
+  >
+    {icon ? <span className="material-symbols-outlined text-[18px]">{icon}</span> : null}
+    {children}
+  </button>
+);
+
+const isEmergencyRescueRequest = (type?: string | number | null) => {
+  if (type == null) return false;
+  if (typeof type === 'number') return type === 1;
+  const normalized = type.trim().toLowerCase();
+  return normalized === '1' || normalized === 'emergency';
+};
+
+const isNormalRescueRequest = (type?: string | number | null) => {
+  if (type == null) return false;
+  if (typeof type === 'number') return type === 0;
+  const normalized = type.trim().toLowerCase();
+  return normalized === '0' || normalized === 'normal';
+};
+
 const formatKm = (value?: number | null) => (value == null ? '-- km' : `${value.toFixed(2)} km`);
 const formatMin = (value?: number | null) => (value == null ? '-- phút' : `${value} phút`);
 const formatMeters = (value?: number | null) =>
   value == null ? '-- m' : `${value.toLocaleString('vi-VN')} m`;
 const formatSeconds = (value?: number | null) =>
   value == null ? '-- giây' : `${value.toLocaleString('vi-VN')} giây`;
+
+const getWeatherConditionLabel = (value?: string | null) => {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+
+  const map: Record<string, string> = {
+    sunny: 'Nắng',
+    clear: 'Trời quang',
+    partlycloudy: 'Ít mây',
+    partly_cloudy: 'Ít mây',
+    cloudy: 'Nhiều mây',
+    overcast: 'U ám',
+    mist: 'Sương mù nhẹ',
+    fog: 'Sương mù',
+    rain: 'Mưa',
+    lightrain: 'Mưa nhẹ',
+    light_rain: 'Mưa nhẹ',
+    moderaterain: 'Mưa vừa',
+    moderate_rain: 'Mưa vừa',
+    heavyrain: 'Mưa to',
+    heavy_rain: 'Mưa to',
+    thunderstorm: 'Dông',
+    snow: 'Tuyết',
+    windy: 'Nhiều gió',
+  };
+
+  return map[normalized] || value || 'Không rõ';
+};
+
+const getWeatherRiskLevelLabel = (value?: string | null) => {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+
+  const map: Record<string, string> = {
+    low: 'Thấp',
+    medium: 'Trung bình',
+    high: 'Cao',
+    veryhigh: 'Rất cao',
+    very_high: 'Rất cao',
+    critical: 'Nguy kịch',
+    extreme: 'Cực cao',
+  };
+
+  return map[normalized] || value || 'Không rõ';
+};
+
+const getPriorityBucket = (value?: string | number | null): 'critical' | 'high' | 'other' => {
+  const label = getPriorityLevelLabel(value).toLowerCase();
+  if (label === 'khẩn cấp') return 'critical';
+  if (label === 'cao') return 'high';
+  return 'other';
+};
+
+const isWithinCreatedDateFilter = (
+  createdAt?: string | null,
+  filter?: 'all' | 'today' | '7d' | '30d',
+) => {
+  if (!filter || filter === 'all') return true;
+  if (!createdAt) return false;
+
+  const createdDate = new Date(createdAt);
+  if (Number.isNaN(createdDate.getTime())) return false;
+
+  const now = new Date();
+  if (filter === 'today') {
+    return createdDate.toDateString() === now.toDateString();
+  }
+
+  const diffMs = now.getTime() - createdDate.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+  if (filter === '7d') return diffDays <= 7;
+  if (filter === '30d') return diffDays <= 30;
+  return true;
+};
 
 const getDisasterTypeBadge = (type?: string | number | null): { cls: string; icon: string } => {
   const t = String(type ?? '');
@@ -126,9 +249,13 @@ export default function CoordinatorRequestManagementPage() {
   const { station } = useMyReliefStation();
 
   const [search, setSearch] = useState('');
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [verificationFilter, setVerificationFilter] = useState<
     'all' | 'pending' | 'approved' | 'rejected'
   >('all');
+  const [rescueTypeFilter, setRescueTypeFilter] = useState<'all' | 'normal' | 'emergency'>('all');
+  const [createdDateFilter, setCreatedDateFilter] = useState<'all' | 'today' | '7d' | '30d'>('all');
+  const [priorityFilter, setPriorityFilter] = useState<'all' | 'critical' | 'high'>('all');
   const [selectedId, setSelectedId] = useState('');
   // listPageState tracks { key: filterKey, page } — changing filters resets page to 1
   const [listPageState, setListPageState] = useState<{ key: string; page: number }>({
@@ -168,9 +295,26 @@ export default function CoordinatorRequestManagementPage() {
         (r.description || '').toLowerCase().includes(term) ||
         (r.disasterType || '').toLowerCase().includes(term);
 
-      return matchStatus && matchSearch;
+      const matchRescueType =
+        rescueTypeFilter === 'all'
+          ? true
+          : rescueTypeFilter === 'emergency'
+            ? isEmergencyRescueRequest(r.rescueRequestType)
+            : isNormalRescueRequest(r.rescueRequestType);
+
+      const matchCreatedDate = isWithinCreatedDateFilter(r.createdAt, createdDateFilter);
+
+      const priorityBucket = getPriorityBucket(r.priorityLevel);
+      const matchPriority =
+        priorityFilter === 'all'
+          ? true
+          : priorityFilter === 'critical'
+            ? priorityBucket === 'critical'
+            : priorityBucket === 'high';
+
+      return matchStatus && matchSearch && matchRescueType && matchCreatedDate && matchPriority;
     });
-  }, [requests, search, verificationFilter]);
+  }, [requests, search, verificationFilter, rescueTypeFilter, createdDateFilter, priorityFilter]);
 
   const requestStats = useMemo(
     () => ({
@@ -194,10 +338,15 @@ export default function CoordinatorRequestManagementPage() {
   const totalListPages = Math.max(1, Math.ceil(filtered.length / REQUEST_LIST_PAGE_SIZE));
 
   // Derive filterKey and effective page — when filter changes, page resets to 1
-  const filterKey = `${search}|${verificationFilter}`;
+  const filterKey = `${search}|${verificationFilter}|${rescueTypeFilter}|${createdDateFilter}|${priorityFilter}`;
   const listPage = listPageState.key === filterKey ? listPageState.page : 1;
   const effectiveListPage = Math.min(Math.max(1, listPage), totalListPages);
   const setListPage = (page: number) => setListPageState({ key: filterKey, page });
+  const activeFilterCount =
+    Number(verificationFilter !== 'all') +
+    Number(rescueTypeFilter !== 'all') +
+    Number(createdDateFilter !== 'all') +
+    Number(priorityFilter !== 'all');
 
   const paginatedRequests = useMemo(() => {
     const start = (effectiveListPage - 1) * REQUEST_LIST_PAGE_SIZE;
@@ -218,6 +367,7 @@ export default function CoordinatorRequestManagementPage() {
     [filtered, effectiveSelectedId],
   );
   const verification = getVerification(selected);
+  const isEmergencySelected = isEmergencyRescueRequest(selected?.rescueRequestType);
   const currentStatus = verification?.status;
   const isPending =
     currentStatus === 0 ||
@@ -334,6 +484,13 @@ export default function CoordinatorRequestManagementPage() {
     }
   };
 
+  const clearAllFilters = () => {
+    setVerificationFilter('all');
+    setRescueTypeFilter('all');
+    setCreatedDateFilter('all');
+    setPriorityFilter('all');
+  };
+
   return (
     <DashboardLayout navGroups={coordinatorNavGroups}>
       <div className="space-y-6">
@@ -428,62 +585,98 @@ export default function CoordinatorRequestManagementPage() {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 ">
-                    <div className="relative">
-                      <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-muted-foreground">
+                  <div className="flex items-center gap-3 px-0 pt-1">
+                    <div className="relative min-w-0 flex-1">
+                      <span className="material-symbols-outlined pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[18px] text-muted-foreground">
                         search
                       </span>
                       <Input
-                        className="h-11 border-border bg-background pl-10"
+                        className="h-12 rounded-2xl border-border/70 bg-background pl-11 pr-11 shadow-[0_2px_8px_rgba(15,23,42,0.08)]"
                         placeholder="Tìm tên, SĐT, địa chỉ, mô tả..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                       />
+                      {search ? (
+                        <button
+                          type="button"
+                          onClick={() => setSearch('')}
+                          className="absolute right-3 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                          aria-label="Xóa tìm kiếm"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">close</span>
+                        </button>
+                      ) : null}
                     </div>
+                    <Button
+                      variant="outline"
+                      className="h-12 shrink-0 rounded-2xl border-border/70 px-4 shadow-[0_2px_8px_rgba(15,23,42,0.06)]"
+                      onClick={() => setIsFilterSheetOpen(true)}
+                    >
+                      <span className="material-symbols-outlined text-[18px]">filter_alt</span>
+                      Bộ lọc
+                      {activeFilterCount > 0 ? (
+                        <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-blue-50 px-1.5 text-xs font-semibold text-blue-600">
+                          {activeFilterCount}
+                        </span>
+                      ) : null}
+                    </Button>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      variant={verificationFilter === 'all' ? 'primary' : 'outline'}
-                      className="rounded-full"
-                      onClick={() => setVerificationFilter('all')}
-                    >
-                      <span className="material-symbols-outlined text-sm">apps</span>
-                      Tất cả
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={verificationFilter === 'pending' ? 'primary' : 'outline'}
-                      className={cn(
-                        'rounded-full',
-                        verificationFilter === 'pending' &&
-                          'border-amber-300 bg-amber-500/15 text-amber-700 hover:bg-amber-500/20',
-                      )}
-                      onClick={() => setVerificationFilter('pending')}
-                    >
-                      <span className="material-symbols-outlined text-sm">schedule</span>
-                      Chờ xác minh
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={verificationFilter === 'approved' ? 'success' : 'outline'}
-                      className="rounded-full"
-                      onClick={() => setVerificationFilter('approved')}
-                    >
-                      <span className="material-symbols-outlined text-sm">verified</span>
-                      Đã xác minh
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={verificationFilter === 'rejected' ? 'destructive' : 'outline'}
-                      className="rounded-full"
-                      onClick={() => setVerificationFilter('rejected')}
-                    >
-                      <span className="material-symbols-outlined text-sm">cancel</span>
-                      Từ chối
-                    </Button>
-                  </div>
+                  {activeFilterCount > 0 ? (
+                    <div className="mt-3 flex items-center gap-2 overflow-x-auto px-0 pb-1 whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      {rescueTypeFilter !== 'all' ? (
+                        <FilterChip
+                          active
+                          icon="emergency_home"
+                          onClick={() => setRescueTypeFilter('all')}
+                        >
+                          {rescueTypeFilter === 'emergency'
+                            ? 'Khẩn cấp'
+                            : rescueTypeFilter === 'normal'
+                              ? 'Bình thường'
+                              : 'Mọi loại'}
+                        </FilterChip>
+                      ) : null}
+                      {verificationFilter !== 'all' ? (
+                        <FilterChip
+                          active
+                          icon="fact_check"
+                          onClick={() => setVerificationFilter('all')}
+                        >
+                          {verificationFilter === 'pending'
+                            ? 'Chờ xác minh'
+                            : verificationFilter === 'approved'
+                              ? 'Đã xác minh'
+                              : 'Từ chối'}
+                        </FilterChip>
+                      ) : null}
+                      {createdDateFilter !== 'all' ? (
+                        <FilterChip
+                          active
+                          icon="calendar_month"
+                          onClick={() => setCreatedDateFilter('all')}
+                        >
+                          {createdDateFilter === 'today'
+                            ? 'Hôm nay'
+                            : createdDateFilter === '7d'
+                              ? '7 ngày gần đây'
+                              : '30 ngày gần đây'}
+                        </FilterChip>
+                      ) : null}
+                      {priorityFilter !== 'all' ? (
+                        <FilterChip active icon="flag" onClick={() => setPriorityFilter('all')}>
+                          {priorityFilter === 'critical' ? 'Ưu tiên khẩn cấp' : 'Ưu tiên cao'}
+                        </FilterChip>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={clearAllFilters}
+                        className="inline-flex h-10 shrink-0 items-center rounded-full border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700"
+                      >
+                        Xóa bộ lọc
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -588,6 +781,24 @@ export default function CoordinatorRequestManagementPage() {
                                 --
                               </span>
                             )}
+                            {req.rescueRequestType != null
+                              ? (() => {
+                                  const badge = getRescueRequestTypeBadge(req.rescueRequestType);
+                                  return (
+                                    <span
+                                      className={cn(
+                                        'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium',
+                                        badge.cls,
+                                      )}
+                                    >
+                                      <span className="material-symbols-outlined text-sm">
+                                        {badge.icon}
+                                      </span>
+                                      {getRescueRequestTypeLabel(req.rescueRequestType)}
+                                    </span>
+                                  );
+                                })()
+                              : null}
                             <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] text-muted-foreground">
                               <span className="material-symbols-outlined text-sm">route</span>
                               {formatKm(req.stationToRequestDistanceKm)}
@@ -831,10 +1042,93 @@ export default function CoordinatorRequestManagementPage() {
                           </div>
                         </div>
                       </div>
+
+                      {isEmergencySelected && (
+                        <div className="rounded-2xl border border-red-200 bg-red-500/5 p-4 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-red-600">
+                              partly_cloudy_day
+                            </span>
+                            <p className="text-sm font-semibold text-red-700">
+                              D. Thông tin thời tiết
+                            </p>
+                          </div>
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                              <p className="text-xs uppercase text-muted-foreground font-semibold">
+                                Tình trạng thời tiết
+                              </p>
+                              <p className="text-sm">
+                                {getWeatherConditionLabel(selected.weatherCondition)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase text-muted-foreground font-semibold">
+                                Thời điểm quan sát
+                              </p>
+                              <p className="text-sm">{formatDate(selected.weatherObservedAt)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase text-muted-foreground font-semibold">
+                                Nhiệt độ
+                              </p>
+                              <p className="text-sm">
+                                {selected.weatherTempC == null
+                                  ? '-- °C'
+                                  : `${selected.weatherTempC} °C`}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase text-muted-foreground font-semibold">
+                                Tốc độ gió
+                              </p>
+                              <p className="text-sm">
+                                {selected.weatherWindKph == null
+                                  ? '-- km/h'
+                                  : `${selected.weatherWindKph} km/h`}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase text-muted-foreground font-semibold">
+                                Lượng mưa
+                              </p>
+                              <p className="text-sm">
+                                {selected.weatherPrecipMm == null
+                                  ? '-- mm'
+                                  : `${selected.weatherPrecipMm} mm`}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase text-muted-foreground font-semibold">
+                                Tầm nhìn
+                              </p>
+                              <p className="text-sm">
+                                {selected.weatherVisibilityKm == null
+                                  ? '-- km'
+                                  : `${selected.weatherVisibilityKm} km`}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase text-muted-foreground font-semibold">
+                                Điểm rủi ro thời tiết
+                              </p>
+                              <p className="text-sm">{selected.weatherRiskScore ?? '--'}</p>
+                            </div>
+                            <div className="md:col-span-2">
+                              <p className="text-xs uppercase text-muted-foreground font-semibold">
+                                Mức rủi ro thời tiết
+                              </p>
+                              <p className="text-sm">
+                                {getWeatherRiskLevelLabel(selected.weatherRiskLevel)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="overflow-hidden rounded-2xl border border-border p-4 space-y-3">
-                      <p className="text-sm font-semibold">D. Tệp đính kèm</p>
+                      <p className="text-sm font-semibold">E. Tệp đính kèm</p>
                       {selected.attachments?.length ? (
                         <div className="space-y-4">
                           <div>
@@ -911,7 +1205,7 @@ export default function CoordinatorRequestManagementPage() {
                     </div>
 
                     <div className="rounded-2xl border border-border p-4 space-y-3">
-                      <p className="text-sm font-semibold">E. Xác minh yêu cầu</p>
+                      <p className="text-sm font-semibold">F. Xác minh yêu cầu</p>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
@@ -1081,6 +1375,156 @@ export default function CoordinatorRequestManagementPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Sheet open={isFilterSheetOpen} onOpenChange={setIsFilterSheetOpen}>
+        <SheetContent side="bottom" className="max-h-[88vh] rounded-t-[28px] px-0">
+          <SheetHeader className="px-4 sm:px-6">
+            <SheetTitle>Bộ lọc yêu cầu cứu hộ</SheetTitle>
+            <SheetDescription>
+              Lọc theo loại cứu hộ, trạng thái xác minh, ngày tạo và mức ưu tiên.
+            </SheetDescription>
+          </SheetHeader>
+
+          <SheetBody className="space-y-5 px-4 sm:px-6">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-foreground">Loại cứu hộ</p>
+              <div className="flex gap-2 overflow-x-auto pb-1 whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <FilterChip
+                  active={rescueTypeFilter === 'all'}
+                  icon="apps"
+                  onClick={() => setRescueTypeFilter('all')}
+                >
+                  Mọi loại cứu hộ
+                </FilterChip>
+                <FilterChip
+                  active={rescueTypeFilter === 'normal'}
+                  icon="health_and_safety"
+                  onClick={() => setRescueTypeFilter('normal')}
+                >
+                  Cứu hộ bình thường
+                </FilterChip>
+                <FilterChip
+                  active={rescueTypeFilter === 'emergency'}
+                  icon="emergency"
+                  onClick={() => setRescueTypeFilter('emergency')}
+                >
+                  Cứu hộ khẩn cấp
+                </FilterChip>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-foreground">Trạng thái</p>
+              <div className="flex gap-2 overflow-x-auto pb-1 whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <FilterChip
+                  active={verificationFilter === 'all'}
+                  icon="apps"
+                  onClick={() => setVerificationFilter('all')}
+                >
+                  Tất cả
+                </FilterChip>
+                <FilterChip
+                  active={verificationFilter === 'pending'}
+                  icon="schedule"
+                  onClick={() => setVerificationFilter('pending')}
+                >
+                  Chờ xác minh
+                </FilterChip>
+                <FilterChip
+                  active={verificationFilter === 'approved'}
+                  icon="verified"
+                  onClick={() => setVerificationFilter('approved')}
+                >
+                  Đã xác minh
+                </FilterChip>
+                <FilterChip
+                  active={verificationFilter === 'rejected'}
+                  icon="cancel"
+                  onClick={() => setVerificationFilter('rejected')}
+                >
+                  Từ chối
+                </FilterChip>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-foreground">Ngày tạo</p>
+              <div className="flex gap-2 overflow-x-auto pb-1 whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <FilterChip
+                  active={createdDateFilter === 'all'}
+                  icon="event"
+                  onClick={() => setCreatedDateFilter('all')}
+                >
+                  Tất cả
+                </FilterChip>
+                <FilterChip
+                  active={createdDateFilter === 'today'}
+                  icon="today"
+                  onClick={() => setCreatedDateFilter('today')}
+                >
+                  Hôm nay
+                </FilterChip>
+                <FilterChip
+                  active={createdDateFilter === '7d'}
+                  icon="date_range"
+                  onClick={() => setCreatedDateFilter('7d')}
+                >
+                  7 ngày gần đây
+                </FilterChip>
+                <FilterChip
+                  active={createdDateFilter === '30d'}
+                  icon="calendar_month"
+                  onClick={() => setCreatedDateFilter('30d')}
+                >
+                  30 ngày gần đây
+                </FilterChip>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-foreground">Mức ưu tiên</p>
+              <div className="flex gap-2 overflow-x-auto pb-1 whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <FilterChip
+                  active={priorityFilter === 'all'}
+                  icon="flag"
+                  onClick={() => setPriorityFilter('all')}
+                >
+                  Tất cả
+                </FilterChip>
+                <FilterChip
+                  active={priorityFilter === 'critical'}
+                  icon="warning"
+                  onClick={() => setPriorityFilter('critical')}
+                >
+                  Khẩn cấp
+                </FilterChip>
+                <FilterChip
+                  active={priorityFilter === 'high'}
+                  icon="priority_high"
+                  onClick={() => setPriorityFilter('high')}
+                >
+                  Cao
+                </FilterChip>
+              </div>
+            </div>
+          </SheetBody>
+
+          <SheetFooter className="border-t border-border px-4 py-4 sm:px-6">
+            <div className="flex w-full gap-3">
+              <Button variant="outline" className="flex-1 rounded-2xl" onClick={clearAllFilters}>
+                Xóa bộ lọc
+              </Button>
+              <Button
+                variant="primary"
+                className="flex-1 rounded-2xl"
+                onClick={() => setIsFilterSheetOpen(false)}
+              >
+                Áp dụng
+              </Button>
+            </div>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </DashboardLayout>
   );
 }
