@@ -10,8 +10,17 @@ import { getAuthToken, setAuthToken, setRefreshToken, clearAuthToken } from '@/l
 import { decodeJwt } from '@/lib/jwt';
 import type { UserRoleType } from '@/enums/UserRole';
 import { registerTokenUpdateCallback, unregisterTokenUpdateCallback } from '@/lib/tokenBridge';
+import { useQueryClient } from '@tanstack/react-query';
 
 type AuthProviderProps = { children: ReactNode };
+
+const LOGOUT_STORAGE_KEYS = [
+  'coordinator-create-item-draft',
+  'coordinator-transfer-request-draft',
+  'coordinator-edit-stock-draft',
+  'coordinator-campaign-allocation-draft',
+  'campaign_create_draft',
+];
 
 /** Parse a User from a JWT string, or return null */
 function parseUserFromToken(token: string | null): User | null {
@@ -29,6 +38,7 @@ function parseUserFromToken(token: string | null): User | null {
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   // Store the token in React state so changes trigger re-renders
   const [token, setToken] = useState<string | null>(() => getAuthToken());
+  const queryClient = useQueryClient();
 
   const user = useMemo(() => parseUserFromToken(token), [token]);
 
@@ -71,10 +81,18 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     return res;
   }, []);
 
-  const logout = useCallback(() => {
-    clearAuthToken();
-    setToken(null); // ← triggers re-render
-  }, []);
+  const logout = useCallback(async () => {
+    try {
+      await authService.logout();
+    } catch {
+      // Best-effort server logout; continue local cleanup regardless.
+    } finally {
+      clearAuthToken();
+      LOGOUT_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+      queryClient.clear();
+      setToken(null); // ← triggers re-render
+    }
+  }, [queryClient]);
 
   return (
     <AuthContext.Provider

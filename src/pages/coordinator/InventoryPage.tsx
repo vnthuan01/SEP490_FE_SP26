@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { TransferPdfWorkflowDialog } from '@/components/pdf/TransferPdfWorkflowDialog';
 import { CampaignAllocationDialog } from './components/CampaignAllocationDialog';
 import type { ExportItem } from '@/types/exportInventory';
 import { CreateInventoryItemDialog } from './components/CreateItem';
@@ -37,6 +38,7 @@ import {
 import { useProvincialStations } from '@/hooks/useReliefStations';
 import { useSupplyItems } from '@/hooks/useSupplies';
 import { useCreateSupplyAllocation } from '@/hooks/useSupplies';
+import { useCloudinaryUpload } from '@/hooks/useCloudinaryUpload';
 import {
   useCreateSupplyTransfer,
   useSupplyTransferDetails,
@@ -48,6 +50,7 @@ import {
   useCancelSupplyTransfer,
 } from '@/hooks/useSupplyTransfers';
 import { useCampaigns } from '@/hooks/useCampaigns';
+import { useUserProfile } from '@/hooks/useUsers';
 import { formatNumberInputVN, formatNumberVN, parseFormattedNumber } from '@/lib/utils';
 import { clearDialogDraft, readDialogDraft, writeDialogDraft } from '@/lib/dialogDraft';
 import {
@@ -62,6 +65,7 @@ import {
 } from '@/enums/beEnums';
 import { toast } from 'sonner';
 import type { Stock } from '@/services/inventoryService';
+import { useAuthContext } from '@/components/provider/auth/AuthProvider';
 
 // ─── Local helpers ──────────────────────────────────────────────────────────
 
@@ -243,6 +247,7 @@ export default function CoordinatorInventoryPage() {
   const [openReceiveTransfer, setOpenReceiveTransfer] = useState(false);
   const [openCancelTransfer, setOpenCancelTransfer] = useState(false);
   const [openTransferDetail, setOpenTransferDetail] = useState(false);
+  const [openTransferPdfWorkflow, setOpenTransferPdfWorkflow] = useState(false);
   const [selectedTransferId, setSelectedTransferId] = useState<string | null>(null);
   const [openOutgoingTransferSection, setOpenOutgoingTransferSection] = useState(true);
   const [openActionableTransferSection, setOpenActionableTransferSection] = useState(true);
@@ -250,7 +255,20 @@ export default function CoordinatorInventoryPage() {
   const [actionableTransferPage, setActionableTransferPage] = useState(1);
 
   const [selectedQuickImportSupplyItemId, setSelectedQuickImportSupplyItemId] = useState('');
+  const [selectedQuickImportStock, setSelectedQuickImportStock] = useState<{
+    currentQuantity: number;
+    minimumStockLevel: number;
+    maximumStockLevel: number;
+  } | null>(null);
+  const [transferPdfDraftCode, setTransferPdfDraftCode] = useState('');
   const [transferNewItemSupplyId, setTransferNewItemSupplyId] = useState('');
+  const [transferEvidenceFiles, setTransferEvidenceFiles] = useState<
+    Array<{
+      id: string;
+      file: File;
+      source: 'manual' | 'generated';
+    }>
+  >([]);
   const [transferForm, setTransferForm] = useState(() =>
     readDialogDraft(TRANSFER_REQUEST_DRAFT_KEY, {
       sourceStationId: '',
@@ -283,6 +301,8 @@ export default function CoordinatorInventoryPage() {
   // ── Data hooks ──────────────────────────────────────────────────────────────
 
   const { station, isLoading: isLoadingStation } = useMyReliefStation();
+  const { user } = useAuthContext();
+  const { profile } = useUserProfile();
 
   const { data: inventoriesResponse, isLoading: isLoadingInventories } = useInventories({
     reliefStationId: station?.reliefStationId,
@@ -338,6 +358,7 @@ export default function CoordinatorInventoryPage() {
   const { mutateAsync: createTransaction } = useCreateTransaction();
   const { mutateAsync: createSupplyTransfer, status: createSupplyTransferStatus } =
     useCreateSupplyTransfer();
+  const { uploadFile, isUploading: isUploadingTransferEvidence } = useCloudinaryUpload();
   const { mutateAsync: createSupplyAllocation } = useCreateSupplyAllocation();
   const { mutateAsync: approveTransfer, status: approveTransferStatus } =
     useApproveSupplyTransfer();
@@ -550,7 +571,6 @@ export default function CoordinatorInventoryPage() {
     [inventoryItems],
   );
 
-  /** For quick-import: map supplyItemId → first stock row */
   const stockMapBySupplyItemId = useMemo(
     () => new Map(stocks.map((stock) => [stock.supplyItemId, stock])),
     [stocks],
@@ -584,6 +604,13 @@ export default function CoordinatorInventoryPage() {
     );
     return matchedSource?.inventoryId || '';
   }, [transferForm.sourceStationId, upstreamSourceStations]);
+
+  const selectedSourceStation = useMemo(
+    () =>
+      upstreamSourceStations.find((source) => source.stationId === transferForm.sourceStationId) ||
+      null,
+    [transferForm.sourceStationId, upstreamSourceStations],
+  );
 
   const { data: selectedSourceStocksResponse, isLoading: isLoadingSelectedSourceStocks } =
     useInventoryStocks(selectedSourceInventoryId, { pageIndex: 1, pageSize: 500 });
@@ -626,6 +653,51 @@ export default function CoordinatorInventoryPage() {
 
   const isLoading =
     isLoadingStation || isLoadingInventories || isLoadingStocks || isLoadingSupplyItems;
+
+  const transferPdfData = useMemo(() => {
+    const creatorName = profile?.displayName || user?.fullName || user?.email || 'Người lập phiếu';
+    const creatorEmail = profile?.email || user?.email || '';
+
+    return {
+      transferCode: transferPdfDraftCode || 'TEMP-DRAFT',
+      creatorName,
+      creatorEmail,
+      sourceName: selectedSourceStation?.stationName || 'Chưa chọn kho nguồn',
+      sourceInventoryName: selectedSourceStation?.stationName || 'Chưa có thông tin kho nguồn',
+      destinationName: station?.name || 'Chưa chọn trạm đích',
+      createdAt: new Date().toLocaleString('vi-VN'),
+      decidedBy: creatorName,
+      reason: transferForm.reason,
+      notes: transferForm.notes,
+      signedDateLabel: new Date().toLocaleDateString('vi-VN'),
+      clauses: [
+        'Tôi xác nhận thông tin trên phiếu điều phối là đúng và đầy đủ.',
+        'Tôi đã kiểm tra khả năng đáp ứng của kho nguồn trước khi gửi phiếu.',
+        'Tôi chịu trách nhiệm về chữ ký, ngày ký và các tệp PDF đính kèm trong phiếu này.',
+      ],
+      items: transferForm.items.map((item) => {
+        const matchedSupply = supplyMap.get(item.supplyItemId);
+        return {
+          name: matchedSupply?.name || item.supplyItemId,
+          quantity: item.quantity || 0,
+          unit: matchedSupply?.unit || 'Đơn vị',
+          actualQuantity: item.quantity || 0,
+          sourceAvailableQuantity:
+            selectedSourceStockMapBySupplyItemId.get(item.supplyItemId)?.currentQuantity || 0,
+          notes: item.notes,
+        };
+      }),
+    };
+  }, [
+    profile,
+    transferPdfDraftCode,
+    user,
+    selectedSourceStation,
+    station?.name,
+    transferForm,
+    supplyMap,
+    selectedSourceStockMapBySupplyItemId,
+  ]);
 
   const todayTransactionSummary = useMemo(() => {
     const todayKey = new Date().toDateString();
@@ -743,7 +815,26 @@ export default function CoordinatorInventoryPage() {
 
   const handleOpenQuickImport = (item: InventoryItemCard) => {
     setSelectedQuickImportSupplyItemId(item.supplyItemId);
+    setSelectedQuickImportStock({
+      currentQuantity: item.current,
+      minimumStockLevel: item.minimum,
+      maximumStockLevel: item.capacity,
+    });
     setOpenCreate(true);
+  };
+
+  const handleOpenCreateDialog = () => {
+    setSelectedQuickImportSupplyItemId('');
+    setSelectedQuickImportStock(null);
+    setOpenCreate(true);
+  };
+
+  const handleCreateDialogOpenChange = (nextOpen: boolean) => {
+    setOpenCreate(nextOpen);
+    if (!nextOpen) {
+      setSelectedQuickImportSupplyItemId('');
+      setSelectedQuickImportStock(null);
+    }
   };
 
   const handleOpenTransferRequest = () => {
@@ -752,8 +843,43 @@ export default function CoordinatorInventoryPage() {
       ...prev,
       sourceStationId: prev.sourceStationId || upstreamSourceStations[0]?.stationId || '',
     }));
+    setTransferPdfDraftCode(`TEMP-${new Date().getTime()}`);
     setTransferNewItemSupplyId('');
     setOpenTransferRequest(true);
+  };
+
+  const handleAddTransferEvidenceFiles = (
+    files: FileList | File[] | null,
+    source: 'manual' | 'generated',
+  ) => {
+    if (!files || files.length === 0) return;
+
+    const nextFiles = Array.from(files).filter((file) => file.type === 'application/pdf');
+
+    if (nextFiles.length === 0) {
+      toast.error('Chỉ chấp nhận tệp PDF để đính kèm vào phiếu điều phối.');
+      return;
+    }
+
+    setTransferEvidenceFiles((prev) => {
+      const existingKeys = new Set(
+        prev.map((item) => `${item.file.name}-${item.file.size}-${item.file.lastModified}`),
+      );
+
+      const appended = nextFiles
+        .filter((file) => !existingKeys.has(`${file.name}-${file.size}-${file.lastModified}`))
+        .map((file) => ({
+          id: crypto.randomUUID(),
+          file,
+          source,
+        }));
+
+      return [...prev, ...appended];
+    });
+  };
+
+  const handleRemoveTransferEvidenceFile = (id: string) => {
+    setTransferEvidenceFiles((prev) => prev.filter((file) => file.id !== id));
   };
 
   const handleAddTransferItem = () => {
@@ -855,18 +981,31 @@ export default function CoordinatorInventoryPage() {
 
     setTransferErrors({});
 
+    const uploadedEvidenceUrls = await Promise.all(
+      transferEvidenceFiles.map(async (evidence) => {
+        const uploaded = await uploadFile({
+          file: evidence.file,
+          folder: 'reliefhub/supply-transfer-evidence',
+          resourceType: 'raw',
+        });
+        return uploaded.secureUrl;
+      }),
+    );
+
     await createSupplyTransfer({
       sourceStationId: transferForm.sourceStationId,
       destinationStationId: station.reliefStationId,
       reason: transferForm.reason.trim(),
       notes: transferForm.notes.trim(),
-      evidenceUrls: [],
+      evidenceUrls: uploadedEvidenceUrls,
       items: validItems,
     });
 
     await Promise.all([refetchStocks(), refetchTransactions()]);
     clearDialogDraft(TRANSFER_REQUEST_DRAFT_KEY);
     setTransferForm({ sourceStationId: '', reason: '', notes: '', items: [] });
+    setTransferPdfDraftCode('');
+    setTransferEvidenceFiles([]);
     setOpenTransferRequest(false);
   };
 
@@ -1104,6 +1243,8 @@ export default function CoordinatorInventoryPage() {
       notes: '',
       items: [],
     });
+    setTransferPdfDraftCode('');
+    setTransferEvidenceFiles([]);
     setTransferNewItemSupplyId('');
   };
 
@@ -1164,7 +1305,7 @@ export default function CoordinatorInventoryPage() {
             <span className="material-symbols-outlined text-lg">outbound</span>
             Cấp phát chiến dịch
           </Button>
-          <Button variant="primary" className="gap-2" onClick={() => setOpenCreate(true)}>
+          <Button variant="primary" className="gap-2" onClick={handleOpenCreateDialog}>
             <span className="material-symbols-outlined text-lg">inventory_2</span>
             Nhập kho
             <span className="material-symbols-outlined text-lg">add</span>
@@ -1889,7 +2030,7 @@ export default function CoordinatorInventoryPage() {
       {/* Create / Import Dialog */}
       <CreateInventoryItemDialog
         open={openCreate}
-        onOpenChange={setOpenCreate}
+        onOpenChange={handleCreateDialogOpenChange}
         supplyItems={supplyItems.map((item) => ({
           id: item.id,
           name: item.name,
@@ -1899,15 +2040,12 @@ export default function CoordinatorInventoryPage() {
           unit: item.unit,
         }))}
         initialSupplyItemId={selectedQuickImportSupplyItemId}
-        existingStock={
-          selectedQuickImportSupplyItemId
-            ? stockMapBySupplyItemId.get(selectedQuickImportSupplyItemId) || null
-            : null
-        }
+        existingStock={selectedQuickImportSupplyItemId ? selectedQuickImportStock : null}
         onSubmit={async (item) => {
           const success = await handleImportItem(item);
           if (!success) return;
           setSelectedQuickImportSupplyItemId('');
+          setSelectedQuickImportStock(null);
           setOpenCreate(false);
         }}
       />
@@ -2191,6 +2329,95 @@ export default function CoordinatorInventoryPage() {
                   </div>
                 )}
               </div>
+
+              <div className="space-y-4 rounded-2xl border border-border bg-muted/10 p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="font-semibold text-foreground">Hồ sơ PDF đính kèm</p>
+                    <p className="text-sm text-muted-foreground">
+                      Có thể tải nhiều file PDF hoặc tạo PDF mẫu từ thông tin phiếu rồi ký tay trước
+                      khi gửi.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-2"
+                      onClick={() => setOpenTransferPdfWorkflow(true)}
+                    >
+                      <span className="material-symbols-outlined text-lg">picture_as_pdf</span>
+                      Tạo PDF mẫu
+                    </Button>
+
+                    <label className="inline-flex">
+                      <input
+                        type="file"
+                        accept="application/pdf"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => {
+                          handleAddTransferEvidenceFiles(e.target.files, 'manual');
+                          e.target.value = '';
+                        }}
+                      />
+                      <span className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground">
+                        <span className="material-symbols-outlined text-lg">upload_file</span>
+                        Tải PDF lên
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {transferEvidenceFiles.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border bg-background/60 p-4 text-sm text-muted-foreground">
+                    Chưa có PDF nào được đính kèm. Bạn có thể tạo PDF mẫu hoặc tải nhiều file PDF có
+                    sẵn.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {transferEvidenceFiles.map((evidence) => (
+                      <div
+                        key={evidence.id}
+                        className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 lg:flex-row lg:items-center lg:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium text-foreground break-all">
+                            {evidence.file.name}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {evidence.source === 'generated'
+                              ? 'PDF tạo từ biểu mẫu'
+                              : 'PDF tải lên thủ công'}{' '}
+                            • {formatNumberVN(Math.round(evidence.file.size / 1024))} KB
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="outline" size="sm" asChild>
+                            <a
+                              href={URL.createObjectURL(evidence.file)}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Xem PDF
+                            </a>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive"
+                            onClick={() => handleRemoveTransferEvidenceFile(evidence.id)}
+                          >
+                            Xóa
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -2206,15 +2433,24 @@ export default function CoordinatorInventoryPage() {
             <Button
               variant="primary"
               className="gap-2"
-              disabled={createSupplyTransferStatus === 'pending'}
+              disabled={createSupplyTransferStatus === 'pending' || isUploadingTransferEvidence}
               onClick={() => void handleSubmitTransferRequest()}
             >
               <span className="material-symbols-outlined text-lg">send</span>
-              {createSupplyTransferStatus === 'pending' ? 'Đang gửi...' : 'Gửi phiếu điều phối'}
+              {createSupplyTransferStatus === 'pending' || isUploadingTransferEvidence
+                ? 'Đang gửi...'
+                : 'Gửi phiếu điều phối'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TransferPdfWorkflowDialog
+        open={openTransferPdfWorkflow}
+        onOpenChange={setOpenTransferPdfWorkflow}
+        data={transferPdfData}
+        onAttachPdf={(file) => handleAddTransferEvidenceFiles([file], 'generated')}
+      />
 
       <ConfirmDialog
         open={openApproveTransfer}
