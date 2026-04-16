@@ -4,6 +4,11 @@ import { toast } from 'sonner';
 import type { CheckedState } from '@radix-ui/react-checkbox';
 import { useNavigate } from 'react-router-dom';
 import { parseApiError, pickFieldError } from '@/lib/apiErrors';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Input } from '@/components/ui/input';
+import { formatNumberInputVN, formatNumberVN } from '@/lib/utils';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { coordinatorNavGroups } from './components/sidebarConfig';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
@@ -15,7 +20,6 @@ import {
   RELIEF_DISTRIBUTION_KEYS,
   useCreateDistributionPoint,
   useCreateReliefPackage,
-  usePackageAssemblyHistoryByStation,
   useReliefChecklist,
   useDistributionPoints,
   useReliefHouseholds,
@@ -27,13 +31,17 @@ import { CoordinatorReliefDistributionPageHeader } from './components/relief-dis
 import { CoordinatorReliefDistributionSetupSteps } from './components/relief-distribution/CoordinatorReliefDistributionSetupSteps';
 import { CoordinatorReliefDistributionAssignmentStep } from './components/relief-distribution/CoordinatorReliefDistributionAssignmentStep';
 import { CoordinatorDistributionPointsMap } from './components/relief-distribution/CoordinatorDistributionPointsMap';
-import { StatCard } from '@/pages/manager/components/ManagerInventoryShared';
+import { StatCard, SupplyCategoryBadge } from '@/pages/manager/components/ManagerInventoryShared';
 import type {
   CoordinatorAssignForm,
   CoordinatorDistributionPointForm,
   CoordinatorPackageForm,
   CoordinatorPackageItemForm,
 } from './components/relief-distribution/types';
+import { Separator } from '@/components/ui/separator';
+import { ReliefStickySectionHeader } from './components/relief-distribution/ReliefStickySectionHeader';
+import { ReliefFilterBar } from './components/relief-distribution/ReliefFilterBar';
+import { ReliefPaginationBar } from './components/relief-distribution/ReliefPaginationBar';
 
 const createDefaultDistributionPointForm = (station?: {
   address?: string | null;
@@ -60,6 +68,9 @@ const createDefaultPackageForm = (): CoordinatorPackageForm => ({
 });
 
 const HOUSEHOLDS_PER_PAGE = 10;
+const ACTIVITY_ITEMS_PER_PAGE = 5;
+const PACKAGE_ITEMS_PER_PAGE = 5;
+const CHECKLIST_ITEMS_PER_PAGE = 8;
 const DISTRIBUTION_SECTION_ID = 'coordinator-relief-step-1';
 const PACKAGE_SECTION_ID = 'coordinator-relief-step-2';
 const ASSIGNMENT_SECTION_ID = 'coordinator-relief-step-3';
@@ -102,6 +113,15 @@ export default function ReliefDistributionPage() {
   );
   const [packageErrors, setPackageErrors] = useState<Record<string, string>>({});
   const [assignErrors, setAssignErrors] = useState<Record<string, string>>({});
+  const [teamActivityPage, setTeamActivityPage] = useState(1);
+  const [packageListPage, setPackageListPage] = useState(1);
+  const [checklistPage, setChecklistPage] = useState(1);
+  const [teamSearch, setTeamSearch] = useState('');
+  const [teamProgressFilter, setTeamProgressFilter] = useState<
+    'all' | 'not-started' | 'active' | 'completed'
+  >('all');
+  const [packageSearch, setPackageSearch] = useState('');
+  const [packageCategoryFilter, setPackageCategoryFilter] = useState('all');
 
   const { station } = useMyReliefStation();
   const { campaigns } = useCampaigns({
@@ -153,10 +173,6 @@ export default function ReliefDistributionPage() {
     pageIndex: 1,
     pageSize: 200,
   });
-  const { data: packageAssemblyHistory = [] } = usePackageAssemblyHistoryByStation(
-    effectiveSelectedCampaignId,
-    station?.reliefStationId || '',
-  );
 
   const createPointMutation = useCreateDistributionPoint();
   const createPackageMutation = useCreateReliefPackage();
@@ -591,13 +607,128 @@ export default function ReliefDistributionPage() {
   const teamActivitySummary = useMemo(() => {
     return teams.map((team) => {
       const teamChecklist = checklist.filter((item) => item.campaignTeamId === team.campaignTeamId);
+      const assignedCount = teamChecklist.length;
+      const deliveredCount = teamChecklist.filter((item) => Number(item.status) === 2).length;
+      const completionRate =
+        assignedCount === 0 ? 0 : Math.round((deliveredCount / assignedCount) * 100);
+      const progressTone =
+        completionRate === 100
+          ? {
+              key: 'completed' as const,
+              label: 'Hoàn tất',
+              variant: 'success' as const,
+              icon: 'task_alt',
+            }
+          : completionRate >= 50
+            ? {
+                key: 'active' as const,
+                label: 'Đang tăng tốc',
+                variant: 'info' as const,
+                icon: 'trending_up',
+              }
+            : completionRate > 0
+              ? {
+                  key: 'active' as const,
+                  label: 'Đang xử lý',
+                  variant: 'warning' as const,
+                  icon: 'autorenew',
+                }
+              : {
+                  key: 'not-started' as const,
+                  label: 'Chưa bắt đầu',
+                  variant: 'outline' as const,
+                  icon: 'schedule',
+                };
+
       return {
         teamName: team.teamName,
-        assignedCount: teamChecklist.length,
-        deliveredCount: teamChecklist.filter((item) => Number(item.status) === 2).length,
+        assignedCount,
+        deliveredCount,
+        remainingCount: Math.max(0, assignedCount - deliveredCount),
+        completionRate,
+        progressTone,
       };
     });
   }, [teams, checklist]);
+
+  const filteredTeamActivitySummary = useMemo(() => {
+    const normalizedSearch = teamSearch.trim().toLowerCase();
+    return teamActivitySummary.filter((team) => {
+      const matchesSearch =
+        !normalizedSearch || team.teamName.toLowerCase().includes(normalizedSearch);
+      const matchesProgress =
+        teamProgressFilter === 'all' ||
+        (teamProgressFilter === 'completed' && team.progressTone.key === 'completed') ||
+        (teamProgressFilter === 'active' && team.progressTone.key === 'active') ||
+        (teamProgressFilter === 'not-started' && team.progressTone.key === 'not-started');
+
+      return matchesSearch && matchesProgress;
+    });
+  }, [teamActivitySummary, teamSearch, teamProgressFilter]);
+
+  const totalTeamActivityPages = Math.max(
+    1,
+    Math.ceil(filteredTeamActivitySummary.length / ACTIVITY_ITEMS_PER_PAGE),
+  );
+  const paginatedTeamActivitySummary = useMemo(() => {
+    const start =
+      (Math.min(teamActivityPage, totalTeamActivityPages) - 1) * ACTIVITY_ITEMS_PER_PAGE;
+    return filteredTeamActivitySummary.slice(start, start + ACTIVITY_ITEMS_PER_PAGE);
+  }, [teamActivityPage, filteredTeamActivitySummary, totalTeamActivityPages]);
+
+  const packageCategoryOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        packages.flatMap((pkg) =>
+          pkg.items
+            .map(
+              (item) =>
+                supplyItems.find((supply) => supply.id === item.supplyItemId)?.category ||
+                supplyItems.find((supply) => supply.id === item.supplyItemId)?.categoryName ||
+                '',
+            )
+            .filter(Boolean),
+        ),
+      ),
+    );
+  }, [packages, supplyItems]);
+
+  const filteredPackageList = useMemo(() => {
+    const normalizedSearch = packageSearch.trim().toLowerCase();
+    return packages.filter((pkg) => {
+      const packageCategories = pkg.items.map(
+        (item) =>
+          supplyItems.find((supply) => supply.id === item.supplyItemId)?.category ||
+          supplyItems.find((supply) => supply.id === item.supplyItemId)?.categoryName ||
+          '',
+      );
+      const matchesSearch =
+        !normalizedSearch ||
+        pkg.name.toLowerCase().includes(normalizedSearch) ||
+        (pkg.description || '').toLowerCase().includes(normalizedSearch) ||
+        pkg.items.some((item) => item.supplyItemName.toLowerCase().includes(normalizedSearch));
+      const matchesCategory =
+        packageCategoryFilter === 'all' ||
+        packageCategories.some((category) => category === packageCategoryFilter);
+
+      return matchesSearch && matchesCategory;
+    });
+  }, [packageCategoryFilter, packageSearch, packages, supplyItems]);
+
+  const totalPackageListPages = Math.max(
+    1,
+    Math.ceil(filteredPackageList.length / PACKAGE_ITEMS_PER_PAGE),
+  );
+  const paginatedPackageList = useMemo(() => {
+    const start = (Math.min(packageListPage, totalPackageListPages) - 1) * PACKAGE_ITEMS_PER_PAGE;
+    return filteredPackageList.slice(start, start + PACKAGE_ITEMS_PER_PAGE);
+  }, [filteredPackageList, packageListPage, totalPackageListPages]);
+
+  const totalChecklistPages = Math.max(1, Math.ceil(checklist.length / CHECKLIST_ITEMS_PER_PAGE));
+  const paginatedChecklist = useMemo(() => {
+    const start = (Math.min(checklistPage, totalChecklistPages) - 1) * CHECKLIST_ITEMS_PER_PAGE;
+    return checklist.slice(start, start + CHECKLIST_ITEMS_PER_PAGE);
+  }, [checklist, checklistPage, totalChecklistPages]);
 
   const canAssign =
     !!effectiveSelectedCampaignId &&
@@ -625,9 +756,9 @@ export default function ReliefDistributionPage() {
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatCard
-            label="Hộ dân cần phân công"
+            label="Hộ dân chờ gán"
             value={households.length}
-            note="Danh sách hộ dân từ dataseed"
+            note="Danh sách hộ dân cần sắp xếp phân phối"
             icon="groups"
             iconClass="bg-primary/10 text-primary"
           />
@@ -639,16 +770,16 @@ export default function ReliefDistributionPage() {
             iconClass="bg-sky-500/10 text-sky-600 dark:text-sky-300"
           />
           <StatCard
-            label="Điểm phát hiện có"
+            label="Điểm phát đã tạo"
             value={distributionPoints.length}
-            note="Tự dùng điểm phát đầu tiên cho hộ pickup"
+            note="Dùng cho các hộ nhận tại điểm phát"
             icon="location_on"
             iconClass="bg-amber-500/10 text-amber-600 dark:text-amber-300"
           />
           <StatCard
-            label="Gói cứu trợ hiện có"
+            label="Gói hỗ trợ đã tạo"
             value={packages.length}
-            note="Dùng để gán cho các hộ dân đã chọn"
+            note="Dùng để gán cho hộ dân khi phân phối"
             icon="inventory_2"
             iconClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
           />
@@ -692,102 +823,305 @@ export default function ReliefDistributionPage() {
         <div className="grid gap-6 xl:grid-cols-2">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="mb-4">
-              <h3 className="text-lg font-semibold text-foreground">Theo dõi hoạt động team</h3>
-              <p className="text-sm text-muted-foreground">
-                Tổng hợp nhanh số hộ đã được giao và đã hoàn tất theo từng team.
-              </p>
+              <ReliefStickySectionHeader
+                title="Theo dõi hoạt động team"
+                description="Tổng hợp nhanh số hộ đã được giao và đã hoàn tất theo từng team."
+                badgeIcon="groups"
+                badgeLabel={`${formatNumberInputVN(filteredTeamActivitySummary.length)} team`}
+              />
             </div>
-            <div className="space-y-3">
-              {teamActivitySummary.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Chưa có hoạt động team để hiển thị.</p>
+            <div className="max-h-[292px] space-y-3 overflow-y-auto pr-1">
+              <ReliefFilterBar className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+                <Input
+                  placeholder="Tìm theo tên đội"
+                  value={teamSearch}
+                  onChange={(e) => {
+                    setTeamSearch(e.target.value);
+                    setTeamActivityPage(1);
+                  }}
+                />
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={teamProgressFilter}
+                  onChange={(e) => {
+                    setTeamProgressFilter(
+                      e.target.value as 'all' | 'not-started' | 'active' | 'completed',
+                    );
+                    setTeamActivityPage(1);
+                  }}
+                >
+                  <option value="all">Tất cả tiến độ</option>
+                  <option value="not-started">Chưa bắt đầu</option>
+                  <option value="active">Đang thực hiện</option>
+                  <option value="completed">Hoàn tất</option>
+                </select>
+              </ReliefFilterBar>
+              {filteredTeamActivitySummary.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center">
+                  <span className="material-symbols-outlined text-3xl text-muted-foreground">
+                    groups
+                  </span>
+                  <p className="mt-3 font-medium text-foreground">
+                    {teamActivitySummary.length === 0
+                      ? 'Chưa có hoạt động team để hiển thị.'
+                      : 'Không tìm thấy team phù hợp với bộ lọc hiện tại.'}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {teamActivitySummary.length === 0
+                      ? 'Danh sách đội sẽ xuất hiện khi chiến dịch đã có đội tham gia và bắt đầu gán hộ.'
+                      : 'Hãy thử đổi từ khóa tìm kiếm hoặc chọn lại trạng thái tiến độ.'}
+                  </p>
+                  {teamActivitySummary.length > 0 && (
+                    <div className="mt-4 flex justify-center">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-2"
+                        onClick={() => {
+                          setTeamSearch('');
+                          setTeamProgressFilter('all');
+                          setTeamActivityPage(1);
+                        }}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">restart_alt</span>
+                        Xóa bộ lọc
+                      </Button>
+                    </div>
+                  )}
+                </div>
               ) : (
-                teamActivitySummary.map((team) => (
+                paginatedTeamActivitySummary.map((team) => (
                   <div
                     key={team.teamName}
                     className="rounded-xl border border-border bg-muted/20 p-4"
                   >
-                    <p className="font-medium text-foreground">{team.teamName}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Đã nhận {team.assignedCount} hộ · Hoàn tất {team.deliveredCount} hộ
-                    </p>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className="flex size-10 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
+                          <span className="material-symbols-outlined text-[20px]">diversity_3</span>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">{team.teamName}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Đã nhận {formatNumberVN(team.assignedCount)} hộ · Hoàn tất{' '}
+                            {formatNumberVN(team.deliveredCount)} hộ
+                          </p>
+                        </div>
+                      </div>
+                      <Badge
+                        variant={team.progressTone.variant}
+                        appearance="light"
+                        className="gap-1.5"
+                      >
+                        <span className="material-symbols-outlined text-[15px]">
+                          {team.progressTone.icon}
+                        </span>
+                        {team.progressTone.label}
+                      </Badge>
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Tiến độ thực hiện</span>
+                        <span>{formatNumberVN(team.completionRate)}%</span>
+                      </div>
+                      <Progress value={team.completionRate} className="h-2" />
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                      <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-muted-foreground">
+                        <span className="material-symbols-outlined text-[15px]">
+                          assignment_ind
+                        </span>
+                        {formatNumberVN(team.assignedCount)} hộ đã nhận
+                      </div>
+                      <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-muted-foreground">
+                        <span className="material-symbols-outlined text-[15px]">task_alt</span>
+                        {formatNumberVN(team.deliveredCount)} hộ hoàn tất
+                      </div>
+                      <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1 text-muted-foreground">
+                        <span className="material-symbols-outlined text-[15px]">
+                          pending_actions
+                        </span>
+                        {formatNumberVN(team.remainingCount)} hộ còn lại
+                      </div>
+                    </div>
                   </div>
                 ))
               )}
             </div>
+            {filteredTeamActivitySummary.length > ACTIVITY_ITEMS_PER_PAGE && (
+              <ReliefPaginationBar
+                currentPage={Math.min(teamActivityPage, totalTeamActivityPages)}
+                totalPages={totalTeamActivityPages}
+                onPrevious={() => setTeamActivityPage((prev) => Math.max(1, prev - 1))}
+                onNext={() =>
+                  setTeamActivityPage((prev) => Math.min(totalTeamActivityPages, prev + 1))
+                }
+              />
+            )}
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="mb-4">
-              <h3 className="text-lg font-semibold text-foreground">Lịch sử đóng gói cứu trợ</h3>
-              <p className="text-sm text-muted-foreground">
-                Theo dõi gói đã được tạo từ kho, số lượng đã đóng và thời gian thao tác.
-              </p>
+              <ReliefStickySectionHeader
+                title="Bước 3. Danh sách gói hỗ trợ"
+                description="Kiểm tra lại các gói hỗ trợ đã tạo trước khi gán cho hộ dân."
+                badgeIcon="inventory_2"
+                badgeLabel={`${formatNumberInputVN(filteredPackageList.length)} gói`}
+              />
             </div>
-            <div className="space-y-3">
-              {packageAssemblyHistory.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Chưa có lịch sử đóng gói cứu trợ.</p>
+            <div className="max-h-[292px] space-y-3 overflow-y-auto pr-1">
+              <ReliefFilterBar className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+                <Input
+                  placeholder="Tìm theo tên gói hoặc vật phẩm"
+                  value={packageSearch}
+                  onChange={(e) => {
+                    setPackageSearch(e.target.value);
+                    setPackageListPage(1);
+                  }}
+                />
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={packageCategoryFilter}
+                  onChange={(e) => {
+                    setPackageCategoryFilter(e.target.value);
+                    setPackageListPage(1);
+                  }}
+                >
+                  <option value="all">Tất cả danh mục</option>
+                  {packageCategoryOptions.map((category) => (
+                    <option key={String(category)} value={String(category)}>
+                      {String(category)}
+                    </option>
+                  ))}
+                </select>
+              </ReliefFilterBar>
+              {filteredPackageList.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-8 text-center">
+                  <span className="material-symbols-outlined text-3xl text-muted-foreground">
+                    inventory_2
+                  </span>
+                  <p className="mt-3 font-medium text-foreground">
+                    {packages.length === 0
+                      ? 'Chưa có gói hỗ trợ nào được tạo.'
+                      : 'Không có gói hỗ trợ nào khớp bộ lọc hiện tại.'}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {packages.length === 0
+                      ? 'Hãy tạo gói hỗ trợ ở bước 2 để bắt đầu gán hộ dân.'
+                      : 'Hãy thử đổi từ khóa tìm kiếm hoặc chọn lại danh mục vật phẩm.'}
+                  </p>
+                  <div className="mt-4 flex justify-center gap-2">
+                    {packages.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-2"
+                        onClick={() => {
+                          setPackageSearch('');
+                          setPackageCategoryFilter('all');
+                          setPackageListPage(1);
+                        }}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">restart_alt</span>
+                        Xóa bộ lọc
+                      </Button>
+                    )}
+                    {packages.length === 0 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-2"
+                        onClick={() => scrollToSection(PACKAGE_SECTION_ID)}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">inventory_2</span>
+                        Đi tới bước tạo gói
+                      </Button>
+                    )}
+                  </div>
+                </div>
               ) : (
-                packageAssemblyHistory.slice(0, 5).map((history) => (
+                paginatedPackageList.map((pkg) => (
                   <div
-                    key={history.reliefPackageAssemblyId}
+                    key={pkg.reliefPackageDefinitionId}
                     className="rounded-xl border border-border bg-muted/20 p-4"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-foreground">
-                          {history.outputSupplyItemName}
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Tạo {history.quantityCreated} {history.outputUnit} ·{' '}
-                          {formatDateTimeVN(history.createdAt)}
-                        </p>
+                      <div className="flex items-start gap-3">
+                        <span className="text-[14px] text-muted-foreground">Gói:</span>
+                        <div>
+                          <p className="font-medium text-foreground">{pkg.name}</p>
+                          <div className="mt-2 flex flex-wrap gap-2 flex items-center">
+                            <span className="text-[12px] text-muted-foreground">Bao gồm:</span>
+                            {pkg.items.slice(0, 3).map((item) => (
+                              <div
+                                key={item.reliefPackageDefinitionItemId}
+                                className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground"
+                              >
+                                <span>{item.supplyItemName}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                      <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                        {history.details.length} vật phẩm nguồn
-                      </span>
+                      <div className="flex flex-col items-end gap-2">
+                        <Badge variant="primary" appearance="light" className="gap-1.5">
+                          <span className="material-symbols-outlined text-[15px]">inventory_2</span>
+                          {formatNumberVN(pkg.items.length)} vật phẩm
+                        </Badge>
+                        {pkg.isDefault && (
+                          <Badge variant="success" appearance="light">
+                            Mặc định
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <Separator className="my-3" />
+                    <span className="text-[12px] text-muted-foreground">Mô tả:</span>
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      {pkg.description || 'Chưa có mô tả cho gói hỗ trợ này.'}
+                    </p>
+
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      {pkg.items.slice(0, 4).map((item) => (
+                        <div
+                          key={item.reliefPackageDefinitionItemId}
+                          className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1"
+                        >
+                          <SupplyCategoryBadge
+                            category={
+                              supplyItems.find((supply) => supply.id === item.supplyItemId)
+                                ?.category ||
+                              supplyItems.find((supply) => supply.id === item.supplyItemId)
+                                ?.categoryName ||
+                              ''
+                            }
+                          />
+                          <span>
+                            {item.supplyItemName} · {formatNumberVN(item.quantity)} {item.unit}
+                          </span>
+                        </div>
+                      ))}
+                      {pkg.items.length > 4 && (
+                        <span className="rounded-full border border-border bg-background px-3 py-1">
+                          +{formatNumberVN(pkg.items.length - 4)} vật phẩm khác
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))
               )}
             </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-foreground">Checklist phân phát</h3>
-            <p className="text-sm text-muted-foreground">
-              Theo dõi lịch sử phân phát, trạng thái hoàn tất và minh chứng đã phát.
-            </p>
-          </div>
-          <div className="space-y-3">
-            {checklist.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Chưa có checklist phân phát cho chiến dịch này.
-              </p>
-            ) : (
-              checklist.slice(0, 8).map((item) => (
-                <div
-                  key={item.householdDeliveryId}
-                  className="rounded-xl border border-border bg-muted/20 p-4"
-                >
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="font-medium text-foreground">
-                        {item.householdCode} · {item.headOfHouseholdName}
-                      </p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {teamNameById[item.campaignTeamId || ''] || 'Chưa rõ team'} · Hẹn phát{' '}
-                        {formatDateTimeVN(item.scheduledAt)}
-                      </p>
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Proof: {item.proofCount} · Hoàn tất:{' '}
-                      {item.deliveredAt ? formatDateTimeVN(item.deliveredAt) : 'Chưa phát'}
-                    </div>
-                  </div>
-                </div>
-              ))
+            {filteredPackageList.length > PACKAGE_ITEMS_PER_PAGE && (
+              <ReliefPaginationBar
+                currentPage={Math.min(packageListPage, totalPackageListPages)}
+                totalPages={totalPackageListPages}
+                onPrevious={() => setPackageListPage((prev) => Math.max(1, prev - 1))}
+                onNext={() =>
+                  setPackageListPage((prev) => Math.min(totalPackageListPages, prev + 1))
+                }
+              />
             )}
           </div>
         </div>
@@ -838,6 +1172,55 @@ export default function ReliefDistributionPage() {
           onJumpToCreatePackage={() => scrollToSection(PACKAGE_SECTION_ID)}
           assignErrors={assignErrors}
         />
+
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-foreground">
+              Bước 5. Rà soát checklist phân phối
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Kiểm tra danh sách hộ đã được gán, thời gian hẹn phát và trạng thái thực hiện.
+            </p>
+          </div>
+          <div className="space-y-3">
+            {checklist.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Chưa có checklist phân phát cho chiến dịch này.
+              </p>
+            ) : (
+              paginatedChecklist.map((item) => (
+                <div
+                  key={item.householdDeliveryId}
+                  className="rounded-xl border border-border bg-muted/20 p-4"
+                >
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="font-medium text-foreground">
+                        {item.householdCode} · {item.headOfHouseholdName}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {teamNameById[item.campaignTeamId || ''] || 'Chưa rõ team'} · Hẹn phát{' '}
+                        {formatDateTimeVN(item.scheduledAt)}
+                      </p>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Minh chứng: {formatNumberVN(item.proofCount)} · Đã phát:{' '}
+                      {item.deliveredAt ? formatDateTimeVN(item.deliveredAt) : 'Chưa phát'}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          {checklist.length > CHECKLIST_ITEMS_PER_PAGE && (
+            <ReliefPaginationBar
+              currentPage={Math.min(checklistPage, totalChecklistPages)}
+              totalPages={totalChecklistPages}
+              onPrevious={() => setChecklistPage((prev) => Math.max(1, prev - 1))}
+              onNext={() => setChecklistPage((prev) => Math.min(totalChecklistPages, prev + 1))}
+            />
+          )}
+        </div>
       </div>
     </DashboardLayout>
   );

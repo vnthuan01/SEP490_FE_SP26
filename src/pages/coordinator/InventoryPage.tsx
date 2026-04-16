@@ -48,7 +48,7 @@ import {
   useCancelSupplyTransfer,
 } from '@/hooks/useSupplyTransfers';
 import { useCampaigns } from '@/hooks/useCampaigns';
-import { formatNumberVN } from '@/lib/utils';
+import { formatNumberInputVN, formatNumberVN, parseFormattedNumber } from '@/lib/utils';
 import { clearDialogDraft, readDialogDraft, writeDialogDraft } from '@/lib/dialogDraft';
 import {
   getSupplyCategoryClass,
@@ -2144,14 +2144,12 @@ export default function CoordinatorInventoryPage() {
                                   Số lượng yêu cầu
                                 </label>
                                 <Input
-                                  type="number"
-                                  min={1}
-                                  value={item.quantity}
+                                  value={formatNumberInputVN(item.quantity)}
                                   onChange={(e) =>
                                     updateTransferItem(
                                       item.supplyItemId,
                                       'quantity',
-                                      Number(e.target.value || 1),
+                                      parseFormattedNumber(e.target.value) || 1,
                                     )
                                   }
                                 />
@@ -2462,12 +2460,13 @@ export default function CoordinatorInventoryPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Ngưỡng tối thiểu (Min)</label>
               <Input
-                type="number"
-                min={0}
-                value={editStockDialog.minValue}
+                value={formatNumberInputVN(editStockDialog.minValue)}
                 className={editStockErrors['minValue'] ? 'border-red-500 focus:ring-red-500' : ''}
                 onChange={(e) => {
-                  setEditStockDialog((prev) => ({ ...prev, minValue: e.target.value }));
+                  setEditStockDialog((prev) => ({
+                    ...prev,
+                    minValue: String(parseFormattedNumber(e.target.value)),
+                  }));
                   setEditStockErrors((prev) => {
                     const next = { ...prev };
                     delete next['minValue'];
@@ -2485,12 +2484,13 @@ export default function CoordinatorInventoryPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Ngưỡng tối đa (Max)</label>
               <Input
-                type="number"
-                min={0}
-                value={editStockDialog.maxValue}
+                value={formatNumberInputVN(editStockDialog.maxValue)}
                 className={editStockErrors['maxValue'] ? 'border-red-500 focus:ring-red-500' : ''}
                 onChange={(e) => {
-                  setEditStockDialog((prev) => ({ ...prev, maxValue: e.target.value }));
+                  setEditStockDialog((prev) => ({
+                    ...prev,
+                    maxValue: String(parseFormattedNumber(e.target.value)),
+                  }));
                   setEditStockErrors((prev) => {
                     const next = { ...prev };
                     delete next['maxValue'];

@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from 'lucide-react';
+import { formatNumberInputVN, parseFormattedNumber } from '@/lib/utils';
 import type { PackageForm, PackageItemForm } from './types';
 
 type SupplyOption = { id: string; name: string };
@@ -132,10 +133,13 @@ export function ManagerReliefDistributionPackageStep({
                 <Input
                   aria-label={`Số lượng thành phần ${index + 1}`}
                   className="w-full"
-                  type="number"
                   placeholder="SL"
-                  value={item.quantity}
-                  onChange={(e) => onUpdatePackageItem(index, { quantity: e.target.value })}
+                  value={formatNumberInputVN(item.quantity)}
+                  onChange={(e) =>
+                    onUpdatePackageItem(index, {
+                      quantity: String(parseFormattedNumber(e.target.value)),
+                    })
+                  }
                 />
 
                 <Input

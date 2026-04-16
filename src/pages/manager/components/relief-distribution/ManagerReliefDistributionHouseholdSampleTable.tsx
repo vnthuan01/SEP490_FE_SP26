@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/table';
 import { DeliveryMode } from '@/enums/beEnums';
 import { TrashIcon } from 'lucide-react';
+import { formatNumberInputVN, parseFormattedNumber } from '@/lib/utils';
 import type { HouseholdSampleForm } from './types';
 
 export function ManagerReliefDistributionHouseholdSampleTable({
@@ -121,11 +122,11 @@ export function ManagerReliefDistributionHouseholdSampleTable({
                   </TableCell>
                   <TableCell>
                     <Input
-                      type="number"
-                      min={1}
-                      value={household.householdSize}
+                      value={formatNumberInputVN(household.householdSize)}
                       onChange={(e) =>
-                        updateHouseholdSample(index, { householdSize: Number(e.target.value) })
+                        updateHouseholdSample(index, {
+                          householdSize: parseFormattedNumber(e.target.value),
+                        })
                       }
                     />
                     {sampleErrors[`items.${index}.householdSize`] && (

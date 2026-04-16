@@ -16,6 +16,7 @@ import { TrashIcon } from 'lucide-react';
 import { StationAddressLookup } from '@/pages/manager/components/StationAddressLookup';
 import { useGoongMap } from '@/hooks/useGoongMap';
 import { getSupplyCategoryClass, getSupplyCategoryLabel } from '@/enums/beEnums';
+import { formatNumberInputVN, formatNumberVN, parseFormattedNumber } from '@/lib/utils';
 import goongjs, { type Marker } from '@goongmaps/goong-js';
 import type {
   CoordinatorDistributionPointForm,
@@ -180,9 +181,9 @@ export function CoordinatorReliefDistributionSetupSteps({
     <div className="grid min-w-0 gap-6 grid-cols-1">
       <Card id={distributionSectionId} className="shadow-sm scroll-mt-24">
         <CardHeader className="space-y-1">
-          <CardTitle>1</CardTitle>
+          <CardTitle>Bước 1. Tạo điểm phát</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Điều phối viên tạo điểm phát cho chiến dịch tại trạm hiện tại.
+            Thiết lập địa điểm và thời gian phát hàng cho chiến dịch.
           </p>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -203,11 +204,11 @@ export function CoordinatorReliefDistributionSetupSteps({
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm font-medium">Thời gian vận hành</p>
+                <p className="text-sm font-medium">Thời gian phát hàng</p>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="space-y-2">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Bắt đầu phát
+                      Ngày bắt đầu
                     </p>
                     <div className="relative">
                       <Button
@@ -285,7 +286,7 @@ export function CoordinatorReliefDistributionSetupSteps({
                   </div>
                   <div className="space-y-2">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Kết thúc phát
+                      Ngày kết thúc
                     </p>
                     <div className="relative">
                       <Button
@@ -371,12 +372,12 @@ export function CoordinatorReliefDistributionSetupSteps({
               <div className="rounded-xl border border-border bg-muted/20 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium">Thông tin toạ độ đã chọn</p>
+                    <p className="text-sm font-medium">Vị trí điểm phát</p>
                     <p className="text-xs text-muted-foreground">
                       Dùng bản đồ để lấy đúng lat/lng và địa chỉ phát hàng cụ thể.
                     </p>
                   </div>
-                  <Badge variant="outline" appearance="light">
+                  <Badge variant="info" appearance="light">
                     Điểm phát
                   </Badge>
                 </div>
@@ -390,8 +391,9 @@ export function CoordinatorReliefDistributionSetupSteps({
                       ? 'Đã tự nhận diện khu vực điểm phát'
                       : 'Chưa nhận diện được tỉnh / thành của điểm phát'}
                   </Badge>
-                  <Button type="button" variant="outline" size="sm" onClick={onUseCurrentStation}>
-                    Dùng vị trí trạm hiện tại
+                  <Button type="button" variant="primary" size="sm" onClick={onUseCurrentStation}>
+                    <span className="material-symbols-outlined text-[18px]">location_on</span>
+                    Dùng vị trí trạm
                   </Button>
                 </div>
 
@@ -412,7 +414,7 @@ export function CoordinatorReliefDistributionSetupSteps({
 
                 <div className="mt-3 rounded-lg border border-border bg-background px-3 py-2 text-sm">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Khu vực đã tự nhận diện
+                    Khu vực nhận diện được
                   </p>
                   <p className="mt-1 font-medium text-foreground">
                     {selectedLocationName || 'Chưa tự nhận diện được khu vực phù hợp'}
@@ -439,7 +441,7 @@ export function CoordinatorReliefDistributionSetupSteps({
             <div className="space-y-4">
               <div className="rounded-xl border border-border bg-card p-4">
                 <StationAddressLookup
-                  label="Địa điểm trạm phát"
+                  label="Địa chỉ điểm phát"
                   required
                   address={distributionPointForm.address}
                   latitude={Number(distributionPointForm.latitude || 0)}
@@ -459,7 +461,7 @@ export function CoordinatorReliefDistributionSetupSteps({
               </div>
 
               <div className="rounded-xl border border-dashed border-border bg-muted/20 p-4 text-sm">
-                <p className="font-medium text-foreground">Địa chỉ chi tiết đang dùng</p>
+                <p className="font-medium text-foreground">Địa chỉ đã chọn</p>
                 <p className="mt-2 text-muted-foreground">
                   {distributionPointForm.address || 'Chưa chọn địa chỉ trên bản đồ.'}
                 </p>
@@ -470,7 +472,7 @@ export function CoordinatorReliefDistributionSetupSteps({
 
               <div className="overflow-hidden rounded-xl border border-border bg-card">
                 <div className="border-b border-border px-4 py-3">
-                  <p className="text-sm font-medium text-foreground">Preview map mini</p>
+                  <p className="text-sm font-medium text-foreground">Xem trước trên bản đồ</p>
                   <p className="text-xs text-muted-foreground">
                     Xem nhanh vị trí điểm phát sau khi chọn trên bản đồ.
                   </p>
@@ -495,22 +497,25 @@ export function CoordinatorReliefDistributionSetupSteps({
             </div>
           </div>
 
-          <Button onClick={onCreatePoint} disabled={createPointDisabled}>
-            Tạo điểm phát
-          </Button>
+          <div className="flex justify-end">
+            <Button onClick={onCreatePoint} disabled={createPointDisabled} className="gap-2">
+              <span className="material-symbols-outlined text-[18px]">save</span>
+              Lưu điểm phát
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
       <Card id={packageSectionId} className="shadow-sm scroll-mt-24">
         <CardHeader className="space-y-1">
-          <CardTitle>2</CardTitle>
+          <CardTitle>Bước 2. Tạo gói hỗ trợ</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Tạo gói cứu trợ để dùng khi phân công đội thực hiện cho các hộ dân.
+            Tạo định nghĩa gói hỗ trợ từ các vật phẩm hiện có trong kho để dùng khi gán cho hộ dân.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <p className="text-sm font-medium">Tên gói cứu trợ</p>
+            <p className="text-sm font-medium">Tên gói hỗ trợ</p>
             <Input
               placeholder="Ví dụ: Gói lương thực cơ bản"
               value={packageForm.name}
@@ -519,7 +524,7 @@ export function CoordinatorReliefDistributionSetupSteps({
             {packageErrors.name && <p className="text-sm text-destructive">{packageErrors.name}</p>}
           </div>
           <div className="space-y-2">
-            <p className="text-sm font-medium">Mô tả gói cứu trợ</p>
+            <p className="text-sm font-medium">Mô tả gói hỗ trợ</p>
             <Textarea
               placeholder="Mô tả ngắn các thành phần và mục đích sử dụng"
               value={packageForm.description || ''}
@@ -533,18 +538,17 @@ export function CoordinatorReliefDistributionSetupSteps({
           </div>
           <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 text-sm">
             <p className="font-medium text-primary">
-              Gói cứu trợ được tạo trực tiếp từ vật phẩm đang có trong kho
+              Gói hỗ trợ được tạo từ vật phẩm hiện có trong kho
             </p>
             <p className="mt-1 text-muted-foreground">
-              Bạn chỉ cần chọn đúng vật phẩm kho, số lượng và đơn vị. Hệ thống sẽ tự quy đổi gói dựa
-              trên vật phẩm thành phần đã chọn.
+              Chọn vật phẩm, số lượng và đơn vị để cấu thành gói hỗ trợ.
             </p>
           </div>
 
           <div className="space-y-3 rounded-xl border p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-medium">Danh sách thành phần</p>
+                <p className="text-sm font-medium">Vật phẩm trong gói</p>
                 <p className="text-xs text-muted-foreground">
                   Hiển thị tối đa 3 dòng, có thể cuộn khi thêm nhiều thành phần.
                 </p>
@@ -565,7 +569,7 @@ export function CoordinatorReliefDistributionSetupSteps({
                   }`}
                 >
                   <div className="space-y-2">
-                    <p className="text-sm font-medium">Vật phẩm thành phần #{index + 1}</p>
+                    <p className="text-sm font-medium">Vật phẩm #{index + 1}</p>
                     <Select
                       value={item.supplyItemId}
                       onValueChange={(value) => {
@@ -594,9 +598,6 @@ export function CoordinatorReliefDistributionSetupSteps({
                               disabled={isSelectedElsewhere}
                             >
                               {supplyItem.name}
-                              {typeof supplyItem.availableQuantity === 'number'
-                                ? ` • tồn ${supplyItem.availableQuantity} ${supplyItem.unit || ''}`
-                                : ''}
                             </SelectItem>
                           );
                         })}
@@ -624,9 +625,15 @@ export function CoordinatorReliefDistributionSetupSteps({
                                 matchedSupply.category || matchedSupply.categoryName,
                               )}
                             </Badge>
-                            <span>
-                              Tồn {matchedSupply.availableQuantity ?? 0} {matchedSupply.unit || ''}
-                            </span>
+                            <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1">
+                              <span className="material-symbols-outlined text-[14px] text-amber-600 dark:text-amber-300">
+                                inventory
+                              </span>
+                              <span>
+                                Tồn kho: {formatNumberVN(matchedSupply.availableQuantity ?? 0)}{' '}
+                                {matchedSupply.unit || ''}
+                              </span>
+                            </div>
                           </div>
                         );
                       })()}
@@ -634,11 +641,12 @@ export function CoordinatorReliefDistributionSetupSteps({
                   <div className="space-y-2">
                     <p className="text-sm font-medium">Số lượng</p>
                     <Input
-                      type="number"
                       placeholder="SL"
-                      value={item.quantity}
+                      value={formatNumberInputVN(item.quantity)}
                       onChange={(e) =>
-                        onUpdatePackageItem(index, { quantity: Number(e.target.value) })
+                        onUpdatePackageItem(index, {
+                          quantity: parseFormattedNumber(e.target.value),
+                        })
                       }
                     />
                     {packageErrors[`items.${index}.quantity`] && (
@@ -677,17 +685,23 @@ export function CoordinatorReliefDistributionSetupSteps({
               ))}
             </div>
 
-            <Button type="button" variant="outline" onClick={onAddPackageItem}>
-              Thêm thành phần
-            </Button>
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" onClick={onAddPackageItem} className="gap-2">
+                <span className="material-symbols-outlined text-[18px]">add_circle</span>
+                Thêm vật phẩm
+              </Button>
+            </div>
             {packageErrors.items && (
               <p className="text-sm text-destructive">{packageErrors.items}</p>
             )}
           </div>
 
-          <Button onClick={onCreatePackage} disabled={createPackageDisabled}>
-            Tạo gói cứu trợ
-          </Button>
+          <div className="flex justify-end">
+            <Button onClick={onCreatePackage} disabled={createPackageDisabled} className="gap-2">
+              <span className="material-symbols-outlined text-[18px]">inventory_2</span>
+              Lưu gói hỗ trợ
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

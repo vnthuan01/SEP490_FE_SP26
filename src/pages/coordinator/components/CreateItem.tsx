@@ -15,6 +15,7 @@ import { Separator } from '@/components/ui/separator';
 import type { NewInventoryItem, ItemInventoryProps } from '@/types/createItemInventory';
 import CustomCalendar from '@/components/ui/customCalendar';
 import { clearDialogDraft, readDialogDraft, writeDialogDraft } from '@/lib/dialogDraft';
+import { formatNumberInputVN, parseFormattedNumber } from '@/lib/utils';
 
 const UNIT_OPTIONS = ['Thùng', 'Hộp', 'Bao', 'Chai', 'Cái', 'Gói'];
 
@@ -225,12 +226,10 @@ export function CreateInventoryItemDialog({
                 Số lượng nhập <span className="text-red-500">*</span>
               </Label>
               <Input
-                type="number"
-                min={1}
-                value={form.quantity}
+                value={formatNumberInputVN(form.quantity)}
                 className={errors['quantity'] ? 'border-red-500 focus:ring-red-500' : ''}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  update('quantity', Number(e.target.value))
+                  update('quantity', parseFormattedNumber(e.target.value))
                 }
               />
               {errors['quantity'] && (
@@ -276,13 +275,14 @@ export function CreateInventoryItemDialog({
               {existingStock ? 'Sức chứa tối đa hiện tại' : 'Sức chứa tối đa (optional)'}
             </Label>
             <Input
-              type="number"
-              min={form.quantity}
               placeholder="Ví dụ: 1.000"
-              value={form.capacity ?? ''}
+              value={formatNumberInputVN(form.capacity ?? '')}
               disabled={!!existingStock}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                update('capacity', e.target.value ? Number(e.target.value) : undefined)
+                update(
+                  'capacity',
+                  e.target.value ? parseFormattedNumber(e.target.value) : undefined,
+                )
               }
             />
           </div>

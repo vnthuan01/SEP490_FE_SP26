@@ -27,11 +27,11 @@ export function CoordinatorReliefDistributionPageHeader({
           Điều phối cứu trợ
         </p>
         <h1 className="text-3xl font-black tracking-tight text-primary md:text-4xl">
-          Thiết lập và phân công cứu trợ
+          Thiết lập phân phối cứu trợ
         </h1>
         <p className="max-w-3xl text-sm text-muted-foreground md:text-base">
-          Điều phối viên cấu hình điểm phát, gói cứu trợ và phân công nhiều hộ dân cho đội thực
-          hiện.
+          Tạo điểm phát, tạo gói hỗ trợ từ vật phẩm trong kho, rà soát danh sách gói, gán hộ dân và
+          kiểm tra checklist trước khi triển khai.
         </p>
         {(locationName || stationName) && (
           <div className="flex flex-wrap gap-2 pt-1 text-sm">
