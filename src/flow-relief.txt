@@ -1,0 +1,645 @@
+Dưới đây là **flow Relief hoàn chỉnh cho UI/Frontend**, viết theo kiểu để FE dev có thể bám vào và gọi API đúng.
+
+---
+
+# 1. Mục tiêu của flow này
+
+Manager tạo một **Relief Campaign** để:
+- gom vật tư từ kho/trạm
+- tạo điểm phát cứu trợ
+- import danh sách hộ dân bị ảnh hưởng
+- gán hộ dân vào:
+  - **điểm phát**
+  - hoặc **phát tận nơi** nếu là hộ bị cô lập
+- volunteer/team thực hiện phát quà
+- sau khi phát xong, gửi **link ảnh Cloudinary** để xác nhận hoàn thành
+- nếu thiếu vật tư thì tạo **shortage request** để moderator duyệt
+
+---
+
+# 2. Các khái niệm FE cần hiểu
+
+## Campaign
+Chiến dịch cứu trợ.
+
+## Distribution Point
+Điểm phát cứu trợ tạm thời.
+
+## Household
+Hộ dân bị ảnh hưởng.
+
+## Relief Package
+Gói cứu trợ chuẩn, ví dụ:
+- 5kg gạo
+- 3 chai nước
+
+## Delivery
+Một record phát quà cho 1 hộ.
+
+## Proof
+Ảnh minh chứng đã phát quà xong.  
+**FE upload ảnh lên Cloudinary trước**, rồi gửi `proofFileUrl` cho backend.
+
+## Shortage Request
+Yêu cầu xin thêm vật tư khi điểm phát bị thiếu.
+
+---
+
+# 3. Enum FE phải gửi đúng
+
+## CampaignType
+```ts
+Fundraising = 1
+Relief = 2
+Rescue = 3
+```
+
+=> Relief campaign phải dùng:
+```json
+"type": 2
+```
+
+## DeliveryMode
+```ts
+DoorToDoor = 0
+PickupAtPoint = 1
+```
+
+Rất dễ nhầm, nhớ kỹ:
+- `0` = phát tận nơi
+- `1` = nhận tại điểm phát
+
+## HouseholdFulfillmentStatus
+```ts
+Pending = 0
+PartiallyDelivered = 1
+Delivered = 2
+Skipped = 3
+```
+
+## ShortageRequestStatus
+Hiện test ra:
+- `0` = pending
+- `1` = approved
+
+---
+
+# 4. Flow UI chuẩn từ đầu đến cuối
+
+---
+
+## Bước 1: Login
+FE login để lấy token.
+
+### API
+`POST /api/Auth/login`
+
+### Body
+```json
+{
+  "email": "regional.manager@system.com",
+  "password": "Manager@123"
+}
+```
+
+### FE cần giữ
+- `accessToken`
+
+### Header cho các request sau
+```http
+Authorization: Bearer <accessToken>
+```
+
+---
+
+## Bước 2: Lấy station / team / inventory nền
+Manager cần chọn:
+- trạm cứu trợ
+- team
+- location
+
+### API gợi ý đã dùng
+- `GET /api/relief-stations/provincial?pageIndex=1&pageSize=20`
+- `GET /api/team?pageIndex=1&pageSize=20`
+- `GET /api/Inventory?reliefStationId={stationId}&pageIndex=1&pageSize=10`
+
+---
+
+## Bước 3: Tạo Relief Campaign
+
+### API
+`POST /api/campaigns`
+
+### Body mẫu
+```json
+{
+  "name": "Relief Campaign Da Nang",
+  "description": "Hỗ trợ người dân sau thiên tai",
+  "locationId": "LOCATION_ID",
+  "startDate": "2026-04-15T08:00:00Z",
+  "endDate": "2026-04-22T08:00:00Z",
+  "latitude": 16.0544,
+  "longitude": 108.2022,
+  "areaRadiusKm": 10,
+  "addressDetail": "Da Nang",
+  "type": 2,
+  "completionRule": 1,
+  "allowOverTarget": true,
+  "goals": [],
+  "availablePeopleCount": 0,
+  "reliefStationId": "RELIEF_STATION_ID"
+}
+```
+
+## FE lưu lại
+- `campaignId`
+
+## Lưu ý
+- `type` phải là `2`
+- nếu gửi `1` thì backend hiểu là Fundraising và sẽ báo lỗi
+
+---
+
+## Bước 4: Gắn team vào campaign
+
+### API
+`POST /api/campaigns/{campaignId}/teams`
+
+### Body
+```json
+{
+  "teamId": "TEAM_ID",
+  "role": 1,
+  "initialStatus": 2
+}
+```
+
+## FE lưu lại
+- `campaignTeamId`
+
+---
+
+## Bước 5: Tạo Distribution Point
+
+### API
+`POST /api/relief/campaigns/{campaignId}/distribution-points`
+
+### Body
+```json
+{
+  "name": "Điểm phát A",
+  "reliefStationId": "RELIEF_STATION_ID",
+  "campaignTeamId": "CAMPAIGN_TEAM_ID",
+  "locationId": "LOCATION_ID",
+  "address": "Đà Nẵng",
+  "latitude": 16.0544,
+  "longitude": 108.2022,
+  "deliveryMode": 1,
+  "startsAt": "2026-04-15T08:00:00Z",
+  "endsAt": "2026-04-16T08:00:00Z",
+  "isActive": true
+}
+```
+
+## FE lưu lại
+- `distributionPointId`
+
+## Lưu ý
+Điểm phát thì dùng:
+```json
+"deliveryMode": 1
+```
+vì là **PickupAtPoint**
+
+---
+
+## Bước 6: Tạo Relief Package
+
+### API
+`POST /api/relief/campaigns/{campaignId}/packages`
+
+### Body
+```json
+{
+  "name": "Gói cứu trợ chuẩn",
+  "description": "5kg gạo + 3 chai nước",
+  "isDefault": true,
+  "isActive": true,
+  "items": [
+    {
+      "supplyItemId": "RICE_ID",
+      "quantity": 5,
+      "unit": "kg"
+    },
+    {
+      "supplyItemId": "WATER_ID",
+      "quantity": 3,
+      "unit": "chai"
+    }
+  ]
+}
+```
+
+## FE lưu lại
+- `reliefPackageDefinitionId`
+
+---
+
+## Bước 7: Import danh sách household
+
+### API
+`POST /api/relief/campaigns/{campaignId}/households/import`
+
+### Body mẫu
+```json
+{
+  "households": [
+    {
+      "householdCode": "HH-001",
+      "headOfHouseholdName": "Nguyễn Văn A",
+      "contactPhone": "0901111111",
+      "address": "Đà Nẵng A",
+      "latitude": 16.0544,
+      "longitude": 108.2022,
+      "householdSize": 4,
+      "isIsolated": false,
+      "deliveryMode": 1
+    },
+    {
+      "householdCode": "HH-002",
+      "headOfHouseholdName": "Trần Thị B",
+      "contactPhone": "0902222222",
+      "address": "Đà Nẵng B",
+      "latitude": 16.0544,
+      "longitude": 108.2022,
+      "householdSize": 3,
+      "isIsolated": true,
+      "deliveryMode": 0
+    }
+  ]
+}
+```
+
+## Quy tắc FE cần nhớ
+### Hộ bình thường
+```json
+"isIsolated": false,
+"deliveryMode": 1
+```
+
+### Hộ bị cô lập
+```json
+"isIsolated": true,
+"deliveryMode": 0
+```
+
+## FE nhận lại
+Danh sách household đã tạo, mỗi item có:
+- `campaignHouseholdId`
+
+---
+
+## Bước 8: Assign household vào point hoặc door-to-door
+
+---
+
+### 8.1 Hộ nhận tại điểm phát
+
+### API
+`PATCH /api/relief/campaigns/{campaignId}/households/{campaignHouseholdId}/assign`
+
+### Body
+```json
+{
+  "deliveryMode": 1,
+  "distributionPointId": "DISTRIBUTION_POINT_ID",
+  "campaignTeamId": "CAMPAIGN_TEAM_ID",
+  "reliefPackageDefinitionId": "PACKAGE_ID",
+  "scheduledAt": "2026-04-15T09:00:00Z",
+  "notes": "Pickup at point"
+}
+```
+
+---
+
+### 8.2 Hộ cô lập phát tận nơi
+
+### API
+`PATCH /api/relief/campaigns/{campaignId}/households/{campaignHouseholdId}/assign`
+
+### Body
+```json
+{
+  "deliveryMode": 0,
+  "campaignTeamId": "CAMPAIGN_TEAM_ID",
+  "reliefPackageDefinitionId": "PACKAGE_ID",
+  "scheduledAt": "2026-04-15T10:00:00Z",
+  "notes": "Direct delivery isolated household"
+}
+```
+
+## FE nhận lại
+- `householdDeliveryId`
+
+Đây là ID rất quan trọng để complete delivery sau này.
+
+---
+
+# 5. Checklist UI
+
+## API
+`GET /api/relief/campaigns/{campaignId}/checklist?campaignTeamId={campaignTeamId}`
+
+## UI nên hiển thị mỗi item
+- household code
+- tên chủ hộ
+- delivery mode
+- package
+- status
+- deliveredAt
+- proofCount
+
+### Ví dụ status
+- `0` = chưa phát
+- `2` = đã phát
+
+### Ví dụ UI
+- Hộ A — Pickup — Pending
+- Hộ B — DoorToDoor — Pending
+- Hộ C — Delivered — có 1 ảnh proof
+
+---
+
+# 6. Complete Delivery bằng Cloudinary URL
+
+Đây là phần FE phải làm đúng nhất.
+
+## FE flow
+### Bước A
+User chọn/chụp ảnh trên mobile/web
+
+### Bước B
+FE upload ảnh lên Cloudinary
+
+### Bước C
+FE lấy URL ảnh Cloudinary:
+```ts
+proofFileUrl = "https://res.cloudinary.com/xxx/image/upload/yyy.jpg"
+```
+
+### Bước D
+FE gọi backend complete delivery
+
+---
+
+## API
+`POST /api/relief/campaigns/{campaignId}/deliveries/{householdDeliveryId}/complete`
+
+## Body
+```json
+{
+  "notes": "Đã phát quà",
+  "proofNote": "Ảnh minh chứng hộ đã nhận",
+  "proofFileUrl": "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+  "proofContentType": "image/jpeg"
+}
+```
+
+## Kết quả mong đợi
+response sẽ có:
+- `status = 2`
+- `proofs.length = 1`
+
+và khi gọi checklist lại:
+- `status = 2`
+- `proofCount = 1`
+- `deliveredAt != null`
+
+---
+
+# 7. Shortage Request flow
+
+Khi điểm phát thiếu vật tư, FE tạo request xin thêm.
+
+---
+
+## Bước 1: Tạo shortage request
+
+### API
+`POST /api/relief/campaigns/{campaignId}/shortage-requests`
+
+### Body
+```json
+{
+  "distributionPointId": "DISTRIBUTION_POINT_ID",
+  "campaignTeamId": "CAMPAIGN_TEAM_ID",
+  "reason": "Thiếu nước uống",
+  "items": [
+    {
+      "supplyItemId": "WATER_ID",
+      "quantityRequested": 10,
+      "note": "Điểm phát sắp hết"
+    }
+  ]
+}
+```
+
+## Response
+- `status = 0` → pending
+
+---
+
+## Bước 2: Approve shortage request
+
+### API
+`PATCH /api/relief/campaigns/{campaignId}/shortage-requests/{shortageRequestId}/approve`
+
+### Body
+```json
+{
+  "reviewNote": "Duyệt cấp thêm vật tư",
+  "approvedItems": [
+    {
+      "supplyItemId": "WATER_ID",
+      "quantityApproved": 5
+    }
+  ]
+}
+```
+
+## Response
+- `status = 1` → approved
+
+---
+
+# 8. Flow UI hoàn chỉnh dạng ngắn
+
+```text
+1. Login
+2. Load station/team/location
+3. Create Relief Campaign
+4. Assign team vào campaign
+5. Create distribution point
+6. Create relief package
+7. Import households
+8. Assign households
+   - pickup at point
+   - or door-to-door
+9. Load checklist
+10. FE upload proof image lên Cloudinary
+11. FE gọi complete delivery với proofFileUrl
+12. Reload checklist
+13. Nếu thiếu vật tư → create shortage request
+14. Moderator approve shortage request
+```
+
+---
+
+# 9. Trạng thái mà FE nên hiển thị
+
+## Delivery status
+```ts
+0 = Pending
+1 = PartiallyDelivered
+2 = Delivered
+3 = Skipped
+```
+
+## Delivery mode
+```ts
+0 = DoorToDoor
+1 = PickupAtPoint
+```
+
+## Shortage request status
+```ts
+0 = Pending
+1 = Approved
+```
+
+---
+
+# 10. Những lỗi FE rất dễ gặp
+
+## Lỗi 1: gửi sai `CampaignType`
+Sai:
+```json
+"type": 1
+```
+Đúng:
+```json
+"type": 2
+```
+
+## Lỗi 2: gửi sai `DeliveryMode`
+Sai phổ biến là tưởng:
+- `0 = Pickup`
+- `1 = DoorToDoor`
+
+**Nhưng thực tế đang là ngược lại:**
+- `0 = DoorToDoor`
+- `1 = PickupAtPoint`
+
+## Lỗi 3: complete delivery bằng file upload trực tiếp
+Hiện tại **không upload file trực tiếp vào backend nữa**.
+
+Đúng flow:
+- FE upload Cloudinary
+- FE gửi `proofFileUrl`
+
+## Lỗi 4: quên lưu `householdDeliveryId`
+Muốn complete delivery thì phải dùng:
+- `householdDeliveryId` từ response assign
+
+---
+
+# 11. Gợi ý chia màn hình UI
+
+## Screen 1: Create Relief Campaign
+- campaign info
+- chọn station
+
+## Screen 2: Campaign Setup
+- assign team
+- tạo điểm phát
+- tạo package
+
+## Screen 3: Import Households
+- upload/import data
+- xem list household
+
+## Screen 4: Assign Households
+- map household → point / direct delivery
+- chọn package
+- chọn team
+
+## Screen 5: Checklist
+- filter theo team / point / status
+- bấm complete
+- upload Cloudinary
+- gửi proof URL
+
+## Screen 6: Shortage Requests
+- tạo request
+- moderator approve/reject
+
+---
+
+# 12. Payload FE nên chuẩn hóa thành model
+
+## Complete delivery request
+```ts
+type CompleteHouseholdDeliveryRequest = {
+  notes?: string;
+  proofNote?: string;
+  proofFileUrl: string;
+  proofContentType?: string;
+};
+```
+
+## Assign household request
+```ts
+type AssignHouseholdRequest = {
+  deliveryMode: 0 | 1;
+  distributionPointId?: string;
+  campaignTeamId?: string;
+  reliefPackageDefinitionId?: string;
+  scheduledAt?: string;
+  notes?: string;
+};
+```
+
+## Import household item
+```ts
+type HouseholdImportItem = {
+  householdCode: string;
+  headOfHouseholdName: string;
+  contactPhone?: string;
+  address?: string;
+  latitude: number;
+  longitude: number;
+  householdSize: number;
+  isIsolated: boolean;
+  deliveryMode: 0 | 1;
+};
+```
+
+---
+
+# 13. Kết quả test backend hiện tại
+Flow này tôi đã test pass:
+- create campaign
+- create point
+- create package
+- import household
+- assign household
+- complete delivery bằng `proofFileUrl`
+- checklist cập nhật đúng
+- shortage create/approve pass
+
+---
+
+Nếu bạn muốn, tôi có thể làm tiếp cho bạn một trong 2 thứ:
+
+1. **viết tài liệu API dạng frontend handoff ngắn gọn hơn**
+2. **viết sẵn bộ interface TypeScript + service function mẫu cho FE**
