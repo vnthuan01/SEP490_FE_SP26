@@ -24,6 +24,7 @@ export default tseslint.config([
     },
 
     plugins: {
+      '@typescript-eslint': tseslint.plugin,
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
     },
@@ -44,10 +45,29 @@ export default tseslint.config([
       /* Relax */
       '@typescript-eslint/no-explicit-any': 'off',
 
+      /* Use TS-aware unused-vars; base rule misfires on TS types/signatures */
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
+
       /* Disable base no-redeclare — replaced by TS-aware version */
       /* Base rule doesn't understand TS enums (type + value same name) */
       'no-redeclare': 'off',
       '@typescript-eslint/no-redeclare': 'off',
+    },
+  },
+
+  {
+    files: ['**/*.d.ts'],
+    rules: {
+      'no-unused-vars': 'off',
     },
   },
 ]);
