@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -186,6 +187,7 @@ function EtaBadge({ minutes }: { minutes?: number | null }) {
 }
 
 export default function MissionTrackingPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [requests, setRequests] = useState<RescueRequestDetail[]>([]);
   const [isListLoading, setIsListLoading] = useState(true);
   const [isListError, setIsListError] = useState(false);
@@ -193,9 +195,30 @@ export default function MissionTrackingPage() {
   const [statusFilter, setStatusFilter] = useState<number | undefined>(undefined);
   const [listPage, setListPage] = useState(1);
 
-  const [selectedId, setSelectedId] = useState('');
+  const [selectedId, setSelectedId] = useState(searchParams.get('requestId') || '');
   const [selectedListRequest, setSelectedListRequest] = useState<RescueRequestDetail | null>(null);
   const [isRecalculating, setIsRecalculating] = useState(false);
+
+  const requestIdFromQuery = searchParams.get('requestId') || '';
+
+  useEffect(() => {
+    if (!requestIdFromQuery) return;
+    if (requestIdFromQuery !== selectedId) {
+      setSelectedId(requestIdFromQuery);
+    }
+  }, [requestIdFromQuery, selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setSelectedListRequest(null);
+      return;
+    }
+
+    const found = requests.find((req) => getRequestId(req) === selectedId);
+    if (found) {
+      setSelectedListRequest(found);
+    }
+  }, [requests, selectedId]);
 
   const { prefetchRoute } = usePrefetchedDirectionsRoute(GOONG_API_KEY);
 
@@ -356,6 +379,7 @@ export default function MissionTrackingPage() {
     (rid: string, req: RescueRequestDetail) => {
       setSelectedId(rid);
       setSelectedListRequest(req);
+      setSearchParams({ requestId: rid }, { replace: false });
 
       // Fire-and-forget prefetch on click
       const origin =
@@ -373,7 +397,7 @@ export default function MissionTrackingPage() {
 
       prefetchRoute(origin, destination);
     },
-    [prefetchRoute],
+    [prefetchRoute, setSearchParams],
   );
 
   // ── ETA recalculate ───────────────────────────────────────────────────────

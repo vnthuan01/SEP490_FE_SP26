@@ -34,6 +34,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useVehicles, useVehicleTypes } from '@/hooks/useVehicles';
+import { useProvincialStations } from '@/hooks/useReliefStations';
+import { useTeamsInStation } from '@/hooks/useTeams';
+import { TeamStatus } from '@/enums/beEnums';
 import { managerNavGroups } from './components/sidebarConfig';
 import { toast } from 'sonner';
 import { formatNumberVN } from '@/lib/utils';
@@ -42,27 +45,33 @@ type VehicleFormState = {
   vehicleId?: string;
   vehicleTypeId: string;
   licensePlate: string;
-  teamUsed: string;
+  reliefStationId: string;
+  teamId: string;
   status: number;
 };
 
 const defaultVehicleForm: VehicleFormState = {
   vehicleTypeId: '',
   licensePlate: '',
-  teamUsed: '',
-  status: 0,
+  reliefStationId: '',
+  teamId: '',
+  status: 1,
 };
 
 type VehicleTypeFormState = {
   id?: string;
   typeName: string;
   defaultCapacity: number;
+  capacityKind: 1 | 2;
+  capacityUnit: 'kg' | 'people';
   description: string;
 };
 
 const defaultVehicleTypeForm: VehicleTypeFormState = {
   typeName: '',
   defaultCapacity: 0,
+  capacityKind: 1,
+  capacityUnit: 'kg',
   description: '',
 };
 
@@ -70,26 +79,44 @@ export default function ManagerVehicleManagementPage() {
   const [pageIndex, setPageIndex] = useState(1);
   const [pageSize] = useState(10);
   const [search, setSearch] = useState('');
+  const [stationFilter, setStationFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | '1' | '2'>('all');
   const [openVehicleModal, setOpenVehicleModal] = useState(false);
   const [openVehicleTypeModal, setOpenVehicleTypeModal] = useState(false);
+  const [openAssignStationModal, setOpenAssignStationModal] = useState(false);
+  const [assignVehicleId, setAssignVehicleId] = useState('');
+  const [assignStationId, setAssignStationId] = useState('');
   const [vehicleForm, setVehicleForm] = useState<VehicleFormState>(defaultVehicleForm);
   const [vehicleTypeForm, setVehicleTypeForm] =
     useState<VehicleTypeFormState>(defaultVehicleTypeForm);
 
   const {
     vehicles,
+    vehiclesByStatus,
     vehiclesPagination,
     isLoadingVehicles,
+    isLoadingVehiclesByStatus,
     createVehicle,
     createStatus,
     updateVehicle,
     updateStatus,
     deleteVehicle,
-  } = useVehicles(undefined, undefined, {
-    pageIndex,
-    pageSize,
-    search: search || undefined,
-  });
+    vehicleCounts,
+    isLoadingVehicleCounts,
+    assignVehicleStation,
+    assignVehicleStationStatus,
+  } = useVehicles(
+    undefined,
+    statusFilter === 'all' ? undefined : Number(statusFilter),
+    {
+      pageIndex,
+      pageSize,
+      search: search || undefined,
+      reliefStationId: stationFilter !== 'all' ? stationFilter : undefined,
+    },
+    stationFilter !== 'all' ? stationFilter : undefined,
+    true,
+  );
   const {
     vehicleTypes,
     createVehicleType,
@@ -98,6 +125,36 @@ export default function ManagerVehicleManagementPage() {
     updateTypeStatus,
     deleteVehicleType,
   } = useVehicleTypes(undefined, { pageIndex: 1, pageSize: 100 });
+  const { data: stationData } = useProvincialStations({ pageIndex: 1, pageSize: 200 });
+  const stations = stationData?.items || [];
+  const selectedFormStationId = vehicleForm.reliefStationId || undefined;
+  const { teams: teamsInStation, isLoading: isLoadingTeamsInStation } =
+    useTeamsInStation(selectedFormStationId);
+  const approvedTeams = teamsInStation.filter((team) => team.status === TeamStatus.Active);
+  const normalizedSearch = search.trim().toLowerCase();
+  const displayedVehicles =
+    statusFilter === 'all'
+      ? vehicles
+      : vehiclesByStatus.filter((vehicle) => {
+          const matchStation = stationFilter === 'all' || vehicle.reliefStationId === stationFilter;
+          const haystack = [
+            vehicle.licensePlate,
+            vehicle.teamName,
+            vehicle.reliefStationName,
+            vehicle.vehicleTypeName,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+          const matchSearch = !normalizedSearch || haystack.includes(normalizedSearch);
+          return matchStation && matchSearch;
+        });
+  const isLoadingVehicleTable =
+    statusFilter === 'all' ? isLoadingVehicles : isLoadingVehiclesByStatus;
+
+  const getStationId = (station: any) =>
+    station.id || station.stationId || station.reliefStationId || '';
+  const getCapacityUnitByKind = (kind: 1 | 2): 'kg' | 'people' => (kind === 1 ? 'kg' : 'people');
 
   const handleOpenCreateVehicle = () => {
     setVehicleForm(defaultVehicleForm);
@@ -109,10 +166,17 @@ export default function ManagerVehicleManagementPage() {
       vehicleId: vehicle.vehicleId,
       vehicleTypeId: vehicle.vehicleTypeId,
       licensePlate: vehicle.licensePlate,
-      teamUsed: vehicle.teamUsed || '',
+      reliefStationId: vehicle.reliefStationId || '',
+      teamId: vehicle.teamId || '',
       status: vehicle.status,
     });
     setOpenVehicleModal(true);
+  };
+
+  const handleOpenAssignStation = (vehicleId: string, currentStationId?: string) => {
+    setAssignVehicleId(vehicleId);
+    setAssignStationId(currentStationId || '');
+    setOpenAssignStationModal(true);
   };
 
   const handleOpenCreateVehicleType = () => {
@@ -125,6 +189,8 @@ export default function ManagerVehicleManagementPage() {
       id: type.id,
       typeName: type.typeName,
       defaultCapacity: type.defaultCapacity || 0,
+      capacityKind: type.capacityKind === 2 ? 2 : 1,
+      capacityUnit: type.capacityUnit === 'people' ? 'people' : 'kg',
       description: type.description || '',
     });
     setOpenVehicleTypeModal(true);
@@ -136,25 +202,38 @@ export default function ManagerVehicleManagementPage() {
       return;
     }
 
+    const normalizedLicensePlate = vehicleForm.licensePlate.trim().toUpperCase();
+
     if (vehicleForm.vehicleId) {
       await updateVehicle({
         id: vehicleForm.vehicleId,
         data: {
           vehicleTypeId: vehicleForm.vehicleTypeId,
-          licensePlate: vehicleForm.licensePlate.trim(),
-          teamUsed: vehicleForm.teamUsed.trim(),
+          licensePlate: normalizedLicensePlate,
+          teamId: vehicleForm.teamId.trim() || undefined,
           status: vehicleForm.status,
         },
       });
     } else {
       await createVehicle({
         vehicleTypeId: vehicleForm.vehicleTypeId,
-        licensePlate: vehicleForm.licensePlate.trim(),
-        teamUsed: vehicleForm.teamUsed.trim(),
+        licensePlate: normalizedLicensePlate,
+        reliefStationId: vehicleForm.reliefStationId || undefined,
+        teamId: vehicleForm.teamId.trim() || undefined,
       });
     }
 
     setOpenVehicleModal(false);
+  };
+
+  const handleAssignStation = async () => {
+    if (!assignVehicleId || !assignStationId) {
+      toast.error('Vui lòng chọn trạm cứu trợ để gán.');
+      return;
+    }
+
+    await assignVehicleStation({ id: assignVehicleId, stationId: assignStationId });
+    setOpenAssignStationModal(false);
   };
 
   const handleSaveVehicleType = async () => {
@@ -169,6 +248,8 @@ export default function ManagerVehicleManagementPage() {
         data: {
           typeName: vehicleTypeForm.typeName.trim(),
           defaultCapacity: Number(vehicleTypeForm.defaultCapacity),
+          capacityKind: vehicleTypeForm.capacityKind,
+          capacityUnit: getCapacityUnitByKind(vehicleTypeForm.capacityKind),
           description: vehicleTypeForm.description.trim(),
         },
       });
@@ -176,6 +257,8 @@ export default function ManagerVehicleManagementPage() {
       await createVehicleType({
         typeName: vehicleTypeForm.typeName.trim(),
         defaultCapacity: Number(vehicleTypeForm.defaultCapacity),
+        capacityKind: vehicleTypeForm.capacityKind,
+        capacityUnit: getCapacityUnitByKind(vehicleTypeForm.capacityKind),
         description: vehicleTypeForm.description.trim(),
       });
     }
@@ -206,6 +289,42 @@ export default function ManagerVehicleManagementPage() {
         </div>
 
         <Card className="bg-surface-dark dark:bg-surface-light border-border">
+          <CardHeader>
+            <CardTitle>Tổng quan phương tiện</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoadingVehicleCounts ? (
+              <p className="text-sm text-muted-foreground">Đang tải thống kê phương tiện...</p>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-border p-3 bg-card/40">
+                  <p className="text-xs text-muted-foreground uppercase">Tổng</p>
+                  <p className="text-2xl font-black">{formatNumberVN(vehicleCounts?.total || 0)}</p>
+                </div>
+                <div className="rounded-xl border border-border p-3 bg-card/40">
+                  <p className="text-xs text-muted-foreground uppercase">Sẵn sàng</p>
+                  <p className="text-2xl font-black text-green-600">
+                    {formatNumberVN(vehicleCounts?.free || 0)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border p-3 bg-card/40">
+                  <p className="text-xs text-muted-foreground uppercase">Đang bận</p>
+                  <p className="text-2xl font-black text-amber-600">
+                    {formatNumberVN(vehicleCounts?.busy || 0)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border p-3 bg-card/40">
+                  <p className="text-xs text-muted-foreground uppercase">Chưa gán trạm</p>
+                  <p className="text-2xl font-black text-sky-600">
+                    {formatNumberVN(vehicleCounts?.unassignedStation || 0)}
+                  </p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-surface-dark dark:bg-surface-light border-border">
           <div className="flex flex-col sm:flex-row items-center justify-between p-4 gap-4 border-b border-border">
             <div className="relative w-full sm:w-96">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-muted-foreground">
@@ -221,6 +340,48 @@ export default function ManagerVehicleManagementPage() {
                 }}
               />
             </div>
+            <div className="w-full sm:w-[280px]">
+              <Select
+                value={stationFilter}
+                onValueChange={(value) => {
+                  setStationFilter(value);
+                  setPageIndex(1);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Lọc theo trạm" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả trạm</SelectItem>
+                  {stations
+                    .map((station) => ({ id: getStationId(station), name: station.name }))
+                    .filter((station) => !!station.id)
+                    .map((station) => (
+                      <SelectItem key={station.id} value={station.id}>
+                        {station.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-full sm:w-[200px]">
+              <Select
+                value={statusFilter}
+                onValueChange={(value: 'all' | '1' | '2') => {
+                  setStatusFilter(value);
+                  setPageIndex(1);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Lọc theo trạng thái" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả trạng thái</SelectItem>
+                  <SelectItem value="1">Sẵn sàng</SelectItem>
+                  <SelectItem value="2">Đang bận</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <CardHeader>
@@ -228,7 +389,7 @@ export default function ManagerVehicleManagementPage() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              {isLoadingVehicles ? (
+              {isLoadingVehicleTable ? (
                 <div className="flex items-center justify-center py-16">
                   <div className="flex flex-col items-center gap-3">
                     <span className="material-symbols-outlined text-4xl text-primary animate-spin">
@@ -239,7 +400,7 @@ export default function ManagerVehicleManagementPage() {
                     </p>
                   </div>
                 </div>
-              ) : vehicles.length === 0 ? (
+              ) : displayedVehicles.length === 0 ? (
                 <div className="flex items-center justify-center py-16">
                   <div className="flex flex-col items-center gap-3">
                     <span className="material-symbols-outlined text-4xl text-muted-foreground">
@@ -254,14 +415,15 @@ export default function ManagerVehicleManagementPage() {
                     <TableRow>
                       <TableHead>Biển số xe</TableHead>
                       <TableHead>Loại phương tiện</TableHead>
-                      <TableHead>Đội sử dụng</TableHead>
+                      <TableHead>Trạm cứu trợ</TableHead>
+                      <TableHead>Đội phụ trách</TableHead>
                       <TableHead>Ngày thêm</TableHead>
                       <TableHead>Trạng thái</TableHead>
                       <TableHead className="text-right">Thao tác</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {vehicles.map((v) => (
+                    {displayedVehicles.map((v) => (
                       <TableRow
                         key={v.vehicleId}
                         className="group hover:bg-card/50 transition-colors"
@@ -280,9 +442,17 @@ export default function ManagerVehicleManagementPage() {
                         <TableCell>
                           <span
                             className="text-foreground text-sm truncate max-w-[150px] inline-block"
-                            title={v.teamUsed}
+                            title={v.reliefStationName}
                           >
-                            {v.teamUsed || '—'}
+                            {v.reliefStationName || 'Chưa gán trạm'}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span
+                            className="text-foreground text-sm truncate max-w-[150px] inline-block"
+                            title={v.teamName || v.teamUsed}
+                          >
+                            {v.teamName || v.teamUsed || '—'}
                           </span>
                         </TableCell>
                         <TableCell>
@@ -291,17 +461,17 @@ export default function ManagerVehicleManagementPage() {
                           </span>
                         </TableCell>
                         <TableCell>
-                          {v.status === 0 ? (
+                          {v.status === 1 ? (
                             <Badge variant="success" size="xs">
                               Sẵn sàng
                             </Badge>
-                          ) : v.status === 1 ? (
+                          ) : v.status === 2 ? (
                             <Badge variant="warning" size="xs">
-                              Đang sử dụng
+                              Đang bận
                             </Badge>
                           ) : (
                             <Badge variant="destructive" size="xs">
-                              Đang bảo trì
+                              Không xác định
                             </Badge>
                           )}
                         </TableCell>
@@ -316,6 +486,15 @@ export default function ManagerVehicleManagementPage() {
                               <DropdownMenuItem className="gap-2">
                                 <span className="material-symbols-outlined text-lg">sync_alt</span>
                                 Điều phối phương tiện
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onClick={() =>
+                                  handleOpenAssignStation(v.vehicleId, v.reliefStationId)
+                                }
+                              >
+                                <span className="material-symbols-outlined text-lg">home_work</span>
+                                Gán trạm cứu trợ
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 className="gap-2"
@@ -342,7 +521,8 @@ export default function ManagerVehicleManagementPage() {
             </div>
 
             {/* Pagination */}
-            {vehiclesPagination &&
+            {statusFilter === 'all' &&
+              vehiclesPagination &&
               vehiclesPagination.totalCount > 0 &&
               vehiclesPagination.totalCount > pageSize && (
                 <div className="flex items-center justify-between px-4 py-3 border-t border-border mt-auto">
@@ -413,7 +593,9 @@ export default function ManagerVehicleManagementPage() {
                       <TableCell>
                         <span className="text-foreground text-sm">
                           {formatNumberVN(type.defaultCapacity)}{' '}
-                          <span className="text-[10px] text-muted-foreground uppercase">kg</span>
+                          <span className="text-[10px] text-muted-foreground uppercase">
+                            {type.capacityUnit}
+                          </span>
                         </span>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
@@ -472,10 +654,49 @@ export default function ManagerVehicleManagementPage() {
                   placeholder="Ví dụ: 51A-12345"
                   value={vehicleForm.licensePlate}
                   onChange={(e) =>
-                    setVehicleForm((prev) => ({ ...prev, licensePlate: e.target.value }))
+                    setVehicleForm((prev) => ({
+                      ...prev,
+                      licensePlate: e.target.value.toUpperCase(),
+                    }))
                   }
                 />
               </div>
+
+              {!vehicleForm.vehicleId && (
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium text-foreground">
+                    Trạm cứu trợ (tùy chọn)
+                  </label>
+                  <Select
+                    value={vehicleForm.reliefStationId || 'unassigned'}
+                    onValueChange={(value) =>
+                      setVehicleForm((prev) => ({
+                        ...prev,
+                        reliefStationId: value === 'unassigned' ? '' : value,
+                        teamId: '',
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn trạm" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">Chưa gán trạm</SelectItem>
+                      {stations
+                        .map((station) => ({
+                          id: getStationId(station),
+                          name: station.name,
+                        }))
+                        .filter((station) => !!station.id)
+                        .map((station) => (
+                          <SelectItem key={station.id} value={station.id}>
+                            {station.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div className="grid gap-2">
                 <label className="text-sm font-medium text-foreground">Loại phương tiện</label>
@@ -499,14 +720,42 @@ export default function ManagerVehicleManagementPage() {
               </div>
 
               <div className="grid gap-2">
-                <label className="text-sm font-medium text-foreground">Đội sử dụng</label>
-                <Input
-                  placeholder="Ví dụ: Đội vận chuyển miền Trung"
-                  value={vehicleForm.teamUsed}
-                  onChange={(e) =>
-                    setVehicleForm((prev) => ({ ...prev, teamUsed: e.target.value }))
+                <label className="text-sm font-medium text-foreground">
+                  Đội phụ trách (tùy chọn)
+                </label>
+                <Select
+                  value={vehicleForm.teamId || 'unassigned-team'}
+                  onValueChange={(value) =>
+                    setVehicleForm((prev) => ({
+                      ...prev,
+                      teamId: value === 'unassigned-team' ? '' : value,
+                    }))
                   }
-                />
+                  disabled={!vehicleForm.reliefStationId}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        vehicleForm.reliefStationId
+                          ? 'Chọn đội đã duyệt tại trạm'
+                          : 'Vui lòng chọn trạm trước'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned-team">Chưa gán đội</SelectItem>
+                    {approvedTeams.map((team) => (
+                      <SelectItem key={team.teamId} value={team.teamId}>
+                        {team.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {vehicleForm.reliefStationId && isLoadingTeamsInStation && (
+                  <p className="text-xs text-muted-foreground">
+                    Đang tải danh sách đội trong trạm...
+                  </p>
+                )}
               </div>
 
               {!vehicleForm.vehicleId && (
@@ -529,9 +778,8 @@ export default function ManagerVehicleManagementPage() {
                       <SelectValue placeholder="Chọn trạng thái" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="0">Sẵn sàng</SelectItem>
-                      <SelectItem value="1">Đang sử dụng</SelectItem>
-                      <SelectItem value="2">Bảo trì</SelectItem>
+                      <SelectItem value="1">Sẵn sàng</SelectItem>
+                      <SelectItem value="2">Đang bận</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -593,6 +841,34 @@ export default function ManagerVehicleManagementPage() {
               </div>
 
               <div className="grid gap-2">
+                <label className="text-sm font-medium text-foreground">Kiểu sức chứa</label>
+                <Select
+                  value={String(vehicleTypeForm.capacityKind)}
+                  onValueChange={(value) => {
+                    const nextKind = value === '2' ? 2 : 1;
+                    setVehicleTypeForm((prev) => ({
+                      ...prev,
+                      capacityKind: nextKind,
+                      capacityUnit: getCapacityUnitByKind(nextKind),
+                    }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn kiểu sức chứa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">CargoWeight</SelectItem>
+                    <SelectItem value="2">PassengerCount</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <label className="text-sm font-medium text-foreground">Đơn vị sức chứa</label>
+                <Input value={vehicleTypeForm.capacityUnit} disabled readOnly />
+              </div>
+
+              <div className="grid gap-2">
                 <label className="text-sm font-medium text-foreground">Mô tả</label>
                 <Input
                   placeholder="Ví dụ: Phù hợp chở lương thực, nước uống"
@@ -616,6 +892,46 @@ export default function ManagerVehicleManagementPage() {
                 {createTypeStatus === 'pending' || updateTypeStatus === 'pending'
                   ? 'Đang lưu...'
                   : 'Lưu loại xe'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={openAssignStationModal} onOpenChange={setOpenAssignStationModal}>
+          <DialogContent className="sm:max-w-[520px]">
+            <DialogHeader>
+              <DialogTitle>Gán trạm cho phương tiện</DialogTitle>
+              <DialogDescription>Chọn trạm cứu trợ để gán lại phương tiện này.</DialogDescription>
+            </DialogHeader>
+
+            <div className="grid gap-2">
+              <label className="text-sm font-medium text-foreground">Trạm cứu trợ</label>
+              <Select value={assignStationId} onValueChange={setAssignStationId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn trạm" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stations
+                    .map((station) => ({ id: getStationId(station), name: station.name }))
+                    .filter((station) => !!station.id)
+                    .map((station) => (
+                      <SelectItem key={station.id} value={station.id}>
+                        {station.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpenAssignStationModal(false)}>
+                Hủy
+              </Button>
+              <Button
+                onClick={handleAssignStation}
+                disabled={assignVehicleStationStatus === 'pending'}
+              >
+                {assignVehicleStationStatus === 'pending' ? 'Đang gán...' : 'Xác nhận gán trạm'}
               </Button>
             </DialogFooter>
           </DialogContent>

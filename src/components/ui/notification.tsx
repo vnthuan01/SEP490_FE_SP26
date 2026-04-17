@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Evidence, RequestNotification, RequestType } from '@/types/notifications';
+import { NotificationTypeLabel } from '@/enums/beEnums';
 
 interface Props {
   data: RequestNotification[];
@@ -17,6 +18,23 @@ const TYPE_LABEL: Record<RequestType, string> = {
   CUU_TRO: 'Cứu trợ',
   LUONG_THUC: 'Lương thực',
   KHAC: 'Khác',
+};
+
+const getNotificationTypeLabel = (value?: number | string) => {
+  const labelMap = NotificationTypeLabel as unknown as Record<string, string>;
+
+  if (value == null || value === '') return '';
+  if (typeof value === 'number' && value in labelMap) {
+    return labelMap[String(value)];
+  }
+
+  const normalized = String(value).trim();
+  const numeric = Number(normalized);
+  if (Number.isFinite(numeric) && String(numeric) in labelMap) {
+    return labelMap[String(numeric)];
+  }
+
+  return labelMap[normalized] || normalized;
 };
 
 const Notification: React.FC<Props> = ({ data, onClickItem, onMarkAllRead }) => {
@@ -56,39 +74,48 @@ interface ItemProps {
 }
 
 const NotificationItem: React.FC<ItemProps> = ({ item, onClick }) => {
+  const notificationId = item.notificationId || item.id;
+  const isUnread = item.isRead !== undefined ? !item.isRead : item.unread;
+  const typeLabel = getNotificationTypeLabel(item.type);
+  const title = item.title || item.requesterName;
+  const message = item.message || item.description;
+  const metaText = [
+    typeLabel,
+    item.location,
+    item.referenceId ? `#${item.referenceId.slice(0, 8)}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   return (
     <div
-      onClick={() => onClick?.(item)}
+      onClick={() => onClick?.({ ...item, id: notificationId })}
       className={`
         flex gap-3 px-4 py-3 cursor-pointer transition
         hover:bg-muted/40
-        ${item.unread ? 'bg-muted/30' : ''}
+        ${isUnread ? 'bg-muted/30' : ''}
       `}
     >
       {/* Unread dot */}
-      {item.unread && <span className="mt-2 w-2 h-2 rounded-full bg-primary shrink-0" />}
+      {isUnread && <span className="mt-2 w-2 h-2 rounded-full bg-primary shrink-0" />}
 
       {/* Avatar */}
-      <img
-        src={item.requesterAvatar || '/avatars/default.png'}
-        className="w-9 h-9 rounded-full object-cover border"
-        alt={item.requesterName}
-      />
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-muted text-sm font-semibold text-primary">
+        {(title || 'N').trim().charAt(0).toUpperCase()}
+      </div>
 
       {/* Content */}
       <div className="flex-1 text-sm">
         <p className="text-foreground">
-          <strong>{item.requesterName}</strong>{' '}
-          <span className={TYPE_COLOR[item.requestType]}>
-            gửi yêu cầu {TYPE_LABEL[item.requestType]}
-          </span>
+          <strong>{title}</strong>{' '}
+          {item.requestType ? (
+            <span className={TYPE_COLOR[item.requestType]}>{TYPE_LABEL[item.requestType]}</span>
+          ) : null}
         </p>
 
-        <p className="text-muted-foreground mt-0.5 line-clamp-2">{item.description}</p>
+        <p className="text-muted-foreground mt-0.5 line-clamp-2">{message}</p>
 
-        <p className="text-xs text-muted-foreground mt-1">
-          {item.location} · {item.createdAt}
-        </p>
+        <p className="text-xs text-muted-foreground mt-1">{metaText || item.createdAt}</p>
 
         {item.evidences && item.evidences.length > 0 && (
           <div className="flex gap-2 mt-2">

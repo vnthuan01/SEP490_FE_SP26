@@ -18,6 +18,7 @@ import CoordinatorDataManagementPage from '@/pages/coordinator/DataManagementPag
 import ReliefStationPage from '@/pages/coordinator/ReliefStationPage';
 import MissionTrackingPage from '@/pages/coordinator/MissionTrackingPage';
 import DispatchPage from '@/pages/coordinator/DispatchPage';
+import CoordinatorVehicleManagementPage from '@/pages/coordinator/CoordinatorVehicleManagementPage';
 import SettingsPage from '@/pages/user/settings';
 
 // Manager pages
@@ -133,6 +134,12 @@ export const routes: AppRoute[] = [
   {
     path: '/portal/coordinator/dispatch',
     element: <DispatchPage />,
+    roles: [UserRole.Coordinator],
+    isProtected: true,
+  },
+  {
+    path: '/portal/coordinator/vehicles',
+    element: <CoordinatorVehicleManagementPage />,
     roles: [UserRole.Coordinator],
     isProtected: true,
   },

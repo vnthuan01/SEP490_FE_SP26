@@ -1,10 +1,8 @@
-// import { useState } from 'react';
-import { requestNotifications } from '@/types/mock';
-import type { RequestNotification } from '@/types/notifications';
 import { useTheme } from 'next-themes';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Notification from '../ui/notification';
-// import React from 'react';
+import { useRealtimeNotifications } from '@/components/provider/realtime/RealtimeNotificationProvider';
 
 interface DashboardHeaderProps {
   onMenuClick?: () => void;
@@ -23,29 +21,36 @@ export function DashboardHeader({
 }: DashboardHeaderProps) {
   // const [searchValue, setSearchValue] = useState('');
   const { theme, setTheme } = useTheme();
+  const navigate = useNavigate();
   const [openNotification, setOpenNotification] = useState(false);
-  const [notifications, setNotifications] = useState<RequestNotification[]>(requestNotifications);
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useRealtimeNotifications();
   // const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   //   const value = e.target.value;
   //   setSearchValue(value);
   //   // onSearchChange?.(value);
   // };
-  const notifRef = useRef<HTMLDivElement>(null);
 
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
-  const unreadCount = notifications.filter((n) => n.unread).length;
+  const handleClickItem = async (item: (typeof notifications)[number]) => {
+    const notificationId = item.notificationId || item.id;
+    if (notificationId) {
+      await markAsRead(notificationId);
+    }
 
-  const handleClickItem = (item: RequestNotification) => {
-    setNotifications((prev) => prev.map((n) => (n.id === item.id ? { ...n, unread: false } : n)));
+    if (item.referenceId) {
+      navigate(
+        `/portal/coordinator/mission-tracking?requestId=${encodeURIComponent(item.referenceId)}`,
+      );
+    }
 
-    // TODO: router.push(`/requests/${item.id}`)
+    setOpenNotification(false);
   };
 
-  const handleMarkAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+  const handleMarkAllRead = async () => {
+    await markAllAsRead();
   };
   return (
     <header
@@ -105,7 +110,7 @@ export function DashboardHeader({
         </button>
 
         {/* Notifications */}
-        <div className="relative" ref={notifRef}>
+        <div className="relative">
           <button
             onClick={() => setOpenNotification((v) => !v)}
             className="relative p-2 text-slate-500 hover:text-primary dark:text-[#92adc9] dark:hover:text-white"
