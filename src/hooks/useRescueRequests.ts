@@ -11,10 +11,17 @@ interface UseRescueRequestsOptions {
   pageSize?: number;
   statusFilter?: number;
   scope?: 'all' | 'my-station';
+  enabled?: boolean;
 }
 
 export function useRescueRequests(options: UseRescueRequestsOptions = {}) {
-  const { pageNumber = 1, pageSize = 10, statusFilter = 0, scope = 'all' } = options;
+  const {
+    pageNumber = 1,
+    pageSize = 10,
+    statusFilter = 0,
+    scope = 'all',
+    enabled = true,
+  } = options;
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: RESCUE_REQUEST_QUERY_KEYS.list(pageNumber, pageSize, statusFilter, scope),
@@ -22,6 +29,7 @@ export function useRescueRequests(options: UseRescueRequestsOptions = {}) {
       scope === 'my-station'
         ? rescueRequestService.getMyStationRequests({ statusFilter, pageNumber, pageSize })
         : rescueRequestService.getRequests(statusFilter, pageNumber, pageSize),
+    enabled,
   });
 
   return {

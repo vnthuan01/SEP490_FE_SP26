@@ -131,6 +131,7 @@ function toTeam(apiTeam: any): Team {
 export default function CoordinatorTeamAllocationPage() {
   // ── API data ──
   const { station } = useMyReliefStation();
+  const hasAssignedStation = !!station?.reliefStationId;
   const {
     requests,
     isLoading: isLoadingRequests,
@@ -140,6 +141,7 @@ export default function CoordinatorTeamAllocationPage() {
     pageSize: 200,
     statusFilter: 1, // Verified
     scope: 'my-station',
+    enabled: hasAssignedStation,
   });
   const { teams: apiTeams } = useTeamsInStation(station?.reliefStationId);
   const firstTeamId = apiTeams?.[0]?.teamId;
@@ -152,8 +154,8 @@ export default function CoordinatorTeamAllocationPage() {
     () => ({
       name: station?.name || 'Trạm cứu trợ',
       coordinates: {
-        lat: Number(station?.latitude) || 16.0544,
-        lng: Number(station?.longitude) || 108.2022,
+        lat: Number(station?.latitude) || 0,
+        lng: Number(station?.longitude) || 0,
       },
       address: station?.address || '',
     }),
@@ -439,69 +441,82 @@ export default function CoordinatorTeamAllocationPage() {
   // ── Normal mode with sidebar (same layout as original) ──
   return (
     <DashboardLayout navGroups={coordinatorNavGroups}>
-      <div className="h-[calc(100vh-64px)] flex flex-col overflow-hidden">
-        <FilterBar
-          search={search}
-          onSearchChange={setSearch}
-          urgencyFilter={urgencyFilter}
-          onUrgencyFilterChange={setUrgencyFilter}
-          statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
-          needsFilter={needsFilter}
-          onNeedsFilterChange={setNeedsFilter}
-          onFitBounds={handleFitBounds}
-          onToggleFullscreen={toggleFullscreen}
-          isFullscreen={isFullscreen}
-          stats={stats}
-        />
-
-        <div className="flex-1 flex overflow-hidden">
-          {/* Map */}
-          <div className="flex-1 relative">
-            <ReliefMap
-              locations={filteredLocations}
-              headquarters={headquarters}
-              onLocationSelect={handleLocationClick}
-              selectedLocationId={selectedLocationId}
-              mapApiKey={GOONG_MAP_KEY}
-              goongApiKey={GOONG_API_KEY}
-            />
+      {!hasAssignedStation ? (
+        <div className="flex h-[calc(100vh-64px)] items-center justify-center px-4">
+          <div className="flex max-w-md flex-col items-center gap-3 rounded-2xl border border-dashed border-border bg-card px-6 py-10 text-center shadow-sm">
+            <span className="material-symbols-outlined text-5xl text-muted-foreground">map</span>
+            <h2 className="text-xl font-bold text-foreground">Bạn chưa được gán trạm</h2>
+            <p className="text-sm text-muted-foreground">
+              Vui lòng liên hệ quản lý để được gán trạm trước khi xem bản đồ yêu cầu cứu trợ và phân
+              công đội hỗ trợ.
+            </p>
           </div>
-
-          {/* Sidebar */}
-          <aside className="w-[380px] flex flex-col border-l bg-muted/20">
-            {isLoadingRequests ? (
-              <div className="p-4 space-y-3">
-                {[1, 2, 3, 4].map((k) => (
-                  <Skeleton key={k} className="h-12" />
-                ))}
-              </div>
-            ) : filteredLocations.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-3">
-                <span className="material-symbols-outlined text-4xl text-muted-foreground">
-                  {reliefLocations.length === 0 ? 'where_to_vote' : 'search_off'}
-                </span>
-                <p className="text-sm font-semibold text-foreground">
-                  {reliefLocations.length === 0
-                    ? 'Chưa có yêu cầu đã xác minh'
-                    : 'Không có kết quả phù hợp'}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {reliefLocations.length === 0
-                    ? 'Bản đồ vẫn hiển thị trụ sở trạm. Dữ liệu sẽ xuất hiện khi có yêu cầu được duyệt.'
-                    : 'Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.'}
-                </p>
-              </div>
-            ) : (
-              <LocationList
-                locations={filteredLocations}
-                onLocationClick={handleLocationClick}
-                selectedLocationId={selectedLocationId}
-              />
-            )}
-          </aside>
         </div>
-      </div>
+      ) : (
+        <div className="h-[calc(100vh-64px)] flex flex-col overflow-hidden">
+          <FilterBar
+            search={search}
+            onSearchChange={setSearch}
+            urgencyFilter={urgencyFilter}
+            onUrgencyFilterChange={setUrgencyFilter}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            needsFilter={needsFilter}
+            onNeedsFilterChange={setNeedsFilter}
+            onFitBounds={handleFitBounds}
+            onToggleFullscreen={toggleFullscreen}
+            isFullscreen={isFullscreen}
+            stats={stats}
+          />
+
+          <div className="flex-1 flex overflow-hidden">
+            {/* Map */}
+            <div className="flex-1 relative">
+              <ReliefMap
+                locations={filteredLocations}
+                headquarters={headquarters}
+                onLocationSelect={handleLocationClick}
+                selectedLocationId={selectedLocationId}
+                mapApiKey={GOONG_MAP_KEY}
+                goongApiKey={GOONG_API_KEY}
+              />
+            </div>
+
+            {/* Sidebar */}
+            <aside className="w-[380px] flex flex-col border-l bg-muted/20">
+              {isLoadingRequests ? (
+                <div className="p-4 space-y-3">
+                  {[1, 2, 3, 4].map((k) => (
+                    <Skeleton key={k} className="h-12" />
+                  ))}
+                </div>
+              ) : filteredLocations.length === 0 ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-3">
+                  <span className="material-symbols-outlined text-4xl text-muted-foreground">
+                    {reliefLocations.length === 0 ? 'where_to_vote' : 'search_off'}
+                  </span>
+                  <p className="text-sm font-semibold text-foreground">
+                    {reliefLocations.length === 0
+                      ? 'Chưa có yêu cầu đã xác minh'
+                      : 'Không có kết quả phù hợp'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {reliefLocations.length === 0
+                      ? 'Bản đồ vẫn hiển thị trụ sở trạm. Dữ liệu sẽ xuất hiện khi có yêu cầu được duyệt.'
+                      : 'Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.'}
+                  </p>
+                </div>
+              ) : (
+                <LocationList
+                  locations={filteredLocations}
+                  onLocationClick={handleLocationClick}
+                  selectedLocationId={selectedLocationId}
+                />
+              )}
+            </aside>
+          </div>
+        </div>
+      )}
       <LocationDetailSheet
         location={reliefLocations.find((l) => l.id === selectedLocationId) || null}
         isOpen={!!selectedLocationId}

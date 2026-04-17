@@ -14,7 +14,7 @@ export interface AuthContextType {
   isLoading: boolean;
   login: (data: LoginPayload) => Promise<AxiosResponse<LoginResponseData>>;
   phoneLogin: (data: PhoneLoginPayload) => Promise<AxiosResponse<LoginResponseData>>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType>({
@@ -23,5 +23,5 @@ export const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   login: () => Promise.resolve({} as AxiosResponse<LoginResponseData>),
   phoneLogin: () => Promise.resolve({} as AxiosResponse<LoginResponseData>),
-  logout: () => {},
+  logout: async () => {},
 });

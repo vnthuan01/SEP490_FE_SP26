@@ -9,6 +9,11 @@ export const coordinatorNavGroups = [
     title: 'Điều phối & Vận hành',
     items: [
       { label: 'Điều phối thông minh', path: '/portal/coordinator/dispatch', icon: 'alt_route' },
+      {
+        label: 'Phân phối cứu trợ',
+        path: '/portal/coordinator/relief-distribution',
+        icon: 'volunteer_activism',
+      },
       { label: 'Theo dõi nhiệm vụ', path: '/portal/coordinator/mission-tracking', icon: 'radar' },
       { label: 'Điều phối & Bản đồ', path: '/portal/coordinator/maps', icon: 'map' },
     ],

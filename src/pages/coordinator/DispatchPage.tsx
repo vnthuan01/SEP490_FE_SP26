@@ -349,6 +349,7 @@ function QueueRow({
 
 export default function DispatchPage() {
   const { station } = useMyReliefStation();
+  const hasAssignedStation = !!station?.reliefStationId;
   const { teams, isLoading: isTeamsLoading } = useTeamsInStation(station?.reliefStationId);
 
   const [selectedTeamId, setSelectedTeamId] = useState('');
@@ -899,701 +900,523 @@ export default function DispatchPage() {
 
   return (
     <DashboardLayout navGroups={coordinatorNavGroups}>
-      <div className="space-y-6">
-        <div className="overflow-hidden ">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-black tracking-tight text-primary md:text-4xl">
-              Điều phối thông minh
-            </h1>
-            <p className="max-w-3xl text-sm text-muted-foreground md:text-base">
-              Theo dõi hàng đợi của đội, xem trước vị trí chèn tối ưu và xác nhận điều phối trên
-              cùng một màn hình 2:1 rõ ràng hơn.
+      {!hasAssignedStation ? (
+        <div className="flex min-h-[60vh] items-center justify-center px-4">
+          <div className="flex max-w-md flex-col items-center gap-3 rounded-2xl border border-dashed border-border bg-card px-6 py-10 text-center shadow-sm">
+            <span className="material-symbols-outlined text-5xl text-muted-foreground">route</span>
+            <h2 className="text-xl font-bold text-foreground">Bạn chưa được gán trạm</h2>
+            <p className="text-sm text-muted-foreground">
+              Vui lòng liên hệ quản lý để được gán trạm trước khi dùng điều phối thông minh cho đội
+              cứu hộ.
             </p>
           </div>
-
-          <Button
-            variant="outline"
-            className="h-11 gap-2 rounded-xl px-5"
-            onClick={() => void handleRefresh()}
-            disabled={!selectedTeamId || isBatchLoading}
-          >
-            <RefreshCcw className={cn('size-4', isBatchLoading && 'animate-spin')} />
-            Tải lại
-          </Button>
         </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <StatCard
-            label="Đội đang chọn"
-            value={selectedTeamName}
-            icon={Users}
-            toneClass="border-emerald-200 bg-emerald-500/10 text-emerald-600"
-          />
-          <StatCard
-            label="Hàng đợi hiện tại"
-            value={(activeBatch?.items || []).length}
-            icon={ListOrdered}
-            toneClass="border-blue-200 bg-blue-500/10 text-blue-600"
-          />
-          <StatCard
-            label="Yêu cầu gần tuyến"
-            value={candidatePaging?.totalCount ?? candidates.length}
-            icon={Route}
-            toneClass="border-amber-200 bg-amber-500/10 text-amber-600"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
-          <Card className="overflow-hidden rounded-3xl border-border/70 bg-card/95 shadow-sm">
-            <CardContent className="p-0">
-              <div className="border-b border-border/70 bg-gradient-to-r from-slate-50 via-background to-background p-5 dark:from-slate-950/30">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-base font-semibold text-foreground">
-                      Yêu cầu gần tuyến hiện tại
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Chọn đội cứu hộ, tìm nhanh theo địa chỉ và chọn yêu cầu để xem trước điều
-                      phối.
-                    </p>
-                  </div>
-
-                  <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background/80 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                    <Search className="size-3.5" />
-                    {candidatePaging?.totalCount ?? candidates.length} kết quả
-                  </div>
-                </div>
-
-                <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Đội cứu hộ
-                    </label>
-                    {isTeamsLoading ? (
-                      <Skeleton className="h-10 rounded-xl" />
-                    ) : (
-                      <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
-                        <SelectTrigger className="h-11 rounded-xl border-border bg-background text-sm">
-                          <SelectValue placeholder="Chọn đội cứu hộ" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {teams.map((team) => (
-                            <SelectItem key={team.teamId} value={team.teamId}>
-                              {team.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Tìm yêu cầu
-                    </label>
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        className="h-11 rounded-xl border-border bg-background pl-10"
-                        placeholder="Tìm theo địa chỉ hoặc người báo tin..."
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4">
-                {isBatchLoading ? (
-                  <div className="space-y-3">
-                    {[1, 2, 3].map((key) => (
-                      <Skeleton key={key} className="h-24 rounded-2xl" />
-                    ))}
-                  </div>
-                ) : !activeBatch?.items?.length ? (
-                  <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50 px-4 py-8 text-center">
-                    <p className="font-semibold text-amber-700">Đội chưa có hàng đợi hoạt động.</p>
-                    <p className="mt-1 text-sm text-amber-600">
-                      Hãy chọn đội đang có nhiệm vụ trong queue để dùng điều phối thông minh.
-                    </p>
-                  </div>
-                ) : isCandidatesLoading ? (
-                  <div className="space-y-3">
-                    {[1, 2, 3, 4].map((key) => (
-                      <Skeleton key={key} className="h-24 rounded-2xl" />
-                    ))}
-                  </div>
-                ) : candidates.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-border bg-accent/20 px-4 py-8 text-center">
-                    <p className="font-medium text-foreground">Không có yêu cầu phù hợp.</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Thử đổi từ khóa tìm kiếm hoặc chọn đội cứu hộ khác.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {candidates.map((req) => {
-                      const isActive = req.requestId === selectedRequestId;
-                      const blockReason = getBlockReason(req);
-                      const isBlocked = Boolean(blockReason);
-
-                      return (
-                        <button
-                          key={req.requestId}
-                          type="button"
-                          onClick={() => {
-                            if (!isBlocked) setSelectedRequestId(req.requestId);
-                          }}
-                          disabled={isBlocked}
-                          title={blockReason || ''}
-                          className={cn(
-                            'w-full rounded-2xl border px-4 py-3 text-left transition-all',
-                            isBlocked
-                              ? 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-60'
-                              : isActive
-                                ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/10'
-                                : 'border-border bg-background hover:border-primary/30 hover:bg-accent/20',
-                          )}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="truncate text-sm font-semibold text-foreground">
-                                  {req.reporterFullName || 'Không có tên'}
-                                </p>
-                                <span
-                                  className={cn(
-                                    'rounded-full border px-2 py-0.5 text-[11px] font-semibold',
-                                    requestBadgeClass(req.rescueRequestType),
-                                  )}
-                                >
-                                  {getRescueRequestTypeLabel(req.rescueRequestType)}
-                                </span>
-                              </div>
-
-                              <p className="mt-1 truncate text-sm text-muted-foreground">
-                                {req.address || '--'}
-                              </p>
-
-                              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
-                                <span
-                                  className={cn(
-                                    'rounded-full border px-2 py-0.5 font-semibold',
-                                    priorityLevelClass(req.priorityLevel),
-                                  )}
-                                >
-                                  {getPriorityLevelLabel(req.priorityLevel)}
-                                </span>
-                                <span className="rounded-full border border-border bg-background px-2 py-0.5 text-muted-foreground">
-                                  điểm ưu tiên {req.priorityPoint ?? '--'}
-                                </span>
-                              </div>
-                            </div>
-
-                            {isActive && !isBlocked ? (
-                              <span className="rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground">
-                                Đang chọn
-                              </span>
-                            ) : null}
-                          </div>
-
-                          {blockReason ? (
-                            <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                              <span>{blockReason}</span>
-                            </div>
-                          ) : null}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {(candidatePaging?.totalCount ?? 0) > 0 ? (
-                <div className="flex flex-col gap-3 border-t border-border/70 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    Trang {candidateCurrentPage}/{candidateTotalPages} — Tổng{' '}
-                    {candidatePaging?.totalCount ?? candidates.length} yêu cầu
-                  </p>
-
-                  <div className="flex items-center gap-2 self-end sm:self-auto">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!candidatePaging?.hasPrevious || isCandidatesLoading}
-                      onClick={() => setCandidatePage((page) => Math.max(1, page - 1))}
-                    >
-                      <ChevronLeft className="size-4" />
-                      Trước
-                    </Button>
-
-                    <span className="inline-flex min-w-20 items-center justify-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground">
-                      {candidateCurrentPage}/{candidateTotalPages}
-                    </span>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!candidatePaging?.hasNext || isCandidatesLoading}
-                      onClick={() =>
-                        setCandidatePage((page) =>
-                          candidatePaging?.hasNext ? Math.min(candidateTotalPages, page + 1) : page,
-                        )
-                      }
-                    >
-                      Sau
-                      <ChevronRight className="size-4" />
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <Card className="overflow-hidden rounded-3xl border-border/70 bg-card/95 shadow-sm">
-            <CardContent className="p-0">
-              <div className="border-b border-border/70 bg-gradient-to-r from-blue-50/60 via-background to-background p-5 dark:from-blue-950/20">
-                <p className="text-base font-semibold text-foreground">
-                  Xem trước thông minh và điều phối
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Hệ thống sẽ mô phỏng vị trí chèn tối ưu trước khi xác nhận điều phối thật.
-                </p>
-              </div>
-
-              <div className="space-y-4 p-5">
-                <div className="rounded-2xl border border-border bg-primary/20 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-primary">Cho phép chèn ngang</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Dùng khi yêu cầu khẩn cấp nằm gần tuyến đường đang thực hiện.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      aria-pressed={allowPreempt}
-                      onClick={() => setAllowPreempt((value) => !value)}
-                      className={cn(
-                        'relative h-7 w-14 rounded-full border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2',
-                        allowPreempt
-                          ? 'border-primary/30 bg-primary/80 shadow-sm'
-                          : 'border-border bg-muted',
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          'absolute -left-1 top-[1px] h-6 w-6 rounded-full bg-white shadow-md transition-transform duration-200',
-                          allowPreempt ? 'translate-x-5' : 'translate-x-0',
-                        )}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {selectedRequestBlockReason ? (
-                  <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                    <span>{selectedRequestBlockReason}</span>
-                  </div>
-                ) : null}
-
-                {!preview ? (
-                  <div className="rounded-2xl border border-dashed border-border bg-accent/20 px-4 py-10 text-center text-sm text-amber-700">
-                    Chọn đội và yêu cầu, sau đó bấm <strong>Xem trước điều phối</strong>.
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {preview.willPreemptCurrentInProgress ? (
-                      <div className="rounded-2xl border border-red-300 bg-red-50 px-4 py-3">
-                        <p className="text-sm font-bold text-red-700">
-                          Đề xuất chèn ngang nhiệm vụ hiện tại
-                        </p>
-                      </div>
-                    ) : null}
-
-                    <div className="rounded-2xl border border-border bg-accent/20 px-4 py-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                        Hành động đề xuất
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-foreground">
-                        {actionLabel(preview.recommendedAction)}
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      {[
-                        {
-                          label: 'Gần tuyến',
-                          value: preview.isNearCurrentRoute ? 'Có ✓' : 'Không',
-                        },
-                        { label: 'Quay đầu', value: preview.requiresBacktrack ? 'Có' : 'Không ✓' },
-                        {
-                          label: 'Đường vòng',
-                          value:
-                            preview.detourMeters != null
-                              ? `${preview.detourMeters.toLocaleString('vi-VN')} m`
-                              : '--',
-                        },
-                        {
-                          label: 'Thời gian đường vòng',
-                          value:
-                            preview.detourSeconds != null
-                              ? `${Math.round(preview.detourSeconds / 60)} phút`
-                              : '--',
-                        },
-                        {
-                          label: 'Cách tuyến',
-                          value:
-                            preview.minDistanceToCurrentRouteMeters != null
-                              ? `${preview.minDistanceToCurrentRouteMeters.toLocaleString('vi-VN')} m`
-                              : '--',
-                        },
-                        {
-                          label: 'Điều kiện điều phối',
-                          value: preview.eligible ? '✓ Đủ điều kiện' : '✗ Không đủ',
-                        },
-                      ].map(({ label, value }) => (
-                        <div
-                          key={label}
-                          className="rounded-2xl border border-border bg-background px-3 py-2.5"
-                        >
-                          <p className="text-muted-foreground">{label}</p>
-                          <p className="mt-0.5 font-semibold text-foreground">{value}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    {preview.reasons?.length ? (
-                      <div className="rounded-2xl border border-border bg-background px-4 py-3">
-                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                          Lý do từ hệ thống
-                        </p>
-                        <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                          {preview.reasons.map((reason, index) => (
-                            <li key={index}>{reason}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Ghi chú khi điều phối
-                  </label>
-                  <Textarea
-                    value={assignNote}
-                    onChange={(event) => setAssignNote(event.target.value)}
-                    placeholder="Nhập ghi chú điều phối (tùy chọn)..."
-                    className="min-h-[92px] rounded-2xl text-sm"
-                    rows={3}
-                  />
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    onClick={handlePreview}
-                    disabled={
-                      !selectedTeamId ||
-                      !selectedRequestId ||
-                      isPreviewLoading ||
-                      Boolean(selectedRequestBlockReason)
-                    }
-                    className="rounded-xl"
-                  >
-                    {isPreviewLoading ? 'Đang xử lý...' : 'Xem trước điều phối'}
-                  </Button>
-
-                  <Button
-                    size="lg"
-                    disabled={isAssignBlocked}
-                    onClick={handleSmartAssign}
-                    className={cn(
-                      'rounded-xl font-bold',
-                      preview?.willPreemptCurrentInProgress
-                        ? 'bg-red-600 text-white hover:bg-red-500'
-                        : 'bg-primary text-primary-foreground hover:bg-primary/90',
-                    )}
-                  >
-                    {isAssigning
-                      ? 'Đang điều phối...'
-                      : preview?.willPreemptCurrentInProgress
-                        ? 'Xác nhận chèn ngang'
-                        : 'Xác nhận điều phối'}
-                  </Button>
-
-                  {!preview?.eligible && preview ? (
-                    <p className="text-center text-xs text-destructive">
-                      Yêu cầu không đủ điều kiện để điều phối.
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
-          <Card className="overflow-hidden rounded-3xl border-border/70 bg-card/95 shadow-sm">
-            <CardContent className="p-0">
-              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/70 bg-gradient-to-r from-sky-50/60 via-background to-background p-5 dark:from-sky-950/20">
-                <div>
-                  <p className="flex items-center gap-2 text-base font-semibold text-foreground">
-                    <MapPinned className="size-4.5 text-sky-600" />
-                    Bản đồ tuyến đường và vùng đệm
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Tuyến hiện tại, yêu cầu mới và vùng buffer {NORMAL_THRESHOLD_KM}–
-                    {EMERGENCY_THRESHOLD_KM} km được hiển thị trực tiếp trên bản đồ.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="rounded-full border border-border bg-background/80 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                    Tự động làm mới mỗi {AUTO_REFRESH_MS / 1000}s
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2 rounded-xl"
-                    onClick={() => setIsMapExpanded(true)}
-                  >
-                    <Maximize2 className="size-4" />
-                    Mở rộng bản đồ
-                  </Button>
-                </div>
-              </div>
-
-              <div className="p-4">
-                {!GOONG_MAP_KEY ? (
-                  <div className="rounded-3xl border border-dashed border-border bg-accent/20 p-8 text-center text-sm text-muted-foreground">
-                    Thiếu VITE_GOONG_MAP_KEY để hiển thị bản đồ.
-                  </div>
-                ) : (
-                  <div className="overflow-hidden rounded-3xl border border-border shadow-sm">
-                    <div ref={mapContainerRef} className="h-[520px] w-full bg-slate-100" />
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="overflow-hidden rounded-3xl border-border/70 bg-card/95 shadow-sm">
-            <CardContent className="flex h-full flex-col p-0">
-              <div className="border-b border-border/70 bg-gradient-to-r from-violet-50/70 via-background to-background p-5 dark:from-violet-950/20">
-                <p className="text-base font-semibold text-foreground">
-                  Queue hiện tại và queue đề xuất
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  So sánh thứ tự hiện tại với đề xuất sau khi xem trước ngay bên cạnh bản đồ.
-                </p>
-              </div>
-
-              <div className="px-4 pt-4">
-                <div className="inline-flex w-full rounded-2xl bg-muted p-1">
-                  <button
-                    type="button"
-                    onClick={() => setQueueTab('current')}
-                    className={cn(
-                      'flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors',
-                      queueTab === 'current'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    Hàng đợi hiện tại
-                    <span
-                      className={cn(
-                        'rounded-full px-2 py-0.5 text-[11px] font-bold',
-                        queueTab === 'current'
-                          ? 'bg-primary/10 text-primary'
-                          : 'bg-background text-muted-foreground',
-                      )}
-                    >
-                      {(activeBatch?.items || []).length}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (preview) setQueueTab('preview');
-                    }}
-                    disabled={!preview}
-                    className={cn(
-                      'flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors',
-                      !preview && 'cursor-not-allowed opacity-50',
-                      queueTab === 'preview'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    Đề xuất sau xem trước
-                    <span
-                      className={cn(
-                        'rounded-full px-2 py-0.5 text-[11px] font-bold',
-                        queueTab === 'preview'
-                          ? 'bg-violet-100 text-violet-700'
-                          : 'bg-background text-muted-foreground',
-                      )}
-                    >
-                      {orderedPreviewItems.length}
-                    </span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="min-h-0 flex-1 p-4">
-                <div className="h-[456px] space-y-2 overflow-auto pr-1">
-                  {queueTab === 'current' ? (
-                    isBatchLoading ? (
-                      <div className="space-y-2">
-                        {[1, 2, 3].map((key) => (
-                          <Skeleton key={key} className="h-16 rounded-2xl" />
-                        ))}
-                      </div>
-                    ) : activeBatch?.items?.length ? (
-                      activeBatch.items.map((item, index) => (
-                        <QueueRow
-                          key={item.rescueRequestId}
-                          item={item}
-                          index={index}
-                          variant="active"
-                        />
-                      ))
-                    ) : (
-                      <p className="py-10 text-center text-sm text-muted-foreground">
-                        Đội chưa có hàng đợi hoạt động.
-                      </p>
-                    )
-                  ) : orderedPreviewItems.length ? (
-                    orderedPreviewItems.map((item, index) => (
-                      <QueueRow
-                        key={item.rescueRequestId}
-                        item={item}
-                        index={index}
-                        variant="preview"
-                      />
-                    ))
-                  ) : (
-                    <p className="py-10 text-center text-sm text-muted-foreground">
-                      Chưa có dữ liệu xem trước.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between border-t border-border/70 bg-muted/20 px-4 py-3">
-                <span className="text-xs text-muted-foreground">Hàng đợi nằm bên phải bản đồ</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void handleRefresh()}
-                  disabled={!selectedTeamId || isBatchLoading}
-                  className="h-auto px-0 text-xs font-semibold text-primary hover:bg-transparent"
-                >
-                  Tải lại ngay
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {isMapExpanded ? (
-          <div className="fixed inset-0 z-50 flex flex-col bg-background">
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/70 bg-gradient-to-r from-sky-50/60 via-background to-background px-6 py-5 dark:from-sky-950/20">
-              <div>
-                <p className="flex items-center gap-2 text-xl font-bold text-foreground">
-                  <MapPinned className="size-5 text-sky-600" />
-                  Bản đồ queue điều phối
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Xem chi tiết toàn bộ queue, tuyến hiện tại, yêu cầu mới và vùng đệm trên toàn màn
-                  hình.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="rounded-full border border-border bg-background/90 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                  Đội: {selectedTeamName}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl"
-                  onClick={() => handleFitMap('expanded')}
-                  disabled={!GOONG_MAP_KEY}
-                >
-                  Vừa khung toàn tuyến
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 rounded-xl"
-                  onClick={() => void handleRefresh()}
-                  disabled={!selectedTeamId || isBatchLoading}
-                >
-                  <RefreshCcw className={cn('size-4', isBatchLoading && 'animate-spin')} />
-                  Làm mới
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 rounded-xl"
-                  onClick={() => setIsMapExpanded(false)}
-                >
-                  <Minimize2 className="size-4" />
-                  Thu nhỏ
-                </Button>
-              </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="overflow-hidden ">
+            <div className="space-y-2">
+              <h1 className="text-3xl font-black tracking-tight text-primary md:text-4xl">
+                Điều phối thông minh
+              </h1>
+              <p className="max-w-3xl text-sm text-muted-foreground md:text-base">
+                Theo dõi hàng đợi của đội, xem trước vị trí chèn tối ưu và xác nhận điều phối trên
+                cùng một màn hình 2:1 rõ ràng hơn.
+              </p>
             </div>
 
-            <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px]">
-              <div className="flex min-h-0 flex-col border-b border-border/70 xl:border-r xl:border-b-0">
-                <div className="flex flex-wrap items-center gap-2 border-b border-border/70 bg-muted/20 px-5 py-3 text-xs font-medium">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-100 px-3 py-1 text-teal-700">
-                    <span className="material-symbols-outlined text-sm!">emergency</span>
-                    Đội cứu hộ
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-100 px-3 py-1 text-blue-700">
-                    <span className="material-symbols-outlined text-sm!">local_shipping</span>
-                    Đang xử lý / tuyến hiện tại
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-slate-700">
-                    <span className="material-symbols-outlined text-sm!">location_on</span>
-                    Các điểm trong queue
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-100 px-3 py-1 text-orange-700">
-                    <span className="material-symbols-outlined text-sm!">notifications_active</span>
-                    Yêu cầu mới
-                  </span>
+            <Button
+              variant="outline"
+              className="h-11 gap-2 rounded-xl px-5"
+              onClick={() => void handleRefresh()}
+              disabled={!selectedTeamId || isBatchLoading}
+            >
+              <RefreshCcw className={cn('size-4', isBatchLoading && 'animate-spin')} />
+              Tải lại
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <StatCard
+              label="Đội đang chọn"
+              value={selectedTeamName}
+              icon={Users}
+              toneClass="border-emerald-200 bg-emerald-500/10 text-emerald-600"
+            />
+            <StatCard
+              label="Hàng đợi hiện tại"
+              value={(activeBatch?.items || []).length}
+              icon={ListOrdered}
+              toneClass="border-blue-200 bg-blue-500/10 text-blue-600"
+            />
+            <StatCard
+              label="Yêu cầu gần tuyến"
+              value={candidatePaging?.totalCount ?? candidates.length}
+              icon={Route}
+              toneClass="border-amber-200 bg-amber-500/10 text-amber-600"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
+            <Card className="overflow-hidden rounded-3xl border-border/70 bg-card/95 shadow-sm">
+              <CardContent className="p-0">
+                <div className="border-b border-border/70 bg-gradient-to-r from-slate-50 via-background to-background p-5 dark:from-slate-950/30">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-base font-semibold text-foreground">
+                        Yêu cầu gần tuyến hiện tại
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Chọn đội cứu hộ, tìm nhanh theo địa chỉ và chọn yêu cầu để xem trước điều
+                        phối.
+                      </p>
+                    </div>
+
+                    <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background/80 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                      <Search className="size-3.5" />
+                      {candidatePaging?.totalCount ?? candidates.length} kết quả
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Đội cứu hộ
+                      </label>
+                      {isTeamsLoading ? (
+                        <Skeleton className="h-10 rounded-xl" />
+                      ) : (
+                        <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
+                          <SelectTrigger className="h-11 rounded-xl border-border bg-background text-sm">
+                            <SelectValue placeholder="Chọn đội cứu hộ" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {teams.map((team) => (
+                              <SelectItem key={team.teamId} value={team.teamId}>
+                                {team.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Tìm yêu cầu
+                      </label>
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          className="h-11 rounded-xl border-border bg-background pl-10"
+                          placeholder="Tìm theo địa chỉ hoặc người báo tin..."
+                          value={search}
+                          onChange={(event) => setSearch(event.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="min-h-0 flex-1 p-4">
+                <div className="p-4">
+                  {isBatchLoading ? (
+                    <div className="space-y-3">
+                      {[1, 2, 3].map((key) => (
+                        <Skeleton key={key} className="h-24 rounded-2xl" />
+                      ))}
+                    </div>
+                  ) : !activeBatch?.items?.length ? (
+                    <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50 px-4 py-8 text-center">
+                      <p className="font-semibold text-amber-700">
+                        Đội chưa có hàng đợi hoạt động.
+                      </p>
+                      <p className="mt-1 text-sm text-amber-600">
+                        Hãy chọn đội đang có nhiệm vụ trong queue để dùng điều phối thông minh.
+                      </p>
+                    </div>
+                  ) : isCandidatesLoading ? (
+                    <div className="space-y-3">
+                      {[1, 2, 3, 4].map((key) => (
+                        <Skeleton key={key} className="h-24 rounded-2xl" />
+                      ))}
+                    </div>
+                  ) : candidates.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-border bg-accent/20 px-4 py-8 text-center">
+                      <p className="font-medium text-foreground">Không có yêu cầu phù hợp.</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Thử đổi từ khóa tìm kiếm hoặc chọn đội cứu hộ khác.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {candidates.map((req) => {
+                        const isActive = req.requestId === selectedRequestId;
+                        const blockReason = getBlockReason(req);
+                        const isBlocked = Boolean(blockReason);
+
+                        return (
+                          <button
+                            key={req.requestId}
+                            type="button"
+                            onClick={() => {
+                              if (!isBlocked) setSelectedRequestId(req.requestId);
+                            }}
+                            disabled={isBlocked}
+                            title={blockReason || ''}
+                            className={cn(
+                              'w-full rounded-2xl border px-4 py-3 text-left transition-all',
+                              isBlocked
+                                ? 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-60'
+                                : isActive
+                                  ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/10'
+                                  : 'border-border bg-background hover:border-primary/30 hover:bg-accent/20',
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="truncate text-sm font-semibold text-foreground">
+                                    {req.reporterFullName || 'Không có tên'}
+                                  </p>
+                                  <span
+                                    className={cn(
+                                      'rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                                      requestBadgeClass(req.rescueRequestType),
+                                    )}
+                                  >
+                                    {getRescueRequestTypeLabel(req.rescueRequestType)}
+                                  </span>
+                                </div>
+
+                                <p className="mt-1 truncate text-sm text-muted-foreground">
+                                  {req.address || '--'}
+                                </p>
+
+                                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                                  <span
+                                    className={cn(
+                                      'rounded-full border px-2 py-0.5 font-semibold',
+                                      priorityLevelClass(req.priorityLevel),
+                                    )}
+                                  >
+                                    {getPriorityLevelLabel(req.priorityLevel)}
+                                  </span>
+                                  <span className="rounded-full border border-border bg-background px-2 py-0.5 text-muted-foreground">
+                                    điểm ưu tiên {req.priorityPoint ?? '--'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {isActive && !isBlocked ? (
+                                <span className="rounded-full bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground">
+                                  Đang chọn
+                                </span>
+                              ) : null}
+                            </div>
+
+                            {blockReason ? (
+                              <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                                <span>{blockReason}</span>
+                              </div>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {(candidatePaging?.totalCount ?? 0) > 0 ? (
+                  <div className="flex flex-col gap-3 border-t border-border/70 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      Trang {candidateCurrentPage}/{candidateTotalPages} — Tổng{' '}
+                      {candidatePaging?.totalCount ?? candidates.length} yêu cầu
+                    </p>
+
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!candidatePaging?.hasPrevious || isCandidatesLoading}
+                        onClick={() => setCandidatePage((page) => Math.max(1, page - 1))}
+                      >
+                        <ChevronLeft className="size-4" />
+                        Trước
+                      </Button>
+
+                      <span className="inline-flex min-w-20 items-center justify-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground">
+                        {candidateCurrentPage}/{candidateTotalPages}
+                      </span>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!candidatePaging?.hasNext || isCandidatesLoading}
+                        onClick={() =>
+                          setCandidatePage((page) =>
+                            candidatePaging?.hasNext
+                              ? Math.min(candidateTotalPages, page + 1)
+                              : page,
+                          )
+                        }
+                      >
+                        Sau
+                        <ChevronRight className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card className="overflow-hidden rounded-3xl border-border/70 bg-card/95 shadow-sm">
+              <CardContent className="p-0">
+                <div className="border-b border-border/70 bg-gradient-to-r from-blue-50/60 via-background to-background p-5 dark:from-blue-950/20">
+                  <p className="text-base font-semibold text-foreground">
+                    Xem trước thông minh và điều phối
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Hệ thống sẽ mô phỏng vị trí chèn tối ưu trước khi xác nhận điều phối thật.
+                  </p>
+                </div>
+
+                <div className="space-y-4 p-5">
+                  <div className="rounded-2xl border border-border bg-primary/20 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-primary">Cho phép chèn ngang</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Dùng khi yêu cầu khẩn cấp nằm gần tuyến đường đang thực hiện.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        aria-pressed={allowPreempt}
+                        onClick={() => setAllowPreempt((value) => !value)}
+                        className={cn(
+                          'relative h-7 w-14 rounded-full border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2',
+                          allowPreempt
+                            ? 'border-primary/30 bg-primary/80 shadow-sm'
+                            : 'border-border bg-muted',
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'absolute -left-1 top-[1px] h-6 w-6 rounded-full bg-white shadow-md transition-transform duration-200',
+                            allowPreempt ? 'translate-x-5' : 'translate-x-0',
+                          )}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  {selectedRequestBlockReason ? (
+                    <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                      <span>{selectedRequestBlockReason}</span>
+                    </div>
+                  ) : null}
+
+                  {!preview ? (
+                    <div className="rounded-2xl border border-dashed border-border bg-accent/20 px-4 py-10 text-center text-sm text-amber-700">
+                      Chọn đội và yêu cầu, sau đó bấm <strong>Xem trước điều phối</strong>.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {preview.willPreemptCurrentInProgress ? (
+                        <div className="rounded-2xl border border-red-300 bg-red-50 px-4 py-3">
+                          <p className="text-sm font-bold text-red-700">
+                            Đề xuất chèn ngang nhiệm vụ hiện tại
+                          </p>
+                        </div>
+                      ) : null}
+
+                      <div className="rounded-2xl border border-border bg-accent/20 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                          Hành động đề xuất
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-foreground">
+                          {actionLabel(preview.recommendedAction)}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {[
+                          {
+                            label: 'Gần tuyến',
+                            value: preview.isNearCurrentRoute ? 'Có ✓' : 'Không',
+                          },
+                          {
+                            label: 'Quay đầu',
+                            value: preview.requiresBacktrack ? 'Có' : 'Không ✓',
+                          },
+                          {
+                            label: 'Đường vòng',
+                            value:
+                              preview.detourMeters != null
+                                ? `${preview.detourMeters.toLocaleString('vi-VN')} m`
+                                : '--',
+                          },
+                          {
+                            label: 'Thời gian đường vòng',
+                            value:
+                              preview.detourSeconds != null
+                                ? `${Math.round(preview.detourSeconds / 60)} phút`
+                                : '--',
+                          },
+                          {
+                            label: 'Cách tuyến',
+                            value:
+                              preview.minDistanceToCurrentRouteMeters != null
+                                ? `${preview.minDistanceToCurrentRouteMeters.toLocaleString('vi-VN')} m`
+                                : '--',
+                          },
+                          {
+                            label: 'Điều kiện điều phối',
+                            value: preview.eligible ? '✓ Đủ điều kiện' : '✗ Không đủ',
+                          },
+                        ].map(({ label, value }) => (
+                          <div
+                            key={label}
+                            className="rounded-2xl border border-border bg-background px-3 py-2.5"
+                          >
+                            <p className="text-muted-foreground">{label}</p>
+                            <p className="mt-0.5 font-semibold text-foreground">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {preview.reasons?.length ? (
+                        <div className="rounded-2xl border border-border bg-background px-4 py-3">
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                            Lý do từ hệ thống
+                          </p>
+                          <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                            {preview.reasons.map((reason, index) => (
+                              <li key={index}>{reason}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Ghi chú khi điều phối
+                    </label>
+                    <Textarea
+                      value={assignNote}
+                      onChange={(event) => setAssignNote(event.target.value)}
+                      placeholder="Nhập ghi chú điều phối (tùy chọn)..."
+                      className="min-h-[92px] rounded-2xl text-sm"
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      onClick={handlePreview}
+                      disabled={
+                        !selectedTeamId ||
+                        !selectedRequestId ||
+                        isPreviewLoading ||
+                        Boolean(selectedRequestBlockReason)
+                      }
+                      className="rounded-xl"
+                    >
+                      {isPreviewLoading ? 'Đang xử lý...' : 'Xem trước điều phối'}
+                    </Button>
+
+                    <Button
+                      size="lg"
+                      disabled={isAssignBlocked}
+                      onClick={handleSmartAssign}
+                      className={cn(
+                        'rounded-xl font-bold',
+                        preview?.willPreemptCurrentInProgress
+                          ? 'bg-red-600 text-white hover:bg-red-500'
+                          : 'bg-primary text-primary-foreground hover:bg-primary/90',
+                      )}
+                    >
+                      {isAssigning
+                        ? 'Đang điều phối...'
+                        : preview?.willPreemptCurrentInProgress
+                          ? 'Xác nhận chèn ngang'
+                          : 'Xác nhận điều phối'}
+                    </Button>
+
+                    {!preview?.eligible && preview ? (
+                      <p className="text-center text-xs text-destructive">
+                        Yêu cầu không đủ điều kiện để điều phối.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
+            <Card className="overflow-hidden rounded-3xl border-border/70 bg-card/95 shadow-sm">
+              <CardContent className="p-0">
+                <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/70 bg-gradient-to-r from-sky-50/60 via-background to-background p-5 dark:from-sky-950/20">
+                  <div>
+                    <p className="flex items-center gap-2 text-base font-semibold text-foreground">
+                      <MapPinned className="size-4.5 text-sky-600" />
+                      Bản đồ tuyến đường và vùng đệm
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Tuyến hiện tại, yêu cầu mới và vùng buffer {NORMAL_THRESHOLD_KM}–
+                      {EMERGENCY_THRESHOLD_KM} km được hiển thị trực tiếp trên bản đồ.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="rounded-full border border-border bg-background/80 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                      Tự động làm mới mỗi {AUTO_REFRESH_MS / 1000}s
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 rounded-xl"
+                      onClick={() => setIsMapExpanded(true)}
+                    >
+                      <Maximize2 className="size-4" />
+                      Mở rộng bản đồ
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="p-4">
                   {!GOONG_MAP_KEY ? (
-                    <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-border bg-accent/20 p-8 text-center text-sm text-muted-foreground">
+                    <div className="rounded-3xl border border-dashed border-border bg-accent/20 p-8 text-center text-sm text-muted-foreground">
                       Thiếu VITE_GOONG_MAP_KEY để hiển thị bản đồ.
                     </div>
                   ) : (
-                    <div className="h-full overflow-hidden rounded-3xl border border-border shadow-sm">
-                      <div
-                        ref={expandedMapContainerRef}
-                        className="h-full min-h-[420px] w-full bg-slate-100"
-                      />
+                    <div className="overflow-hidden rounded-3xl border border-border shadow-sm">
+                      <div ref={mapContainerRef} className="h-[520px] w-full bg-slate-100" />
                     </div>
                   )}
                 </div>
-              </div>
+              </CardContent>
+            </Card>
 
-              <div className="flex min-h-0 flex-col bg-card/95">
-                <div className="border-b border-border/70 px-4 pt-4">
+            <Card className="overflow-hidden rounded-3xl border-border/70 bg-card/95 shadow-sm">
+              <CardContent className="flex h-full flex-col p-0">
+                <div className="border-b border-border/70 bg-gradient-to-r from-violet-50/70 via-background to-background p-5 dark:from-violet-950/20">
+                  <p className="text-base font-semibold text-foreground">
+                    Queue hiện tại và queue đề xuất
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    So sánh thứ tự hiện tại với đề xuất sau khi xem trước ngay bên cạnh bản đồ.
+                  </p>
+                </div>
+
+                <div className="px-4 pt-4">
                   <div className="inline-flex w-full rounded-2xl bg-muted p-1">
                     <button
                       type="button"
@@ -1645,34 +1468,21 @@ export default function DispatchPage() {
                       </span>
                     </button>
                   </div>
-
-                  <div className="mt-4 grid grid-cols-1 gap-2 pb-4 text-xs sm:grid-cols-2">
-                    <div className="rounded-2xl border border-border bg-background px-3 py-2.5">
-                      <p className="text-muted-foreground">Đội cứu hộ</p>
-                      <p className="mt-1 font-semibold text-foreground">{selectedTeamName}</p>
-                    </div>
-                    <div className="rounded-2xl border border-border bg-background px-3 py-2.5">
-                      <p className="text-muted-foreground">Số điểm trong queue</p>
-                      <p className="mt-1 font-semibold text-foreground">
-                        {queueItemsForActiveTab.length}
-                      </p>
-                    </div>
-                  </div>
                 </div>
 
                 <div className="min-h-0 flex-1 p-4">
-                  <div className="h-full space-y-2 overflow-auto pr-1">
+                  <div className="h-[456px] space-y-2 overflow-auto pr-1">
                     {queueTab === 'current' ? (
                       isBatchLoading ? (
                         <div className="space-y-2">
-                          {[1, 2, 3, 4].map((key) => (
+                          {[1, 2, 3].map((key) => (
                             <Skeleton key={key} className="h-16 rounded-2xl" />
                           ))}
                         </div>
                       ) : activeBatch?.items?.length ? (
                         activeBatch.items.map((item, index) => (
                           <QueueRow
-                            key={`expanded-current-${item.rescueRequestId}`}
+                            key={item.rescueRequestId}
                             item={item}
                             index={index}
                             variant="active"
@@ -1686,7 +1496,7 @@ export default function DispatchPage() {
                     ) : orderedPreviewItems.length ? (
                       orderedPreviewItems.map((item, index) => (
                         <QueueRow
-                          key={`expanded-preview-${item.rescueRequestId}`}
+                          key={item.rescueRequestId}
                           item={item}
                           index={index}
                           variant="preview"
@@ -1699,11 +1509,226 @@ export default function DispatchPage() {
                     )}
                   </div>
                 </div>
+
+                <div className="flex items-center justify-between border-t border-border/70 bg-muted/20 px-4 py-3">
+                  <span className="text-xs text-muted-foreground">
+                    Hàng đợi nằm bên phải bản đồ
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void handleRefresh()}
+                    disabled={!selectedTeamId || isBatchLoading}
+                    className="h-auto px-0 text-xs font-semibold text-primary hover:bg-transparent"
+                  >
+                    Tải lại ngay
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {isMapExpanded ? (
+            <div className="fixed inset-0 z-50 flex flex-col bg-background">
+              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/70 bg-gradient-to-r from-sky-50/60 via-background to-background px-6 py-5 dark:from-sky-950/20">
+                <div>
+                  <p className="flex items-center gap-2 text-xl font-bold text-foreground">
+                    <MapPinned className="size-5 text-sky-600" />
+                    Bản đồ queue điều phối
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Xem chi tiết toàn bộ queue, tuyến hiện tại, yêu cầu mới và vùng đệm trên toàn
+                    màn hình.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="rounded-full border border-border bg-background/90 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                    Đội: {selectedTeamName}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl"
+                    onClick={() => handleFitMap('expanded')}
+                    disabled={!GOONG_MAP_KEY}
+                  >
+                    Vừa khung toàn tuyến
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 rounded-xl"
+                    onClick={() => void handleRefresh()}
+                    disabled={!selectedTeamId || isBatchLoading}
+                  >
+                    <RefreshCcw className={cn('size-4', isBatchLoading && 'animate-spin')} />
+                    Làm mới
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 rounded-xl"
+                    onClick={() => setIsMapExpanded(false)}
+                  >
+                    <Minimize2 className="size-4" />
+                    Thu nhỏ
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px]">
+                <div className="flex min-h-0 flex-col border-b border-border/70 xl:border-r xl:border-b-0">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-border/70 bg-muted/20 px-5 py-3 text-xs font-medium">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-100 px-3 py-1 text-teal-700">
+                      <span className="material-symbols-outlined text-sm!">emergency</span>
+                      Đội cứu hộ
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-100 px-3 py-1 text-blue-700">
+                      <span className="material-symbols-outlined text-sm!">local_shipping</span>
+                      Đang xử lý / tuyến hiện tại
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-slate-700">
+                      <span className="material-symbols-outlined text-sm!">location_on</span>
+                      Các điểm trong queue
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-100 px-3 py-1 text-orange-700">
+                      <span className="material-symbols-outlined text-sm!">
+                        notifications_active
+                      </span>
+                      Yêu cầu mới
+                    </span>
+                  </div>
+
+                  <div className="min-h-0 flex-1 p-4">
+                    {!GOONG_MAP_KEY ? (
+                      <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-border bg-accent/20 p-8 text-center text-sm text-muted-foreground">
+                        Thiếu VITE_GOONG_MAP_KEY để hiển thị bản đồ.
+                      </div>
+                    ) : (
+                      <div className="h-full overflow-hidden rounded-3xl border border-border shadow-sm">
+                        <div
+                          ref={expandedMapContainerRef}
+                          className="h-full min-h-[420px] w-full bg-slate-100"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex min-h-0 flex-col bg-card/95">
+                  <div className="border-b border-border/70 px-4 pt-4">
+                    <div className="inline-flex w-full rounded-2xl bg-muted p-1">
+                      <button
+                        type="button"
+                        onClick={() => setQueueTab('current')}
+                        className={cn(
+                          'flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors',
+                          queueTab === 'current'
+                            ? 'bg-background text-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        Hàng đợi hiện tại
+                        <span
+                          className={cn(
+                            'rounded-full px-2 py-0.5 text-[11px] font-bold',
+                            queueTab === 'current'
+                              ? 'bg-primary/10 text-primary'
+                              : 'bg-background text-muted-foreground',
+                          )}
+                        >
+                          {(activeBatch?.items || []).length}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (preview) setQueueTab('preview');
+                        }}
+                        disabled={!preview}
+                        className={cn(
+                          'flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors',
+                          !preview && 'cursor-not-allowed opacity-50',
+                          queueTab === 'preview'
+                            ? 'bg-background text-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        Đề xuất sau xem trước
+                        <span
+                          className={cn(
+                            'rounded-full px-2 py-0.5 text-[11px] font-bold',
+                            queueTab === 'preview'
+                              ? 'bg-violet-100 text-violet-700'
+                              : 'bg-background text-muted-foreground',
+                          )}
+                        >
+                          {orderedPreviewItems.length}
+                        </span>
+                      </button>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-2 pb-4 text-xs sm:grid-cols-2">
+                      <div className="rounded-2xl border border-border bg-background px-3 py-2.5">
+                        <p className="text-muted-foreground">Đội cứu hộ</p>
+                        <p className="mt-1 font-semibold text-foreground">{selectedTeamName}</p>
+                      </div>
+                      <div className="rounded-2xl border border-border bg-background px-3 py-2.5">
+                        <p className="text-muted-foreground">Số điểm trong queue</p>
+                        <p className="mt-1 font-semibold text-foreground">
+                          {queueItemsForActiveTab.length}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="min-h-0 flex-1 p-4">
+                    <div className="h-full space-y-2 overflow-auto pr-1">
+                      {queueTab === 'current' ? (
+                        isBatchLoading ? (
+                          <div className="space-y-2">
+                            {[1, 2, 3, 4].map((key) => (
+                              <Skeleton key={key} className="h-16 rounded-2xl" />
+                            ))}
+                          </div>
+                        ) : activeBatch?.items?.length ? (
+                          activeBatch.items.map((item, index) => (
+                            <QueueRow
+                              key={`expanded-current-${item.rescueRequestId}`}
+                              item={item}
+                              index={index}
+                              variant="active"
+                            />
+                          ))
+                        ) : (
+                          <p className="py-10 text-center text-sm text-muted-foreground">
+                            Đội chưa có hàng đợi hoạt động.
+                          </p>
+                        )
+                      ) : orderedPreviewItems.length ? (
+                        orderedPreviewItems.map((item, index) => (
+                          <QueueRow
+                            key={`expanded-preview-${item.rescueRequestId}`}
+                            item={item}
+                            index={index}
+                            variant="preview"
+                          />
+                        ))
+                      ) : (
+                        <p className="py-10 text-center text-sm text-muted-foreground">
+                          Chưa có dữ liệu xem trước.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        ) : null}
-      </div>
+          ) : null}
+        </div>
+      )}
     </DashboardLayout>
   );
 }

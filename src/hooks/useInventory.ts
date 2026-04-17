@@ -30,13 +30,14 @@ export const TRANSACTION_KEYS = {
 
 // --- Inventory Hooks ---
 
-export function useInventories(params?: SearchInventoryParams) {
+export function useInventories(params?: SearchInventoryParams, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: INVENTORY_KEYS.list(params),
     queryFn: async () => {
       const response = await inventoryService.getAll(params);
       return response.data;
     },
+    enabled: options?.enabled ?? true,
   });
 }
 

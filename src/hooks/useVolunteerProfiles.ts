@@ -54,7 +54,10 @@ export function useVolunteerProfiles(params?: SearchVolunteerProfileParams) {
   };
 }
 
-export function useUnassignedVolunteers(params?: SearchVolunteerProfileParams) {
+export function useUnassignedVolunteers(
+  params?: SearchVolunteerProfileParams,
+  options?: { enabled?: boolean },
+) {
   const {
     data: profilesData,
     isLoading: isLoadingProfiles,
@@ -66,6 +69,7 @@ export function useUnassignedVolunteers(params?: SearchVolunteerProfileParams) {
       const response = await volunteerProfileService.getUnassigned(params);
       return response.data;
     },
+    enabled: options?.enabled ?? true,
   });
 
   return {

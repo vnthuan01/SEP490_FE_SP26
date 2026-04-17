@@ -7,6 +7,11 @@ export const managerNavGroups = [
     title: 'Chiến dịch & Trạm',
     items: [
       { label: 'Chiến dịch', path: '/portal/manager/campaigns', icon: 'campaign' },
+      {
+        label: 'Phân phối cứu trợ',
+        path: '/portal/manager/relief-distribution',
+        icon: 'volunteer_activism',
+      },
       { label: 'Trạm cứu trợ', path: '/portal/manager/stations', icon: 'home_work' },
     ],
   },

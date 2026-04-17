@@ -18,6 +18,7 @@ import CoordinatorDataManagementPage from '@/pages/coordinator/DataManagementPag
 import ReliefStationPage from '@/pages/coordinator/ReliefStationPage';
 import MissionTrackingPage from '@/pages/coordinator/MissionTrackingPage';
 import DispatchPage from '@/pages/coordinator/DispatchPage';
+import ReliefDistributionPage from '@/pages/coordinator/ReliefDistributionPage';
 import CoordinatorVehicleManagementPage from '@/pages/coordinator/CoordinatorVehicleManagementPage';
 import SettingsPage from '@/pages/user/settings';
 
@@ -27,6 +28,7 @@ import ManagerDashboardPage from '@/pages/manager/ManagerDashboardPage';
 import ManagerVehicleManagementPage from '@/pages/manager/ManagerVehicleManagementPage';
 import ManagerInventoryCoordinationPage from '@/pages/manager/ManagerInventoryCoordinationPage';
 import ManagerCampaignPage from '@/pages/manager/ManagerCampaignPage';
+import ManagerReliefDistributionPage from '@/pages/manager/ManagerReliefDistributionPage';
 
 import type { AppRoute } from '@/types/routes';
 import RoleBasedRoute from './protectedRoute';
@@ -138,6 +140,8 @@ export const routes: AppRoute[] = [
     isProtected: true,
   },
   {
+    path: '/portal/coordinator/relief-distribution',
+    element: <ReliefDistributionPage />,
     path: '/portal/coordinator/vehicles',
     element: <CoordinatorVehicleManagementPage />,
     roles: [UserRole.Coordinator],
@@ -172,6 +176,12 @@ export const routes: AppRoute[] = [
   {
     path: '/portal/manager/campaigns',
     element: <ManagerCampaignPage />,
+    roles: [UserRole.Manager],
+    isProtected: true,
+  },
+  {
+    path: '/portal/manager/relief-distribution',
+    element: <ManagerReliefDistributionPage />,
     roles: [UserRole.Manager],
     isProtected: true,
   },

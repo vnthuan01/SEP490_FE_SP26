@@ -14,7 +14,7 @@ import { useGoongAutocomplete, useGoongMap } from '@/hooks/useGoongMap';
 import { useDebounce } from '@/hooks/useDebounce';
 import { geocodeByPlaceIdV2, reverseGeocodeV2 } from '@/services/goongService';
 import goongjs from '@goongmaps/goong-js';
-import { FormLabel } from '@/components/ui/form';
+import { Label } from '@/components/ui/label';
 
 export function StationAddressLookup({
   address,
@@ -175,9 +175,9 @@ export function StationAddressLookup({
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2">
-        <FormLabel>
+        <Label>
           {label} {isRequired && <span className="text-destructive">*</span>}
-        </FormLabel>
+        </Label>
         <Input
           className="w-full h-9"
           placeholder="Tìm kiếm địa chỉ tự động"

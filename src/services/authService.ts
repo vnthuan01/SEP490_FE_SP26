@@ -82,5 +82,5 @@ export const authService = {
   refreshToken: (data: RefreshTokenPayload) =>
     apiClient.post<LoginResponseData>('/Auth/refresh-token', data),
 
-  // logout: () => apiClient.post('/Auth/logout'),
+  logout: () => apiClient.post('/Auth/logout'),
 };

@@ -27,7 +27,11 @@ export const TEAM_QUERY_KEYS = {
 };
 
 // 1. Main hook for global teams management
-export function useTeams(id?: string, searchParams?: SearchTeamParams) {
+export function useTeams(
+  id?: string,
+  searchParams?: SearchTeamParams,
+  options?: { enabledList?: boolean; enabledDetail?: boolean; enabledSearch?: boolean },
+) {
   const queryClient = useQueryClient();
 
   const {
@@ -41,6 +45,7 @@ export function useTeams(id?: string, searchParams?: SearchTeamParams) {
       const response = await teamService.getAll();
       return response.data;
     },
+    enabled: options?.enabledList ?? true,
   });
 
   const {
@@ -55,7 +60,7 @@ export function useTeams(id?: string, searchParams?: SearchTeamParams) {
       const response = await teamService.getById(id);
       return response.data;
     },
-    enabled: !!id,
+    enabled: (options?.enabledDetail ?? true) && !!id,
   });
 
   const {
@@ -69,7 +74,7 @@ export function useTeams(id?: string, searchParams?: SearchTeamParams) {
       const response = await teamService.search(searchParams);
       return response.data;
     },
-    enabled: !!searchParams,
+    enabled: (options?.enabledSearch ?? true) && !!searchParams,
   });
 
   // Mutations
