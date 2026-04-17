@@ -3,6 +3,7 @@ import { routes } from './config';
 import NotFoundPage from '@/pages/notfound/NotFoundPage';
 import RoleBasedRoute from './protectedRoute';
 import { AuthProvider } from '@/components/provider/auth/AuthContext';
+import { RealtimeNotificationProvider } from '@/components/provider/realtime/RealtimeNotificationProvider';
 import { useEffect, useState, useRef } from 'react';
 import LoadingEffect from '@/components/layout/loading/LoadingEffect';
 
@@ -106,20 +107,22 @@ export default function AppRoutes() {
       <TitleUpdater />
       <NavigationLoader minDuration={2000} />
       <AuthProvider>
-        <Routes>
-          {routes.map((r, idx) =>
-            r.isProtected ? (
-              <Route
-                key={idx}
-                path={r.path}
-                element={<RoleBasedRoute element={r.element} roles={r.roles} />}
-              />
-            ) : (
-              <Route key={idx} path={r.path} element={r.element} />
-            ),
-          )}
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
+        <RealtimeNotificationProvider>
+          <Routes>
+            {routes.map((r, idx) =>
+              r.isProtected ? (
+                <Route
+                  key={idx}
+                  path={r.path}
+                  element={<RoleBasedRoute element={r.element} roles={r.roles} />}
+                />
+              ) : (
+                <Route key={idx} path={r.path} element={r.element} />
+              ),
+            )}
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </RealtimeNotificationProvider>
       </AuthProvider>
     </BrowserRouter>
   );

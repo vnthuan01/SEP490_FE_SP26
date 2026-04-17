@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  normalizeVehicle,
+  normalizeVehiclePage,
   normalizeVehicleType,
   normalizeVehicleTypePage,
   vehicleService,
@@ -7,15 +9,18 @@ import {
 import type {
   CreateVehiclePayload,
   UpdateVehiclePayload,
+  SearchVehicleParams,
+  VehicleCounts,
   CreateVehicleTypePayload,
   UpdateVehicleTypePayload,
-  SearchVehicleParams,
   SearchVehicleTypeParams,
 } from '@/services/vehicleService';
+import { toast } from 'sonner';
 
 export const VEHICLE_QUERY_KEYS = {
   all: ['vehicles'] as const,
   list: (params?: SearchVehicleParams) => ['vehicles', 'list', params] as const,
+  counts: (stationId?: string) => ['vehicles', 'counts', stationId || 'all'] as const,
   detail: (id: string) => ['vehicles', id] as const,
   byStatus: (status: number) => ['vehicles', 'status', status] as const,
   myVehicles: ['vehicles', 'my-vehicles'] as const,
@@ -27,7 +32,13 @@ export const VEHICLE_TYPE_QUERY_KEYS = {
   detail: (id: string) => ['vehicleTypes', id] as const,
 };
 
-export function useVehicles(id?: string, status?: number, params?: SearchVehicleParams) {
+export function useVehicles(
+  id?: string,
+  status?: number,
+  params?: SearchVehicleParams,
+  countsStationId?: string,
+  shouldFetchCounts = false,
+) {
   const queryClient = useQueryClient();
 
   // Query: List all vehicles
@@ -40,8 +51,22 @@ export function useVehicles(id?: string, status?: number, params?: SearchVehicle
     queryKey: VEHICLE_QUERY_KEYS.list(params),
     queryFn: async () => {
       const response = await vehicleService.getAll(params);
-      return response.data;
+      return normalizeVehiclePage(response.data as any);
     },
+  });
+
+  const {
+    data: vehicleCounts,
+    isLoading: isLoadingVehicleCounts,
+    isError: isErrorVehicleCounts,
+    refetch: refetchVehicleCounts,
+  } = useQuery({
+    queryKey: VEHICLE_QUERY_KEYS.counts(countsStationId),
+    queryFn: async () => {
+      const response = await vehicleService.getCounts(countsStationId);
+      return response.data as VehicleCounts;
+    },
+    enabled: shouldFetchCounts,
   });
 
   // Query: Detail vehicle
@@ -55,7 +80,7 @@ export function useVehicles(id?: string, status?: number, params?: SearchVehicle
     queryFn: async () => {
       if (!id) throw new Error('Vehicle ID is required');
       const response = await vehicleService.getById(id);
-      return response.data;
+      return normalizeVehicle(response.data as any);
     },
     enabled: !!id,
   });
@@ -71,7 +96,9 @@ export function useVehicles(id?: string, status?: number, params?: SearchVehicle
     queryFn: async () => {
       if (status === undefined) throw new Error('Status is required');
       const response = await vehicleService.getByStatus(status);
-      return response.data;
+      return Array.isArray(response.data)
+        ? response.data.map((item) => normalizeVehicle(item))
+        : [];
     },
     enabled: status !== undefined,
   });
@@ -86,15 +113,21 @@ export function useVehicles(id?: string, status?: number, params?: SearchVehicle
     queryKey: VEHICLE_QUERY_KEYS.myVehicles,
     queryFn: async () => {
       const response = await vehicleService.getMyVehicles();
-      return response.data;
+      return Array.isArray(response.data)
+        ? response.data.map((item) => normalizeVehicle(item))
+        : [];
     },
   });
 
   const createVehicleMutation = useMutation({
     mutationFn: (data: CreateVehiclePayload) => vehicleService.create(data),
     onSuccess: () => {
+      toast.success('Tạo phương tiện thành công');
       queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.all });
       queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.myVehicles });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Không thể tạo phương tiện');
     },
   });
 
@@ -102,17 +135,51 @@ export function useVehicles(id?: string, status?: number, params?: SearchVehicle
     mutationFn: ({ id, data }: { id: string; data: UpdateVehiclePayload }) =>
       vehicleService.update(id, data),
     onSuccess: (_, variables) => {
+      toast.success('Cập nhật phương tiện thành công');
       queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.all });
       queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.detail(variables.id) });
       queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.myVehicles });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Không thể cập nhật phương tiện');
     },
   });
 
   const deleteVehicleMutation = useMutation({
     mutationFn: (id: string) => vehicleService.delete(id),
     onSuccess: () => {
+      toast.success('Xóa phương tiện thành công');
       queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.all });
       queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.myVehicles });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Không thể xóa phương tiện');
+    },
+  });
+
+  const assignVehicleStationMutation = useMutation({
+    mutationFn: ({ id, stationId }: { id: string; stationId: string }) =>
+      vehicleService.assignStation(id, stationId),
+    onSuccess: () => {
+      toast.success('Gán trạm cho phương tiện thành công');
+      queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.counts(countsStationId) });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Không thể gán trạm cho phương tiện');
+    },
+  });
+
+  const assignVehicleTeamMutation = useMutation({
+    mutationFn: ({ id, teamId }: { id: string; teamId: string }) =>
+      vehicleService.assignTeam(id, teamId),
+    onSuccess: () => {
+      toast.success('Gán đội cho phương tiện thành công');
+      queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.myVehicles });
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Không thể gán đội cho phương tiện');
     },
   });
 
@@ -132,6 +199,11 @@ export function useVehicles(id?: string, status?: number, params?: SearchVehicle
     isLoadingVehicles,
     isErrorVehicles,
     refetchVehicles,
+
+    vehicleCounts,
+    isLoadingVehicleCounts,
+    isErrorVehicleCounts,
+    refetchVehicleCounts,
 
     // Detail specific
     vehicle,
@@ -160,6 +232,12 @@ export function useVehicles(id?: string, status?: number, params?: SearchVehicle
 
     deleteVehicle: deleteVehicleMutation.mutateAsync,
     deleteStatus: deleteVehicleMutation.status,
+
+    assignVehicleStation: assignVehicleStationMutation.mutateAsync,
+    assignVehicleStationStatus: assignVehicleStationMutation.status,
+
+    assignVehicleTeam: assignVehicleTeamMutation.mutateAsync,
+    assignVehicleTeamStatus: assignVehicleTeamMutation.status,
   };
 }
 

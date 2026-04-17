@@ -45,6 +45,7 @@ export const coordinatorNavGroups = [
     title: 'Cơ sở vật chất',
     items: [
       { label: 'Trạm cứu trợ', path: '/portal/coordinator/relief-station', icon: 'home_pin' },
+      { label: 'Phương tiện', path: '/portal/coordinator/vehicles', icon: 'local_shipping' },
       { label: 'Kho & Nhu yếu phẩm', path: '/portal/coordinator/inventory', icon: 'inventory_2' },
       { label: 'Quản lý dữ liệu', path: '/portal/coordinator/data-management', icon: 'database' },
     ],
