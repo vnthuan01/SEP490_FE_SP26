@@ -25,13 +25,14 @@ export const CAMPAIGN_QUERY_KEYS = {
 
 // --- Queries --- //
 
-export function useCampaigns(params?: SearchCampaignParams) {
+export function useCampaigns(params?: SearchCampaignParams, options?: { enabled?: boolean }) {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: CAMPAIGN_QUERY_KEYS.list(params),
     queryFn: async () => {
       const response = await campaignService.getAll(params);
       return response.data;
     },
+    enabled: options?.enabled ?? true,
   });
 
   return {

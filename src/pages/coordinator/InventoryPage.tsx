@@ -304,11 +304,14 @@ export default function CoordinatorInventoryPage() {
   const { user } = useAuthContext();
   const { profile } = useUserProfile();
 
-  const { data: inventoriesResponse, isLoading: isLoadingInventories } = useInventories({
-    reliefStationId: station?.reliefStationId,
-    pageIndex: 1,
-    pageSize: 20,
-  });
+  const { data: inventoriesResponse, isLoading: isLoadingInventories } = useInventories(
+    {
+      reliefStationId: station?.reliefStationId,
+      pageIndex: 1,
+      pageSize: 20,
+    },
+    { enabled: !!station?.reliefStationId },
+  );
 
   const { data: upstreamStationsResponse } = useProvincialStations({
     level: InventoryLevel.Regional,
@@ -316,10 +319,13 @@ export default function CoordinatorInventoryPage() {
     pageSize: 100,
   });
 
-  const { data: allInventoriesResponse } = useInventories({
-    pageIndex: 1,
-    pageSize: 200,
-  });
+  const { data: allInventoriesResponse } = useInventories(
+    {
+      pageIndex: 1,
+      pageSize: 200,
+    },
+    { enabled: !!station?.reliefStationId },
+  );
 
   const managedInventory = inventoriesResponse?.items?.[0];
 
@@ -340,11 +346,14 @@ export default function CoordinatorInventoryPage() {
   });
 
   // Campaigns for this station's province/location
-  const { campaigns: allCampaigns } = useCampaigns({
-    pageIndex: 1,
-    pageSize: 200,
-    locationId: station?.locationId || undefined,
-  });
+  const { campaigns: allCampaigns } = useCampaigns(
+    {
+      pageIndex: 1,
+      pageSize: 200,
+      locationId: station?.locationId || undefined,
+    },
+    { enabled: !!station?.locationId },
+  );
 
   // Supply transfers where this station is the SOURCE (requests FROM upstream come to us as source)
   const { data: sourceTransfers = [], refetch: refetchSourceTransfers } =

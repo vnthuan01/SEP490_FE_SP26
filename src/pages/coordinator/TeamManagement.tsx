@@ -115,6 +115,7 @@ const buildPageItems = (currentPage: number, totalPages: number): Array<number |
 export default function CoordinatorTeamManagementPage() {
   const { station, isLoading: isLoadingStation } = useMyReliefStation();
   const reliefStationId = station?.reliefStationId;
+  const hasAssignedStation = !!reliefStationId;
 
   // ── If moderator has a station → load teams in that station
   // ── If no station → fallback to all teams (read-only, create disabled)
@@ -124,7 +125,13 @@ export default function CoordinatorTeamManagementPage() {
     refetch: refetchInStation,
   } = useTeamsInStation(reliefStationId);
 
-  const { teams: allTeamsRaw, isLoadingTeams, refetchTeams, createTeam, updateTeam } = useTeams();
+  const {
+    teams: allTeamsRaw,
+    isLoadingTeams,
+    refetchTeams,
+    createTeam,
+    updateTeam,
+  } = useTeams(undefined, undefined, { enabledList: false });
 
   // Unified refetch
   const refetch = reliefStationId ? refetchInStation : refetchTeams;
@@ -196,16 +203,22 @@ export default function CoordinatorTeamManagementPage() {
   const { members, addMembersBulk, addMembersBulkStatus, promoteToLeader, removeMember } =
     useTeamMembers(selectedTeamId || '');
 
-  const { profiles } = useUnassignedVolunteers({
-    pageIndex: 1,
-    pageSize: 200,
-    verificationStatus: VerificationStatus.Approved,
-  });
+  const { profiles } = useUnassignedVolunteers(
+    {
+      pageIndex: 1,
+      pageSize: 200,
+      verificationStatus: VerificationStatus.Approved,
+    },
+    { enabled: hasAssignedStation },
+  );
 
-  const { campaigns, isLoading: isLoadingCampaigns } = useCampaigns({
-    pageIndex: 1,
-    pageSize: 200,
-  });
+  const { campaigns, isLoading: isLoadingCampaigns } = useCampaigns(
+    {
+      pageIndex: 1,
+      pageSize: 200,
+    },
+    { enabled: hasAssignedStation },
+  );
   const { summary: selectedCampaignSummary } = useCampaignSummary(selectedCampaignId || '');
   const { teams: assignedCampaignTeams, isLoading: isLoadingAssignedCampaignTeams } =
     useCampaignTeams(selectedCampaignId || '');
