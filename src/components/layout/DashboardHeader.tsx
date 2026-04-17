@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Notification from '../ui/notification';
 import { useRealtimeNotifications } from '@/components/provider/realtime/RealtimeNotificationProvider';
+import { useAuthContext } from '@/components/provider/auth/AuthProvider';
+import { UserRole } from '@/enums/UserRole';
 
 interface DashboardHeaderProps {
   onMenuClick?: () => void;
@@ -21,9 +23,17 @@ export function DashboardHeader({
 }: DashboardHeaderProps) {
   // const [searchValue, setSearchValue] = useState('');
   const { theme, setTheme } = useTheme();
+  const { user } = useAuthContext();
   const navigate = useNavigate();
   const [openNotification, setOpenNotification] = useState(false);
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useRealtimeNotifications();
+  const normalizedRole = String(user?.role ?? '')
+    .trim()
+    .toLowerCase();
+  const canSeeNotifications =
+    normalizedRole === UserRole.Coordinator.toLowerCase() ||
+    normalizedRole === 'coordinator' ||
+    normalizedRole === 'moderator';
   // const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   //   const value = e.target.value;
   //   setSearchValue(value);
@@ -110,29 +120,31 @@ export function DashboardHeader({
         </button>
 
         {/* Notifications */}
-        <div className="relative">
-          <button
-            onClick={() => setOpenNotification((v) => !v)}
-            className="relative p-2 text-slate-500 hover:text-primary dark:text-[#92adc9] dark:hover:text-white"
-          >
-            <span className="material-symbols-outlined">notifications</span>
+        {canSeeNotifications && (
+          <div className="relative">
+            <button
+              onClick={() => setOpenNotification((v) => !v)}
+              className="relative p-2 text-slate-500 hover:text-primary dark:text-[#92adc9] dark:hover:text-white"
+            >
+              <span className="material-symbols-outlined">notifications</span>
 
-            {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 size-2 bg-red-500 rounded-full border-2 border-surface-light dark:border-[#111a22]" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 size-2 bg-red-500 rounded-full border-2 border-surface-light dark:border-[#111a22]" />
+              )}
+            </button>
+
+            {/* Dropdown */}
+            {openNotification && (
+              <div className="absolute right-0 mt-3 z-50">
+                <Notification
+                  data={notifications}
+                  onClickItem={handleClickItem}
+                  onMarkAllRead={handleMarkAllRead}
+                />
+              </div>
             )}
-          </button>
-
-          {/* Dropdown */}
-          {openNotification && (
-            <div className="absolute right-0 mt-3 z-50">
-              <Notification
-                data={notifications}
-                onClickItem={handleClickItem}
-                onMarkAllRead={handleMarkAllRead}
-              />
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Help */}
         <button className="cursor-pointer p-2 text-slate-500 hover:text-primary dark:text-[#92adc9] dark:hover:text-white transition-colors">

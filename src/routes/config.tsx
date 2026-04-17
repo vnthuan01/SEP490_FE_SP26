@@ -142,6 +142,10 @@ export const routes: AppRoute[] = [
   {
     path: '/portal/coordinator/relief-distribution',
     element: <ReliefDistributionPage />,
+    roles: [UserRole.Coordinator],
+    isProtected: true,
+  },
+  {
     path: '/portal/coordinator/vehicles',
     element: <CoordinatorVehicleManagementPage />,
     roles: [UserRole.Coordinator],

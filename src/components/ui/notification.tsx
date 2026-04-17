@@ -79,6 +79,7 @@ const NotificationItem: React.FC<ItemProps> = ({ item, onClick }) => {
   const typeLabel = getNotificationTypeLabel(item.type);
   const title = item.title || item.requesterName;
   const message = item.message || item.description;
+  const thumbnailUrls = (item.thumbnailUrls || []).filter((url) => !!url).slice(0, 3);
   const metaText = [
     typeLabel,
     item.location,
@@ -121,6 +122,19 @@ const NotificationItem: React.FC<ItemProps> = ({ item, onClick }) => {
           <div className="flex gap-2 mt-2">
             {item.evidences.slice(0, 3).map((ev, idx) => (
               <EvidencePreview key={idx} evidence={ev} />
+            ))}
+          </div>
+        )}
+
+        {(!item.evidences || item.evidences.length === 0) && thumbnailUrls.length > 0 && (
+          <div className="flex gap-2 mt-2">
+            {thumbnailUrls.map((url, idx) => (
+              <img
+                key={`${notificationId}-${idx}`}
+                src={url}
+                alt="notification thumbnail"
+                className="w-16 h-16 rounded-md object-cover border"
+              />
             ))}
           </div>
         )}
