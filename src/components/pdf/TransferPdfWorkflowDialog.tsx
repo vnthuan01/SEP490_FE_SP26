@@ -33,8 +33,6 @@ export function TransferPdfWorkflowDialog({
   const [signatureDataUrl, setSignatureDataUrl] = useState<string>('');
   const [isBuilding, setIsBuilding] = useState(false);
   const [clausesAccepted, setClausesAccepted] = useState([false, false, false]);
-  const [selectedTemplate, setSelectedTemplate] = useState<'request' | 'handover'>('request');
-
   const signedDateLabel = useMemo(() => new Date().toLocaleDateString('vi-VN'), []);
 
   useEffect(() => {
@@ -42,14 +40,13 @@ export function TransferPdfWorkflowDialog({
     setPdfBytes(null);
     setSignatureDataUrl('');
     setClausesAccepted([false, false, false]);
-    setSelectedTemplate('request');
   }, [open, data?.transferCode]);
 
   const handleBuildPdf = async () => {
     if (!data) return;
     setIsBuilding(true);
     try {
-      const bytes = await buildTransferPdf({ ...data, templateType: selectedTemplate });
+      const bytes = await buildTransferPdf(data);
       setPdfBytes(bytes);
       toast.success('Đã tạo PDF mẫu');
     } finally {
@@ -92,10 +89,10 @@ export function TransferPdfWorkflowDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!max-w-none w-[94vw] max-w-6xl h-[88vh] overflow-hidden p-0 flex flex-col">
         <DialogHeader className="px-6 py-4 border-b border-border">
-          <DialogTitle>Chuẩn bị PDF phiếu điều phối</DialogTitle>
+          <DialogTitle>Chuẩn bị biên bản xác nhận đề nghị điều phối</DialogTitle>
           <DialogDescription>
-            Tạo 2 mẫu PDF tiếng Việt có dấu từ thông tin phiếu điều phối, xác nhận điều khoản và ký
-            tay trước khi đính kèm vào phiếu.
+            Tạo biên bản mẫu 2, để người gửi phiếu ký trước trong khung người lập phiếu. Sau khi có
+            file đã ký, bạn sẽ điền phần còn thiếu, phê duyệt và ký trong khung phê duyệt sau.
           </DialogDescription>
         </DialogHeader>
 
@@ -103,20 +100,10 @@ export function TransferPdfWorkflowDialog({
           <PdfPreviewCard pdfBytes={pdfBytes} title="Xem trước PDF" className="h-full" />
           <div className="space-y-4">
             <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-              <p className="font-semibold text-foreground">Bước 1: Chọn mẫu PDF</p>
-              <div className="grid grid-cols-1 gap-2">
-                <Button
-                  variant={selectedTemplate === 'request' ? 'primary' : 'outline'}
-                  onClick={() => setSelectedTemplate('request')}
-                >
-                  Mẫu 1: Phiếu yêu cầu nhập kho / điều phối
-                </Button>
-                <Button
-                  variant={selectedTemplate === 'handover' ? 'primary' : 'outline'}
-                  onClick={() => setSelectedTemplate('handover')}
-                >
-                  Mẫu 2: Biên bản xác nhận đề nghị điều phối
-                </Button>
+              <p className="font-semibold text-foreground">Bước 1: Xác nhận mẫu PDF</p>
+              <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground">
+                Đang sử dụng duy nhất{' '}
+                <span className="font-semibold">Mẫu 2: Biên bản xác nhận đề nghị điều phối</span>.
               </div>
             </div>
 
@@ -128,12 +115,14 @@ export function TransferPdfWorkflowDialog({
             </div>
 
             <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-              <p className="font-semibold text-foreground">Bước 3: Xác nhận điều khoản</p>
+              <p className="font-semibold text-foreground">
+                Bước 3: Xác nhận trước khi người gửi ký
+              </p>
               <div className="space-y-2 text-sm text-muted-foreground">
                 {[
-                  'Tôi xác nhận thông tin phiếu điều phối là chính xác.',
-                  'Tôi đã kiểm tra kho nguồn và vật tư yêu cầu trước khi gửi phiếu.',
-                  'Tôi chịu trách nhiệm về chữ ký và tài liệu đính kèm trong phiếu này.',
+                  'Tôi xác nhận nội dung biên bản và danh sách vật tư là đúng trước khi gửi người lập phiếu ký.',
+                  'Tôi hiểu rằng các phần tổng số tiền tham chiếu, bằng chữ và phê duyệt sẽ được điền sau.',
+                  'Tôi chịu trách nhiệm về chữ ký và file PDF đính kèm trong quy trình phê duyệt sau đó.',
                 ].map((clause, index) => (
                   <label
                     key={clause}
@@ -158,7 +147,7 @@ export function TransferPdfWorkflowDialog({
             </div>
 
             <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-              <p className="font-semibold text-foreground">Bước 4: Ký tay</p>
+              <p className="font-semibold text-foreground">Bước 4: Người lập phiếu ký trước</p>
               <div className="rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground space-y-1">
                 <p>
                   Người ký:{' '}
@@ -167,13 +156,17 @@ export function TransferPdfWorkflowDialog({
                 <p>
                   Ngày ký: <span className="font-medium text-foreground">{signedDateLabel}</span>
                 </p>
+                <p>
+                  Vị trí ký:{' '}
+                  <span className="font-medium text-foreground">Khung “Người lập phiếu”</span>
+                </p>
               </div>
               <PdfSignaturePad onSave={setSignatureDataUrl} />
             </div>
 
             <div className="rounded-xl border border-border bg-card p-4 space-y-3">
               <p className="font-semibold text-foreground">
-                Bước 5: Nhúng chữ ký và thêm vào phiếu
+                Bước 5: Nhúng chữ ký và lưu PDF để phê duyệt sau
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -197,7 +190,8 @@ export function TransferPdfWorkflowDialog({
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground">
-                Sau khi thêm, PDF sẽ xuất hiện trong danh sách hồ sơ đính kèm của phiếu điều phối.
+                Sau khi thêm, bạn có thể dùng file PDF này để điền phần còn thiếu, ký trong khung
+                phê duyệt và hoàn tất bước phê duyệt sau.
               </p>
             </div>
           </div>

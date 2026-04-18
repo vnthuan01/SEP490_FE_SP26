@@ -985,6 +985,7 @@ export default function CoordinatorRequestManagementPage() {
                               Bản đồ vị trí yêu cầu
                             </p>
                             <RequestLocationMapCard
+                              key={effectiveSelectedId || 'request-map'}
                               selected={selected}
                               station={station}
                               stationCoordinates={stationCoordinates}

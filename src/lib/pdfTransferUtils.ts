@@ -10,20 +10,19 @@ const PAGE_MARGIN_X = 42;
 const TABLE_WIDTH = PAGE_WIDTH - PAGE_MARGIN_X * 2;
 const SIGN_BOX = {
   x: 62,
-  y: 66,
+  y: 52,
   width: 205,
   height: 92,
 };
 const APPROVER_BOX = {
   x: 328,
-  y: 66,
+  y: 52,
   width: 205,
   height: 92,
 };
 
 export interface TransferPdfFillData {
   transferCode: string;
-  templateType?: 'request' | 'handover';
   creatorName: string;
   creatorEmail?: string;
   sourceName: string;
@@ -134,16 +133,6 @@ function drawCellText(
   });
 }
 
-function formatMoney(value?: number | null) {
-  if (value === null || value === undefined || Number.isNaN(value)) return '................';
-  return new Intl.NumberFormat('vi-VN').format(value);
-}
-
-function numberToVietnameseText(value?: number | null) {
-  if (!value || value <= 0) return 'Chưa có dữ liệu';
-  return `${new Intl.NumberFormat('vi-VN').format(value)} đồng`;
-}
-
 async function fetchFontBytes(url: string) {
   const response = await fetch(url);
   if (!response.ok) {
@@ -226,10 +215,6 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   const { regular: font, bold } = await loadVietnameseFonts(pdfDoc);
-
-  const templateType = data.templateType || 'request';
-  const totalAmount = data.items.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
-
   page.drawRectangle({
     x: 0,
     y: PAGE_HEIGHT - 96,
@@ -255,24 +240,18 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
       color: rgb(0.24, 0.27, 0.34),
     },
   );
-  page.drawText(templateType === 'request' ? 'Mẫu số: PĐN-ĐP-01' : 'Mẫu số: BB-ĐP-02', {
+  page.drawText('Mẫu số: BB-ĐP-02', {
     x: 446,
     y: 810,
     size: 9,
     font,
     color: rgb(0.24, 0.27, 0.34),
   });
-  drawCenteredText(
-    page,
-    templateType === 'request'
-      ? 'PHIẾU YÊU CẦU NHẬP KHO / ĐIỀU PHỐI VẬT TƯ'
-      : 'BIÊN BẢN XÁC NHẬN ĐỀ NGHỊ ĐIỀU PHỐI',
-    PAGE_WIDTH / 2,
-    778,
-    bold,
-    16,
-    { r: 0.11, g: 0.19, b: 0.38 },
-  );
+  drawCenteredText(page, 'BIÊN BẢN XÁC NHẬN ĐỀ NGHỊ ĐIỀU PHỐI', PAGE_WIDTH / 2, 778, bold, 16, {
+    r: 0.11,
+    g: 0.19,
+    b: 0.38,
+  });
   drawCenteredText(
     page,
     `Số phiếu: ${sanitizePdfText(data.transferCode)}`,
@@ -362,8 +341,8 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
     ),
     drawInfoLine(
       page,
-      'Tên kho:',
-      sanitizePdfText(data.sourceInventoryName || data.sourceName),
+      'Lý do:',
+      sanitizePdfText(data.reason || 'Đề nghị điều phối vật tư'),
       infoRightX,
       y,
       bold,
@@ -384,23 +363,11 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
       font,
       152,
     ),
-    drawInfoLine(
-      page,
-      'Lý do:',
-      sanitizePdfText(data.reason || 'Đề nghị điều phối vật tư'),
-      infoRightX,
-      y,
-      bold,
-      font,
-      152,
-    ),
   );
   y = row4Bottom - 32;
 
   page.drawText(
-    templateType === 'request'
-      ? 'Căn cứ nhu cầu bổ sung tồn kho, đề nghị kho nguồn xem xét xuất và điều phối các vật tư sau:'
-      : 'Các bên liên quan xác nhận nội dung đề nghị điều phối và danh sách vật tư như sau:',
+    'Các bên liên quan xác nhận nội dung đề nghị điều phối và danh sách vật tư như sau:',
     {
       x: PAGE_MARGIN_X,
       y,
@@ -412,12 +379,8 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
 
   const tableTop = y - 18;
   const rowHeight = 34;
-  const colWidths =
-    templateType === 'request' ? [28, 192, 56, 74, 78, 83] : [28, 190, 56, 70, 76, 91];
-  const headers =
-    templateType === 'request'
-      ? ['STT', 'Tên vật tư / quy cách', 'ĐVT', 'SL yêu cầu', 'Tồn kho nguồn', 'Ghi chú']
-      : ['STT', 'Tên vật tư / quy cách', 'ĐVT', 'SL đề nghị', 'SL xác nhận', 'Ghi chú'];
+  const colWidths = [28, 190, 56, 70, 76, 91];
+  const headers = ['STT', 'Tên vật tư / quy cách', 'ĐVT', 'SL đề nghị', 'SL thực tế', 'Ghi chú'];
 
   let currentX = PAGE_MARGIN_X;
   page.drawRectangle({
@@ -450,24 +413,14 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
   visibleItems.forEach((item, index) => {
     rowY -= rowHeight;
     let cellX = PAGE_MARGIN_X;
-    const values =
-      templateType === 'request'
-        ? [
-            String(index + 1),
-            sanitizePdfText(item.name),
-            sanitizePdfText(item.unit || 'Đơn vị'),
-            new Intl.NumberFormat('vi-VN').format(item.quantity || 0),
-            new Intl.NumberFormat('vi-VN').format(item.sourceAvailableQuantity || 0),
-            sanitizePdfText(item.notes || ''),
-          ]
-        : [
-            String(index + 1),
-            sanitizePdfText(item.name),
-            sanitizePdfText(item.unit || 'Đơn vị'),
-            new Intl.NumberFormat('vi-VN').format(item.quantity || 0),
-            new Intl.NumberFormat('vi-VN').format(item.actualQuantity ?? item.quantity ?? 0),
-            sanitizePdfText(item.notes || ''),
-          ];
+    const values = [
+      String(index + 1),
+      sanitizePdfText(item.name),
+      sanitizePdfText(item.unit || 'Đơn vị'),
+      new Intl.NumberFormat('vi-VN').format(item.quantity || 0),
+      '',
+      sanitizePdfText(item.notes || ''),
+    ];
 
     values.forEach((value, valueIndex) => {
       const width = colWidths[valueIndex];
@@ -551,41 +504,31 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
     clauseY -= 10;
   });
 
-  if (templateType === 'handover') {
-    page.drawText(`Tổng số tiền tham chiếu: ${formatMoney(totalAmount)}`, {
-      x: PAGE_MARGIN_X,
-      y: 186,
-      size: 10,
-      font: bold,
-      color: rgb(0.14, 0.24, 0.43),
-    });
-    page.drawText(`Bằng chữ: ${numberToVietnameseText(totalAmount)}`, {
-      x: 260,
-      y: 186,
-      size: 10,
-      font,
-      color: rgb(0.24, 0.27, 0.34),
-    });
-  } else {
-    page.drawText('Lưu ý: Phiếu yêu cầu nhập kho chưa thể hiện đơn giá và thành tiền.', {
-      x: PAGE_MARGIN_X,
-      y: 178,
-      size: 9.5,
-      font,
-      color: rgb(0.24, 0.27, 0.34),
-    });
-  }
+  page.drawText('Tổng số tiền tham chiếu: ................', {
+    x: PAGE_MARGIN_X,
+    y: 170,
+    size: 10,
+    font: bold,
+    color: rgb(0.14, 0.24, 0.43),
+  });
+  page.drawText('Bằng chữ: ...................................', {
+    x: 280,
+    y: 170,
+    size: 10,
+    font,
+    color: rgb(0.24, 0.27, 0.34),
+  });
 
   page.drawText('Người lập phiếu', {
     x: 104,
-    y: 162,
+    y: 148,
     size: 11,
     font: bold,
     color: rgb(0.14, 0.24, 0.43),
   });
-  page.drawText(templateType === 'request' ? 'Người duyệt' : 'Kế toán / Phê duyệt', {
-    x: templateType === 'request' ? 382 : 352,
-    y: 162,
+  page.drawText('Kế toán / Phê duyệt', {
+    x: 352,
+    y: 148,
     size: 11,
     font: bold,
     color: rgb(0.14, 0.24, 0.43),
@@ -594,21 +537,12 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
     `Ngày ..... tháng ..... năm ${sanitizePdfText((data.signedDateLabel || '').split('/').pop() || '')}`,
     {
       x: 84,
-      y: 150,
+      y: 136,
       size: 9,
       font,
       color: rgb(0.32, 0.35, 0.42),
     },
   );
-  if (templateType !== 'request') {
-    page.drawText('Thủ kho / Người giao nhận ký xác nhận theo quy định', {
-      x: 286,
-      y: 150,
-      size: 8.4,
-      font,
-      color: rgb(0.32, 0.35, 0.42),
-    });
-  }
 
   page.drawRectangle({
     x: SIGN_BOX.x,

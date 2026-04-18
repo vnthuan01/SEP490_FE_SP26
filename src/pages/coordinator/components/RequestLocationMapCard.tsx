@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import goongjs, { type Map as GoongMap, type Marker } from '@goongmaps/goong-js';
 import { getDirectionsCached } from '@/services/goongService';
 import type { RescueRequestItem } from '@/services/rescueRequestService';
@@ -38,6 +38,7 @@ export function RequestLocationMapCard({
   const requestMapRef = useRef<GoongMap | null>(null);
   const requestMarkerRef = useRef<Marker | null>(null);
   const stationMarkerRef = useRef<Marker | null>(null);
+  const [mapReady, setMapReady] = useState(false);
 
   const requestMapCallbackRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -45,6 +46,7 @@ export function RequestLocationMapCard({
       if (!node) {
         requestMarkerRef.current?.remove();
         stationMarkerRef.current?.remove();
+        setMapReady(false);
         requestMapRef.current?.remove();
         requestMapRef.current = null;
         return;
@@ -64,14 +66,32 @@ export function RequestLocationMapCard({
         const bytes = new Uint8Array([0, 0, 0, 0]);
         map.addImage(e.id, { width: 1, height: 1, data: bytes });
       };
+      const handleStyleReady = () => {
+        setMapReady(true);
+      };
       map.on('styleimagemissing', handleMissingImage);
+      map.on('load', handleStyleReady);
     },
     [goongMapKey],
   );
 
+  const selectedKey =
+    (selected as any)?.requestId ??
+    (selected as any)?.rescueRequestId ??
+    `${selected?.latitude}-${selected?.longitude}`;
+
   useEffect(() => {
     const map = requestMapRef.current;
-    if (!map) return;
+    requestMarkerRef.current?.remove();
+    requestMarkerRef.current = null;
+
+    safeRemoveLayer(map, ROUTE_LAYER_ID);
+    safeRemoveSource(map, ROUTE_SOURCE_ID);
+  }, [selectedKey]);
+
+  useEffect(() => {
+    const map = requestMapRef.current;
+    if (!map || !mapReady) return;
 
     if (stationMarkerRef.current) {
       stationMarkerRef.current.remove();
@@ -90,7 +110,7 @@ export function RequestLocationMapCard({
       .setLngLat([stationCoordinates.lng, stationCoordinates.lat])
       .setPopup(stationPopup)
       .addTo(map);
-  }, [stationCoordinates, station, coverageRadiusKm]);
+  }, [stationCoordinates, station, coverageRadiusKm, mapReady]);
 
   useEffect(() => {
     const map = requestMapRef.current;
@@ -149,11 +169,11 @@ export function RequestLocationMapCard({
     return () => {
       map.off('load', drawCoverage);
     };
-  }, [stationCoordinates, coverageRadiusKm]);
+  }, [stationCoordinates, coverageRadiusKm, mapReady]);
 
   useEffect(() => {
     const map = requestMapRef.current;
-    if (!map) return;
+    if (!map || !mapReady) return;
 
     if (requestMarkerRef.current) {
       requestMarkerRef.current.remove();
@@ -181,11 +201,11 @@ export function RequestLocationMapCard({
       speed: 2.5,
       curve: 1,
     });
-  }, [selectedCoordinates, selected]);
+  }, [selectedCoordinates, selected, mapReady]);
 
   useEffect(() => {
     const map = requestMapRef.current;
-    if (!map || !stationCoordinates || !selectedCoordinates) return;
+    if (!map || !mapReady || !stationCoordinates || !selectedCoordinates) return;
 
     let cancelled = false;
 
@@ -288,23 +308,12 @@ export function RequestLocationMapCard({
       fitBoundsFor(fallbackCoords);
     };
 
-    if ((map as any).isStyleLoaded()) {
-      void drawRoute();
-    } else {
-      const handleLoad = () => {
-        void drawRoute();
-      };
-      map.on('load', handleLoad);
-      return () => {
-        cancelled = true;
-        map.off('load', handleLoad);
-      };
-    }
+    void drawRoute();
 
     return () => {
       cancelled = true;
     };
-  }, [stationCoordinates, selectedCoordinates, goongApiKey]);
+  }, [stationCoordinates, selectedCoordinates, goongApiKey, mapReady]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-accent/20">
