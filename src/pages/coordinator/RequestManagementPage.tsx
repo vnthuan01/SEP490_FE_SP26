@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -236,6 +237,7 @@ const GOONG_MAP_KEY = import.meta.env.VITE_GOONG_MAP_KEY || '';
 const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY || '';
 
 export default function CoordinatorRequestManagementPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     requests,
     isLoading,
@@ -256,7 +258,6 @@ export default function CoordinatorRequestManagementPage() {
   const [rescueTypeFilter, setRescueTypeFilter] = useState<'all' | 'normal' | 'emergency'>('all');
   const [createdDateFilter, setCreatedDateFilter] = useState<'all' | 'today' | '7d' | '30d'>('all');
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'critical' | 'high'>('all');
-  const [selectedId, setSelectedId] = useState('');
   // listPageState tracks { key: filterKey, page } — changing filters resets page to 1
   const [listPageState, setListPageState] = useState<{ key: string; page: number }>({
     key: '',
@@ -273,6 +274,7 @@ export default function CoordinatorRequestManagementPage() {
 
   const [actionError, setActionError] = useState('');
   const { prefetchRoute } = usePrefetchedDirectionsRoute(GOONG_API_KEY);
+  const requestIdFromQuery = searchParams.get('requestId') || '';
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -357,10 +359,10 @@ export default function CoordinatorRequestManagementPage() {
   // The old fallback to filtered[0] caused map to try to plot coordinates
   // before the user ever selected anything, breaking the callback-ref map init.
   const effectiveSelectedId = useMemo(() => {
-    if (!selectedId) return '';
-    const found = filtered.some((r) => getRequestId(r) === selectedId);
-    return found ? selectedId : '';
-  }, [filtered, selectedId]);
+    if (!requestIdFromQuery) return '';
+    const found = filtered.some((r) => getRequestId(r) === requestIdFromQuery);
+    return found ? requestIdFromQuery : '';
+  }, [filtered, requestIdFromQuery]);
 
   const selected = useMemo(
     () => filtered.find((r) => getRequestId(r) === effectiveSelectedId),
@@ -716,7 +718,11 @@ export default function CoordinatorRequestManagementPage() {
                         <button
                           key={id}
                           onClick={() => {
-                            setSelectedId(id);
+                            setSearchParams((prev) => {
+                              const next = new URLSearchParams(prev);
+                              next.set('requestId', id);
+                              return next;
+                            });
                             const destination =
                               Number.isFinite(Number(req.latitude)) &&
                               Number.isFinite(Number(req.longitude))

@@ -4,13 +4,20 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  Eye,
+  FileWarning,
+  Inbox,
+  ListFilter,
   ListOrdered,
   MapPinned,
   Maximize2,
   Minimize2,
   RefreshCcw,
   Route,
+  Send,
   Search,
+  SearchX,
+  ShieldAlert,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -27,6 +34,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch, SwitchWrapper } from '@/components/ui/switch';
 import { coordinatorNavGroups } from './components/sidebarConfig';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { useTeamLatestTracking, useTeamsInStation } from '@/hooks/useTeams';
@@ -42,6 +50,7 @@ import { cn } from '@/lib/utils';
 import {
   getPriorityLevelLabel,
   getRescueRequestTypeLabel,
+  RequestVerificationStatus,
   RescueRequestStatus,
   RescueRequestStatusLabel,
 } from '@/enums/beEnums';
@@ -50,7 +59,6 @@ import { toast } from 'sonner';
 const GOONG_MAP_KEY = import.meta.env.VITE_GOONG_MAP_KEY || '';
 const NORMAL_THRESHOLD_KM = 2;
 const EMERGENCY_THRESHOLD_KM = 3;
-const AUTO_REFRESH_MS = 10_000;
 const CANDIDATE_PAGE_SIZE = 8;
 const NOT_FOUND_TOAST_COOLDOWN_MS = 30_000;
 const ROUTE_SOURCE_ID = 'dispatch-route-source';
@@ -171,6 +179,24 @@ function getApiErrorMessage(error: any, fallback: string, notFoundMessage?: stri
   return error?.response?.data?.message || fallback;
 }
 
+function translateSystemReason(reason?: string | null) {
+  const value = String(reason ?? '').trim();
+  if (!value) return '--';
+
+  const lower = value.toLowerCase();
+  if (lower === 'team has no tracking location for smart assignment.') {
+    return 'Đội cứu hộ chưa có vị trí theo dõi nên chưa thể tính điều phối thông minh.';
+  }
+  if (lower.includes('team has no tracking location')) {
+    return 'Đội cứu hộ chưa có vị trí theo dõi.';
+  }
+  if (lower.includes('smart assignment')) {
+    return 'Chưa thể tính toán điều phối thông minh với dữ liệu hiện tại.';
+  }
+
+  return value;
+}
+
 function actionLabel(action?: string | null) {
   switch (action) {
     case 'AssignAsInProgress':
@@ -216,6 +242,15 @@ function normalizeStatus(value?: string | number | null): string {
   }
 
   return value.trim().toLowerCase();
+}
+
+function isVerifiedCandidate(req: DispatchCandidateItem): boolean {
+  const status = normalizeStatus(req.rescueRequestStatus);
+  return (
+    status === 'verified' ||
+    status === '1' ||
+    status === RescueRequestStatusLabel[RescueRequestStatus.Verified].toLowerCase()
+  );
 }
 
 function getBlockReason(req: DispatchCandidateItem): string | null {
@@ -287,7 +322,7 @@ function QueueRow({
   index: number;
   variant?: 'active' | 'preview';
 }) {
-  const statusText = item.status || (variant === 'preview' ? 'Pending' : '--');
+  const statusText = item.status || (variant === 'preview' ? 'Chờ thực hiện' : '--');
   const isInProgress = String(statusText).toLowerCase() === 'inprogress';
 
   return (
@@ -355,7 +390,7 @@ export default function DispatchPage() {
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [selectedRequestId, setSelectedRequestId] = useState('');
   const [allowPreempt, setAllowPreempt] = useState(true);
-  const [assignNote, setAssignNote] = useState('Điều phối theo route gần nhất');
+  const [assignNote, setAssignNote] = useState('Điều phối theo tuyến gần nhất');
   const [search, setSearch] = useState('');
   const [activeBatch, setActiveBatch] = useState<RescueBatchQueueResponseDto | null>(null);
   const [preview, setPreview] = useState<DispatchPreviewResponseDto | null>(null);
@@ -409,6 +444,8 @@ export default function DispatchPage() {
   const candidateCurrentPage = candidatePaging?.currentPage ?? candidatePage;
   const candidateTotalPages = Math.max(candidatePaging?.totalPages ?? 1, 1);
   const selectedRequestBlockReason = selectedRequest ? getBlockReason(selectedRequest) : null;
+  const selectedVerifiedRequest =
+    selectedRequest && isVerifiedCandidate(selectedRequest) ? selectedRequest : null;
 
   const showErrorToast = useCallback(
     (key: string, error: any, fallback: string, notFoundMessage?: string) => {
@@ -425,6 +462,15 @@ export default function DispatchPage() {
     },
     [],
   );
+
+  const clearDispatchState = useCallback(() => {
+    setActiveBatch(null);
+    setPreview(null);
+    setCandidates([]);
+    setCandidatePaging(null);
+    setSelectedRequestId('');
+    setQueueTab('current');
+  }, []);
 
   const loadActiveBatch = useCallback(
     async (teamId: string, options?: LoadOptions): Promise<RescueBatchQueueResponseDto | null> => {
@@ -475,9 +521,10 @@ export default function DispatchPage() {
           pageNumber,
           CANDIDATE_PAGE_SIZE,
           keyword,
+          RequestVerificationStatus.Approved,
         );
 
-        setCandidates(data.items || []);
+        setCandidates((data.items || []).filter(isVerifiedCandidate));
         setCandidatePaging(data.paging);
 
         if (data.paging?.currentPage && data.paging.currentPage !== pageNumber) {
@@ -503,22 +550,30 @@ export default function DispatchPage() {
     [showErrorToast],
   );
 
+  const refreshDispatchData = useCallback(
+    async (teamId: string, pageNumber: number, keyword?: string, options?: LoadOptions) => {
+      if (!teamId) {
+        clearDispatchState();
+        return;
+      }
+
+      const batch = await loadActiveBatch(teamId, options);
+
+      if (!batch?.items?.length) {
+        setActiveBatch(null);
+      }
+
+      await loadCandidates(teamId, pageNumber, keyword, options);
+    },
+    [clearDispatchState, loadActiveBatch, loadCandidates],
+  );
+
   const handleRefresh = useCallback(async () => {
     if (!selectedTeamId) return;
-
-    const batch = await loadActiveBatch(selectedTeamId);
-
-    if (!batch?.items?.length) {
-      setCandidates([]);
-      setCandidatePaging(null);
-      setSelectedRequestId('');
-      setPreview(null);
-      setQueueTab('current');
-      return;
-    }
-
-    await loadCandidates(selectedTeamId, candidatePage, trimmedSearch, { silentNotFound: true });
-  }, [candidatePage, loadActiveBatch, loadCandidates, selectedTeamId, trimmedSearch]);
+    await refreshDispatchData(selectedTeamId, candidatePage, trimmedSearch, {
+      silentNotFound: true,
+    });
+  }, [candidatePage, refreshDispatchData, selectedTeamId, trimmedSearch]);
 
   useEffect(() => {
     if (!selectedTeamId && teams.length > 0) setSelectedTeamId(teams[0].teamId);
@@ -609,51 +664,20 @@ export default function DispatchPage() {
     setSelectedRequestId('');
     setPreview(null);
     setQueueTab('current');
-    setCandidates([]);
-    setCandidatePaging(null);
 
     if (!selectedTeamId) {
-      setActiveBatch(null);
-      return;
-    }
-
-    void loadActiveBatch(selectedTeamId, { silentNotFound: true });
-  }, [loadActiveBatch, selectedTeamId]);
-
-  useEffect(() => {
-    if (!selectedTeamId || !activeBatch?.items?.length) {
-      setCandidates([]);
-      setCandidatePaging(null);
+      clearDispatchState();
       return;
     }
 
     const timeoutId = setTimeout(() => {
-      void loadCandidates(selectedTeamId, candidatePage, trimmedSearch, { silentNotFound: true });
+      void refreshDispatchData(selectedTeamId, candidatePage, trimmedSearch, {
+        silentNotFound: true,
+      });
     }, 250);
 
     return () => clearTimeout(timeoutId);
-  }, [activeBatch?.items?.length, candidatePage, loadCandidates, selectedTeamId, trimmedSearch]);
-
-  useEffect(() => {
-    if (!selectedTeamId) return;
-
-    const intervalId = setInterval(async () => {
-      const batch = await loadActiveBatch(selectedTeamId, { silentNotFound: true });
-
-      if (!batch?.items?.length) {
-        setCandidates([]);
-        setCandidatePaging(null);
-        setSelectedRequestId('');
-        setPreview(null);
-        setQueueTab('current');
-        return;
-      }
-
-      await loadCandidates(selectedTeamId, candidatePage, trimmedSearch, { silentNotFound: true });
-    }, AUTO_REFRESH_MS);
-
-    return () => clearInterval(intervalId);
-  }, [candidatePage, loadActiveBatch, loadCandidates, selectedTeamId, trimmedSearch]);
+  }, [candidatePage, clearDispatchState, refreshDispatchData, selectedTeamId, trimmedSearch]);
 
   useEffect(() => {
     setPreview(null);
@@ -694,9 +718,13 @@ export default function DispatchPage() {
 
       setActiveBatch(updated);
       await rescueRequestService.recalculateEta(selectedTeamId);
-      await loadCandidates(selectedTeamId, candidatePage, trimmedSearch, { silentNotFound: true });
+      setPreview(null);
+      setQueueTab('current');
+      setSelectedRequestId('');
+      await refreshDispatchData(selectedTeamId, candidatePage, trimmedSearch, {
+        silentNotFound: true,
+      });
       toast.success('Đã điều phối thành công.');
-      await handlePreview();
     } catch (error: any) {
       showErrorToast(
         'dispatch-assign',
@@ -753,7 +781,7 @@ export default function DispatchPage() {
 
         const isInProgress = item.status === 'InProgress';
         addMarker(
-          isInProgress ? 'Đang xử lý' : `Queue ${index + 1}`,
+          isInProgress ? 'Đang xử lý' : `Hàng đợi ${index + 1}`,
           isInProgress ? '#2563eb' : '#475569',
           '#fff',
           coord,
@@ -761,7 +789,10 @@ export default function DispatchPage() {
         );
       });
 
-      const newCoord = toCoordinate(selectedRequest?.latitude, selectedRequest?.longitude);
+      const newCoord = toCoordinate(
+        selectedVerifiedRequest?.latitude,
+        selectedVerifiedRequest?.longitude,
+      );
       if (newCoord) addMarker('Yêu cầu mới', '#f97316', '#fff', newCoord, 'notifications_active');
 
       const clearLayer = (id: string) => {
@@ -806,7 +837,7 @@ export default function DispatchPage() {
           });
 
           const thresholdKm =
-            String(selectedRequest?.rescueRequestType ?? '').toLowerCase() === 'emergency'
+            String(selectedVerifiedRequest?.rescueRequestType ?? '').toLowerCase() === 'emergency'
               ? EMERGENCY_THRESHOLD_KM
               : NORMAL_THRESHOLD_KM;
 
@@ -841,7 +872,7 @@ export default function DispatchPage() {
 
       if (hasBounds) map.fitBounds(bounds, { padding: options?.fitPadding ?? 80, maxZoom: 14 });
     },
-    [activeBatch, preview, selectedRequest, selectedTeamCoordinate],
+    [activeBatch, preview, selectedTeamCoordinate, selectedVerifiedRequest],
   );
 
   const handleFitMap = useCallback(
@@ -957,8 +988,8 @@ export default function DispatchPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
-            <Card className="overflow-hidden rounded-3xl border-border/70 bg-card/95 shadow-sm">
-              <CardContent className="p-0">
+            <Card className="overflow-hidden rounded-3xl border-border/70 bg-card/95 shadow-sm xl:h-[calc(100vh-12rem)]">
+              <CardContent className="flex h-full flex-col p-0">
                 <div className="border-b border-border/70 bg-gradient-to-r from-slate-50 via-background to-background p-5 dark:from-slate-950/30">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -1017,7 +1048,7 @@ export default function DispatchPage() {
                   </div>
                 </div>
 
-                <div className="p-4">
+                <div className="min-h-0 flex-1 overflow-auto p-4">
                   {isBatchLoading ? (
                     <div className="space-y-3">
                       {[1, 2, 3].map((key) => (
@@ -1025,25 +1056,33 @@ export default function DispatchPage() {
                       ))}
                     </div>
                   ) : !activeBatch?.items?.length ? (
-                    <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50 px-4 py-8 text-center">
+                    <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-dashed border-amber-300 bg-amber-50 px-4 py-8 text-center">
+                      <Inbox className="mb-3 size-10 text-amber-500" />
                       <p className="font-semibold text-amber-700">
-                        Đội chưa có hàng đợi hoạt động.
+                        Đội này chưa có hàng đợi đang hoạt động
                       </p>
-                      <p className="mt-1 text-sm text-amber-600">
-                        Hãy chọn đội đang có nhiệm vụ trong queue để dùng điều phối thông minh.
+                      <p className="mt-1 max-w-sm text-sm text-amber-600">
+                        Bạn vẫn có thể chọn yêu cầu đã xác minh để tạo nhiệm vụ đầu tiên cho đội
+                        này.
                       </p>
                     </div>
                   ) : isCandidatesLoading ? (
                     <div className="space-y-3">
+                      <div className="flex items-center gap-2 px-1 text-xs font-medium text-muted-foreground">
+                        <ListFilter className="size-4" />
+                        Đang tải yêu cầu gần tuyến...
+                      </div>
                       {[1, 2, 3, 4].map((key) => (
                         <Skeleton key={key} className="h-24 rounded-2xl" />
                       ))}
                     </div>
                   ) : candidates.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-border bg-accent/20 px-4 py-8 text-center">
-                      <p className="font-medium text-foreground">Không có yêu cầu phù hợp.</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Thử đổi từ khóa tìm kiếm hoặc chọn đội cứu hộ khác.
+                    <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-accent/20 px-4 py-8 text-center">
+                      <SearchX className="mb-3 size-10 text-muted-foreground" />
+                      <p className="font-medium text-foreground">Không tìm thấy yêu cầu phù hợp</p>
+                      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                        Không có yêu cầu nào gần tuyến của đội ở thời điểm này. Hãy thử đổi từ khóa
+                        hoặc chọn đội khác.
                       </p>
                     </div>
                   ) : (
@@ -1075,7 +1114,7 @@ export default function DispatchPage() {
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <p className="truncate text-sm font-semibold text-foreground">
-                                    {req.reporterFullName || 'Không có tên'}
+                                    {req.reporterFullName || 'Chưa có tên người báo tin'}
                                   </p>
                                   <span
                                     className={cn(
@@ -1127,42 +1166,46 @@ export default function DispatchPage() {
                 </div>
 
                 {(candidatePaging?.totalCount ?? 0) > 0 ? (
-                  <div className="flex flex-col gap-3 border-t border-border/70 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-sm text-muted-foreground">
-                      Trang {candidateCurrentPage}/{candidateTotalPages} — Tổng{' '}
-                      {candidatePaging?.totalCount ?? candidates.length} yêu cầu
-                    </p>
+                  <div className="shrink-0 border-t border-border/70 bg-muted/20 px-4 py-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-muted-foreground">
+                        Trang {candidateCurrentPage}/{candidateTotalPages} — Tổng{' '}
+                        {candidatePaging?.totalCount ?? candidates.length} yêu cầu
+                      </p>
 
-                    <div className="flex items-center gap-2 self-end sm:self-auto">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!candidatePaging?.hasPrevious || isCandidatesLoading}
-                        onClick={() => setCandidatePage((page) => Math.max(1, page - 1))}
-                      >
-                        <ChevronLeft className="size-4" />
-                        Trước
-                      </Button>
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="min-w-[92px] gap-1.5 rounded-xl"
+                          disabled={!candidatePaging?.hasPrevious || isCandidatesLoading}
+                          onClick={() => setCandidatePage((page) => Math.max(1, page - 1))}
+                        >
+                          <ChevronLeft className="size-4" />
+                          Trước
+                        </Button>
 
-                      <span className="inline-flex min-w-20 items-center justify-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground">
-                        {candidateCurrentPage}/{candidateTotalPages}
-                      </span>
+                        <span className="inline-flex min-w-20 items-center justify-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground">
+                          {candidateCurrentPage}/{candidateTotalPages}
+                        </span>
 
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!candidatePaging?.hasNext || isCandidatesLoading}
-                        onClick={() =>
-                          setCandidatePage((page) =>
-                            candidatePaging?.hasNext
-                              ? Math.min(candidateTotalPages, page + 1)
-                              : page,
-                          )
-                        }
-                      >
-                        Sau
-                        <ChevronRight className="size-4" />
-                      </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="min-w-[92px] gap-1.5 rounded-xl"
+                          disabled={!candidatePaging?.hasNext || isCandidatesLoading}
+                          onClick={() =>
+                            setCandidatePage((page) =>
+                              candidatePaging?.hasNext
+                                ? Math.min(candidateTotalPages, page + 1)
+                                : page,
+                            )
+                          }
+                        >
+                          Sau
+                          <ChevronRight className="size-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ) : null}
@@ -1186,28 +1229,18 @@ export default function DispatchPage() {
                       <div>
                         <p className="text-sm font-semibold text-primary">Cho phép chèn ngang</p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Dùng khi yêu cầu khẩn cấp nằm gần tuyến đường đang thực hiện.
+                          Dùng khi yêu cầu khẩn cấp nằm gần tuyến đường đội đang di chuyển.
                         </p>
                       </div>
 
-                      <button
-                        type="button"
-                        aria-pressed={allowPreempt}
-                        onClick={() => setAllowPreempt((value) => !value)}
-                        className={cn(
-                          'relative h-7 w-14 rounded-full border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2',
-                          allowPreempt
-                            ? 'border-primary/30 bg-primary/80 shadow-sm'
-                            : 'border-border bg-muted',
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            'absolute -left-1 top-[1px] h-6 w-6 rounded-full bg-white shadow-md transition-transform duration-200',
-                            allowPreempt ? 'translate-x-5' : 'translate-x-0',
-                          )}
+                      <SwitchWrapper>
+                        <Switch
+                          checked={allowPreempt}
+                          onCheckedChange={setAllowPreempt}
+                          size="lg"
+                          aria-label="Cho phép chèn ngang"
                         />
-                      </button>
+                      </SwitchWrapper>
                     </div>
                   </div>
 
@@ -1219,8 +1252,13 @@ export default function DispatchPage() {
                   ) : null}
 
                   {!preview ? (
-                    <div className="rounded-2xl border border-dashed border-border bg-accent/20 px-4 py-10 text-center text-sm text-amber-700">
-                      Chọn đội và yêu cầu, sau đó bấm <strong>Xem trước điều phối</strong>.
+                    <div className="flex flex-col items-center rounded-2xl border border-dashed border-border bg-accent/20 px-4 py-10 text-center text-sm text-amber-700">
+                      <Eye className="mb-3 size-10 text-amber-500" />
+                      <p className="font-semibold text-foreground">Chưa có bản xem trước</p>
+                      <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+                        Chọn một yêu cầu ở danh sách bên trái rồi bấm{' '}
+                        <strong>Xem trước điều phối</strong> để xem vị trí chèn tối ưu.
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -1294,7 +1332,7 @@ export default function DispatchPage() {
                           </p>
                           <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
                             {preview.reasons.map((reason, index) => (
-                              <li key={index}>{reason}</li>
+                              <li key={index}>{translateSystemReason(reason)}</li>
                             ))}
                           </ul>
                         </div>
@@ -1326,9 +1364,10 @@ export default function DispatchPage() {
                         isPreviewLoading ||
                         Boolean(selectedRequestBlockReason)
                       }
-                      className="rounded-xl"
+                      className="gap-2 rounded-xl"
                     >
-                      {isPreviewLoading ? 'Đang xử lý...' : 'Xem trước điều phối'}
+                      <Eye className={cn('size-4', isPreviewLoading && 'animate-pulse')} />
+                      {isPreviewLoading ? 'Đang xem trước...' : 'Xem trước điều phối'}
                     </Button>
 
                     <Button
@@ -1336,12 +1375,17 @@ export default function DispatchPage() {
                       disabled={isAssignBlocked}
                       onClick={handleSmartAssign}
                       className={cn(
-                        'rounded-xl font-bold',
+                        'gap-2 rounded-xl font-bold',
                         preview?.willPreemptCurrentInProgress
                           ? 'bg-red-600 text-white hover:bg-red-500'
                           : 'bg-primary text-primary-foreground hover:bg-primary/90',
                       )}
                     >
+                      {preview?.willPreemptCurrentInProgress ? (
+                        <ShieldAlert className="size-4" />
+                      ) : (
+                        <Send className="size-4" />
+                      )}
                       {isAssigning
                         ? 'Đang điều phối...'
                         : preview?.willPreemptCurrentInProgress
@@ -1370,14 +1414,14 @@ export default function DispatchPage() {
                       Bản đồ tuyến đường và vùng đệm
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Tuyến hiện tại, yêu cầu mới và vùng buffer {NORMAL_THRESHOLD_KM}–
+                      Tuyến hiện tại, yêu cầu mới và vùng đệm {NORMAL_THRESHOLD_KM}–
                       {EMERGENCY_THRESHOLD_KM} km được hiển thị trực tiếp trên bản đồ.
                     </p>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="rounded-full border border-border bg-background/80 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                      Tự động làm mới mỗi {AUTO_REFRESH_MS / 1000}s
+                      Dữ liệu cập nhật khi đổi bộ lọc hoặc bấm tải lại
                     </div>
                     <Button
                       variant="outline"
@@ -1393,8 +1437,12 @@ export default function DispatchPage() {
 
                 <div className="p-4">
                   {!GOONG_MAP_KEY ? (
-                    <div className="rounded-3xl border border-dashed border-border bg-accent/20 p-8 text-center text-sm text-muted-foreground">
-                      Thiếu VITE_GOONG_MAP_KEY để hiển thị bản đồ.
+                    <div className="flex flex-col items-center rounded-3xl border border-dashed border-border bg-accent/20 p-8 text-center text-sm text-muted-foreground">
+                      <MapPinned className="mb-3 size-10 text-muted-foreground" />
+                      <p className="font-semibold text-foreground">Không thể hiển thị bản đồ</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Thiếu cấu hình VITE_GOONG_MAP_KEY.
+                      </p>
                     </div>
                   ) : (
                     <div className="overflow-hidden rounded-3xl border border-border shadow-sm">
@@ -1409,7 +1457,7 @@ export default function DispatchPage() {
               <CardContent className="flex h-full flex-col p-0">
                 <div className="border-b border-border/70 bg-gradient-to-r from-violet-50/70 via-background to-background p-5 dark:from-violet-950/20">
                   <p className="text-base font-semibold text-foreground">
-                    Queue hiện tại và queue đề xuất
+                    Hàng đợi hiện tại và hàng đợi đề xuất
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     So sánh thứ tự hiện tại với đề xuất sau khi xem trước ngay bên cạnh bản đồ.
@@ -1489,9 +1537,13 @@ export default function DispatchPage() {
                           />
                         ))
                       ) : (
-                        <p className="py-10 text-center text-sm text-muted-foreground">
-                          Đội chưa có hàng đợi hoạt động.
-                        </p>
+                        <div className="flex flex-col items-center justify-center py-10 text-center text-sm text-muted-foreground">
+                          <Inbox className="mb-3 size-8 text-muted-foreground/70" />
+                          <p className="font-medium text-foreground">Chưa có hàng đợi hiện tại</p>
+                          <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                            Khi điều phối thành công, nhiệm vụ đầu tiên sẽ xuất hiện tại đây.
+                          </p>
+                        </div>
                       )
                     ) : orderedPreviewItems.length ? (
                       orderedPreviewItems.map((item, index) => (
@@ -1503,9 +1555,13 @@ export default function DispatchPage() {
                         />
                       ))
                     ) : (
-                      <p className="py-10 text-center text-sm text-muted-foreground">
-                        Chưa có dữ liệu xem trước.
-                      </p>
+                      <div className="flex flex-col items-center justify-center py-10 text-center text-sm text-muted-foreground">
+                        <FileWarning className="mb-3 size-8 text-muted-foreground/70" />
+                        <p className="font-medium text-foreground">Chưa có hàng đợi đề xuất</p>
+                        <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                          Hãy xem trước điều phối để hệ thống mô phỏng thứ tự xử lý mới.
+                        </p>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1515,12 +1571,13 @@ export default function DispatchPage() {
                     Hàng đợi nằm bên phải bản đồ
                   </span>
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => void handleRefresh()}
                     disabled={!selectedTeamId || isBatchLoading}
-                    className="h-auto px-0 text-xs font-semibold text-primary hover:bg-transparent"
+                    className="gap-2 rounded-xl text-xs font-semibold"
                   >
+                    <RefreshCcw className={cn('size-3.5', isBatchLoading && 'animate-spin')} />
                     Tải lại ngay
                   </Button>
                 </div>
@@ -1534,10 +1591,10 @@ export default function DispatchPage() {
                 <div>
                   <p className="flex items-center gap-2 text-xl font-bold text-foreground">
                     <MapPinned className="size-5 text-sky-600" />
-                    Bản đồ queue điều phối
+                    Bản đồ hàng đợi điều phối
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Xem chi tiết toàn bộ queue, tuyến hiện tại, yêu cầu mới và vùng đệm trên toàn
+                    Xem chi tiết toàn bộ hàng đợi, tuyến hiện tại, yêu cầu mới và vùng đệm trên toàn
                     màn hình.
                   </p>
                 </div>
@@ -1590,7 +1647,7 @@ export default function DispatchPage() {
                     </span>
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-slate-700">
                       <span className="material-symbols-outlined text-sm!">location_on</span>
-                      Các điểm trong queue
+                      Các điểm trong hàng đợi
                     </span>
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-100 px-3 py-1 text-orange-700">
                       <span className="material-symbols-outlined text-sm!">
@@ -1603,7 +1660,13 @@ export default function DispatchPage() {
                   <div className="min-h-0 flex-1 p-4">
                     {!GOONG_MAP_KEY ? (
                       <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-border bg-accent/20 p-8 text-center text-sm text-muted-foreground">
-                        Thiếu VITE_GOONG_MAP_KEY để hiển thị bản đồ.
+                        <div className="flex flex-col items-center text-center">
+                          <MapPinned className="mb-3 size-10 text-muted-foreground" />
+                          <p className="font-semibold text-foreground">Không thể hiển thị bản đồ</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Thiếu cấu hình VITE_GOONG_MAP_KEY.
+                          </p>
+                        </div>
                       </div>
                     ) : (
                       <div className="h-full overflow-hidden rounded-3xl border border-border shadow-sm">
@@ -1676,7 +1739,7 @@ export default function DispatchPage() {
                         <p className="mt-1 font-semibold text-foreground">{selectedTeamName}</p>
                       </div>
                       <div className="rounded-2xl border border-border bg-background px-3 py-2.5">
-                        <p className="text-muted-foreground">Số điểm trong queue</p>
+                        <p className="text-muted-foreground">Số điểm trong hàng đợi</p>
                         <p className="mt-1 font-semibold text-foreground">
                           {queueItemsForActiveTab.length}
                         </p>
@@ -1703,9 +1766,13 @@ export default function DispatchPage() {
                             />
                           ))
                         ) : (
-                          <p className="py-10 text-center text-sm text-muted-foreground">
-                            Đội chưa có hàng đợi hoạt động.
-                          </p>
+                          <div className="flex flex-col items-center justify-center py-10 text-center text-sm text-muted-foreground">
+                            <Inbox className="mb-3 size-8 text-muted-foreground/70" />
+                            <p className="font-medium text-foreground">Chưa có hàng đợi hiện tại</p>
+                            <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                              Khi điều phối thành công, nhiệm vụ đầu tiên sẽ xuất hiện tại đây.
+                            </p>
+                          </div>
                         )
                       ) : orderedPreviewItems.length ? (
                         orderedPreviewItems.map((item, index) => (
@@ -1717,9 +1784,13 @@ export default function DispatchPage() {
                           />
                         ))
                       ) : (
-                        <p className="py-10 text-center text-sm text-muted-foreground">
-                          Chưa có dữ liệu xem trước.
-                        </p>
+                        <div className="flex flex-col items-center justify-center py-10 text-center text-sm text-muted-foreground">
+                          <FileWarning className="mb-3 size-8 text-muted-foreground/70" />
+                          <p className="font-medium text-foreground">Chưa có hàng đợi đề xuất</p>
+                          <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                            Hãy xem trước điều phối để hệ thống mô phỏng thứ tự xử lý mới.
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>

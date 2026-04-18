@@ -114,6 +114,7 @@ function toTeam(apiTeam: any): Team {
   return {
     id: String(apiTeam.teamId ?? apiTeam.id ?? ''),
     name: apiTeam.name || 'Không tên',
+    teamType: Number(apiTeam.teamType ?? 1),
     currentLocation: { lat: 0, lng: 0 },
     vehicle: 'truck',
     capacity: { people: Number(apiTeam.totalMembers ?? apiTeam.members ?? 0), cargo: 0 },
@@ -310,7 +311,7 @@ export default function CoordinatorTeamAllocationPage() {
   if (!GOONG_MAP_KEY) {
     return (
       <DashboardLayout navGroups={coordinatorNavGroups}>
-        <div className="flex items-center justify-center h-[calc(100vh-64px)]">
+        <div className="flex min-h-[320px] items-center justify-center">
           <Card className="p-6">
             <CardContent className="text-center space-y-4">
               <span className="material-symbols-outlined text-5xl text-muted-foreground">
@@ -412,7 +413,7 @@ export default function CoordinatorTeamAllocationPage() {
 
           {/* Sliding sidebar panel */}
           <div
-            className={`absolute top-0 right-0 h-full w-[400px] bg-background border-l shadow-2xl transform transition-transform duration-300 ease-in-out z-10 ${
+            className={`absolute top-0 right-0 h-full w-[440px] bg-background border-l shadow-2xl transform transition-transform duration-300 ease-in-out z-10 ${
               showSidebar ? 'translate-x-0' : 'translate-x-full'
             }`}
           >
@@ -442,7 +443,7 @@ export default function CoordinatorTeamAllocationPage() {
   return (
     <DashboardLayout navGroups={coordinatorNavGroups}>
       {!hasAssignedStation ? (
-        <div className="flex h-[calc(100vh-64px)] items-center justify-center px-4">
+        <div className="flex min-h-[320px] items-center justify-center px-4">
           <div className="flex max-w-md flex-col items-center gap-3 rounded-2xl border border-dashed border-border bg-card px-6 py-10 text-center shadow-sm">
             <span className="material-symbols-outlined text-5xl text-muted-foreground">map</span>
             <h2 className="text-xl font-bold text-foreground">Bạn chưa được gán trạm</h2>
@@ -483,7 +484,7 @@ export default function CoordinatorTeamAllocationPage() {
             </div>
 
             {/* Sidebar */}
-            <aside className="w-[380px] flex flex-col border-l bg-muted/20">
+            <aside className="flex w-[420px] min-h-0 flex-col border-l bg-muted/20">
               {isLoadingRequests ? (
                 <div className="p-4 space-y-3">
                   {[1, 2, 3, 4].map((k) => (
@@ -507,11 +508,13 @@ export default function CoordinatorTeamAllocationPage() {
                   </p>
                 </div>
               ) : (
-                <LocationList
-                  locations={filteredLocations}
-                  onLocationClick={handleLocationClick}
-                  selectedLocationId={selectedLocationId}
-                />
+                <>
+                  <LocationList
+                    locations={filteredLocations}
+                    onLocationClick={handleLocationClick}
+                    selectedLocationId={selectedLocationId}
+                  />
+                </>
               )}
             </aside>
           </div>

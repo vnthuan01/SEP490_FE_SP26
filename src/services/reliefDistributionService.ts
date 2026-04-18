@@ -1,5 +1,15 @@
 import { apiClient } from '@/lib/apiClients';
 
+export interface PaginatedResponse<T> {
+  currentPage: number;
+  totalPages: number;
+  pageSize: number;
+  totalCount: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+  items: T[];
+}
+
 export interface ReliefHouseholdInputRequest {
   householdCode: string;
   headOfHouseholdName: string;
@@ -262,12 +272,104 @@ export interface SupplyShortageRequestResponse {
 }
 
 export interface GetHouseholdsParams {
+  pageIndex?: number;
+  pageSize?: number;
+  search?: string;
   status?: number;
+  deliveryMode?: number;
+  fulfillmentStatus?: number;
+  isIsolated?: boolean;
+  campaignTeamId?: string;
+  distributionPointId?: string;
 }
 
 export interface GetChecklistParams {
+  pageIndex?: number;
+  pageSize?: number;
+  search?: string;
   campaignTeamId?: string;
   status?: number;
+  deliveryMode?: number;
+  distributionPointId?: string;
+}
+
+export interface GetDistributionPointsParams {
+  pageIndex?: number;
+  pageSize?: number;
+  search?: string;
+  reliefStationId?: string;
+  campaignTeamId?: string;
+  locationId?: string;
+  deliveryMode?: number;
+  isActive?: boolean;
+}
+
+export interface GetReliefPackagesParams {
+  pageIndex?: number;
+  pageSize?: number;
+  search?: string;
+  outputSupplyItemId?: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+}
+
+export interface GetDeliveriesParams {
+  pageIndex?: number;
+  pageSize?: number;
+  search?: string;
+  campaignTeamId?: string;
+  distributionPointId?: string;
+  reliefPackageDefinitionId?: string;
+  deliveryMode?: number;
+  status?: number;
+}
+
+export interface CompleteDeliveriesBatchItemRequest {
+  householdDeliveryId: string;
+  notes?: string | null;
+  proofNote?: string | null;
+  proofFileUrl: string;
+  proofContentType?: string | null;
+}
+
+export interface CompleteDeliveriesBatchRequest {
+  deliveries: CompleteDeliveriesBatchItemRequest[];
+}
+
+export interface UpdateCampaignHouseholdRequest {
+  householdCode?: string;
+  headOfHouseholdName?: string;
+  contactPhone?: string | null;
+  address?: string | null;
+  latitude?: number;
+  longitude?: number;
+  householdSize?: number;
+  isIsolated?: boolean;
+  deliveryMode?: number | null;
+  notes?: string | null;
+}
+
+export interface UpdateDistributionPointRequest {
+  name?: string;
+  reliefStationId?: string;
+  campaignTeamId?: string | null;
+  locationId?: string | null;
+  address?: string | null;
+  latitude?: number;
+  longitude?: number;
+  deliveryMode?: number;
+  startsAt?: string;
+  endsAt?: string | null;
+  isActive?: boolean;
+}
+
+export interface UpdateReliefPackageDefinitionRequest {
+  name?: string;
+  description?: string | null;
+  outputSupplyItemId?: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  items?: ReliefPackageDefinitionItemRequest[];
 }
 
 export interface GetShortageRequestsParams {
@@ -281,6 +383,30 @@ export interface GetPackageAssemblyAvailabilityParams {
 
 const baseCampaignPath = (campaignId: string) => `/relief/campaigns/${campaignId}`;
 
+function mapPaginatedResponse<T>(raw: PaginatedResponse<T> | T[]): PaginatedResponse<T> {
+  if (Array.isArray(raw)) {
+    return {
+      currentPage: 1,
+      totalPages: 1,
+      pageSize: raw.length,
+      totalCount: raw.length,
+      hasPrevious: false,
+      hasNext: false,
+      items: raw,
+    };
+  }
+
+  return {
+    currentPage: Number(raw.currentPage || 1),
+    totalPages: Number(raw.totalPages || 1),
+    pageSize: Number(raw.pageSize || raw.items?.length || 0),
+    totalCount: Number(raw.totalCount || raw.items?.length || 0),
+    hasPrevious: Boolean(raw.hasPrevious),
+    hasNext: Boolean(raw.hasNext),
+    items: raw.items || [],
+  };
+}
+
 export const reliefDistributionService = {
   importHouseholds: (campaignId: string, data: ImportCampaignHouseholdsRequest) =>
     apiClient.post<CampaignHouseholdResponse[]>(
@@ -289,9 +415,27 @@ export const reliefDistributionService = {
     ),
 
   getHouseholds: (campaignId: string, params?: GetHouseholdsParams) =>
-    apiClient.get<CampaignHouseholdResponse[]>(`${baseCampaignPath(campaignId)}/households`, {
-      params,
-    }),
+    apiClient
+      .get<PaginatedResponse<CampaignHouseholdResponse> | CampaignHouseholdResponse[]>(
+        `${baseCampaignPath(campaignId)}/households`,
+        {
+          params,
+        },
+      )
+      .then((response) => ({ ...response, data: mapPaginatedResponse(response.data) })),
+
+  patchHousehold: (
+    campaignId: string,
+    campaignHouseholdId: string,
+    data: UpdateCampaignHouseholdRequest,
+  ) =>
+    apiClient.patch<CampaignHouseholdResponse>(
+      `${baseCampaignPath(campaignId)}/households/${campaignHouseholdId}`,
+      data,
+    ),
+
+  deleteHousehold: (campaignId: string, campaignHouseholdId: string) =>
+    apiClient.delete(`${baseCampaignPath(campaignId)}/households/${campaignHouseholdId}`),
 
   assignHousehold: (
     campaignId: string,
@@ -304,9 +448,14 @@ export const reliefDistributionService = {
     ),
 
   getChecklist: (campaignId: string, params?: GetChecklistParams) =>
-    apiClient.get<HouseholdChecklistItemResponse[]>(`${baseCampaignPath(campaignId)}/checklist`, {
-      params,
-    }),
+    apiClient
+      .get<PaginatedResponse<HouseholdChecklistItemResponse> | HouseholdChecklistItemResponse[]>(
+        `${baseCampaignPath(campaignId)}/checklist`,
+        {
+          params,
+        },
+      )
+      .then((response) => ({ ...response, data: mapPaginatedResponse(response.data) })),
 
   createDistributionPoint: (campaignId: string, data: CreateDistributionPointRequest) =>
     apiClient.post<DistributionPointResponse>(
@@ -314,10 +463,28 @@ export const reliefDistributionService = {
       data,
     ),
 
-  getDistributionPoints: (campaignId: string) =>
-    apiClient.get<DistributionPointResponse[]>(
-      `${baseCampaignPath(campaignId)}/distribution-points`,
+  getDistributionPoints: (campaignId: string, params?: GetDistributionPointsParams) =>
+    apiClient
+      .get<PaginatedResponse<DistributionPointResponse> | DistributionPointResponse[]>(
+        `${baseCampaignPath(campaignId)}/distribution-points`,
+        {
+          params,
+        },
+      )
+      .then((response) => ({ ...response, data: mapPaginatedResponse(response.data) })),
+
+  patchDistributionPoint: (
+    campaignId: string,
+    distributionPointId: string,
+    data: UpdateDistributionPointRequest,
+  ) =>
+    apiClient.patch<DistributionPointResponse>(
+      `${baseCampaignPath(campaignId)}/distribution-points/${distributionPointId}`,
+      data,
     ),
+
+  deleteDistributionPoint: (campaignId: string, distributionPointId: string) =>
+    apiClient.delete(`${baseCampaignPath(campaignId)}/distribution-points/${distributionPointId}`),
 
   createReliefPackage: (campaignId: string, data: CreateReliefPackageDefinitionRequest) =>
     apiClient.post<ReliefPackageDefinitionResponse>(
@@ -325,8 +492,28 @@ export const reliefDistributionService = {
       data,
     ),
 
-  getReliefPackages: (campaignId: string) =>
-    apiClient.get<ReliefPackageDefinitionResponse[]>(`${baseCampaignPath(campaignId)}/packages`),
+  getReliefPackages: (campaignId: string, params?: GetReliefPackagesParams) =>
+    apiClient
+      .get<PaginatedResponse<ReliefPackageDefinitionResponse> | ReliefPackageDefinitionResponse[]>(
+        `${baseCampaignPath(campaignId)}/packages`,
+        {
+          params,
+        },
+      )
+      .then((response) => ({ ...response, data: mapPaginatedResponse(response.data) })),
+
+  patchReliefPackage: (
+    campaignId: string,
+    reliefPackageDefinitionId: string,
+    data: UpdateReliefPackageDefinitionRequest,
+  ) =>
+    apiClient.patch<ReliefPackageDefinitionResponse>(
+      `${baseCampaignPath(campaignId)}/packages/${reliefPackageDefinitionId}`,
+      data,
+    ),
+
+  deleteReliefPackage: (campaignId: string, reliefPackageDefinitionId: string) =>
+    apiClient.delete(`${baseCampaignPath(campaignId)}/packages/${reliefPackageDefinitionId}`),
 
   getPackageAssemblyAvailability: (
     campaignId: string,
@@ -370,6 +557,27 @@ export const reliefDistributionService = {
   ) =>
     apiClient.post<HouseholdDeliveryResponse>(
       `${baseCampaignPath(campaignId)}/deliveries/${householdDeliveryId}/complete`,
+      data,
+    ),
+
+  getDeliveries: (campaignId: string, params?: GetDeliveriesParams) =>
+    apiClient
+      .get<PaginatedResponse<HouseholdDeliveryResponse> | HouseholdDeliveryResponse[]>(
+        `${baseCampaignPath(campaignId)}/deliveries`,
+        {
+          params,
+        },
+      )
+      .then((response) => ({ ...response, data: mapPaginatedResponse(response.data) })),
+
+  getDeliveryDetail: (campaignId: string, householdDeliveryId: string) =>
+    apiClient.get<HouseholdDeliveryResponse>(
+      `${baseCampaignPath(campaignId)}/deliveries/${householdDeliveryId}`,
+    ),
+
+  completeDeliveryBatch: (campaignId: string, data: CompleteDeliveriesBatchRequest) =>
+    apiClient.post<HouseholdDeliveryResponse[]>(
+      `${baseCampaignPath(campaignId)}/deliveries/complete-batch`,
       data,
     ),
 

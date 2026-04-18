@@ -359,9 +359,21 @@ export const rescueRequestService = {
     return normalizeRescueRequestListResponse(response.data);
   },
 
-  getDispatchCandidates: async (teamId: string, pageNumber = 1, pageSize = 20, search?: string) => {
+  getDispatchCandidates: async (
+    teamId: string,
+    pageNumber = 1,
+    pageSize = 20,
+    search?: string,
+    verificationStatus?: number,
+  ) => {
     const response = await apiClient.get('/RescueRequest/dispatch-candidates', {
-      params: { teamId, pageNumber, pageSize, search: search || undefined },
+      params: {
+        teamId,
+        pageNumber,
+        pageSize,
+        search: search || undefined,
+        verificationStatus,
+      },
     });
 
     return normalizeDispatchCandidateListResponse(response.data);

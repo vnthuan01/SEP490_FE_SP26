@@ -17,6 +17,15 @@ import { useAuthContext } from '../auth/AuthProvider';
 import { notificationService, normalizeNotification } from '@/services/notificationService';
 import type { RequestNotification, RealtimeTokenResponse } from '@/types/notifications';
 
+const PREMIUM_RESCUE_TOAST_TITLE = 'Yêu cầu cứu hộ mới';
+const PREMIUM_RESCUE_TOAST_MESSAGE = 'Bạn vừa có một yêu cầu cứu hộ mới cần xử lý.';
+
+const openRequestManagement = (requestId?: string) => {
+  if (!requestId || typeof window === 'undefined') return;
+  const url = `/portal/coordinator/requests?requestId=${encodeURIComponent(requestId)}`;
+  window.location.assign(url);
+};
+
 export type RealtimeConnectionStatus =
   | 'idle'
   | 'connecting'
@@ -357,6 +366,29 @@ export function RealtimeNotificationProvider({ children }: RealtimeNotificationP
         const title = nextNotification.title || 'Có thông báo mới';
         const message = nextNotification.message || nextNotification.description;
         const typeKey = resolveNotificationTypeKey(nextNotification.type);
+        const targetRequestId = nextNotification.referenceId;
+
+        if (typeKey === 'RescueRequestCreated') {
+          toast.info(PREMIUM_RESCUE_TOAST_TITLE, {
+            description: PREMIUM_RESCUE_TOAST_MESSAGE,
+            duration: 7000,
+            action: targetRequestId
+              ? {
+                  label: 'Mở yêu cầu',
+                  onClick: () => openRequestManagement(targetRequestId),
+                }
+              : undefined,
+            classNames: {
+              toast:
+                'group overflow-hidden rounded-3xl border border-sky-200/70 bg-gradient-to-br from-sky-500 via-cyan-500 to-indigo-600 text-white shadow-[0_24px_80px_rgba(14,165,233,0.35)]',
+              title: 'text-sm font-bold text-white',
+              description: 'text-sm text-white/90',
+              actionButton:
+                'bg-white text-sky-700 hover:bg-white/90 border-0 shadow-none font-semibold',
+            },
+          });
+          return;
+        }
 
         if (typeKey === 'RescueRequestInProgress') {
           toast.warning(title, {

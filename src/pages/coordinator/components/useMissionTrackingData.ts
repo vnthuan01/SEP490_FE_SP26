@@ -36,7 +36,6 @@ export function useMissionTrackingData({
   // Stable refs so interval callbacks always access latest values without restarting
   const selectedIdRef = useRef(selectedId);
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const detailIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -54,7 +53,11 @@ export function useMissionTrackingData({
   const effectiveOpStatus = useMemo(() => {
     if (currentOperation?.status) return currentOperation.status;
     const ops = selectedListRequest?.rescueOperations as RescueOperationDetail[] | undefined;
-    return ops?.[0]?.status ?? null;
+    if (!ops?.length) return null;
+    const latest = [...ops].sort(
+      (a, b) => new Date(b.startedAt ?? 0).getTime() - new Date(a.startedAt ?? 0).getTime(),
+    )[0];
+    return latest?.status ?? null;
   }, [currentOperation, selectedListRequest]);
 
   const isEnRoute = effectiveOpStatus === 'EnRoute';
@@ -83,9 +86,7 @@ export function useMissionTrackingData({
       setDetail(null);
       setTeamLocation(null);
       setTrackingPoints([]);
-      if (detailIntervalRef.current) clearInterval(detailIntervalRef.current);
       if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
-      detailIntervalRef.current = null;
       locationIntervalRef.current = null;
       return;
     }
@@ -96,17 +97,7 @@ export function useMissionTrackingData({
 
     void fetchDetail(selectedId).finally(() => setIsDetailLoading(false));
 
-    // Periodic detail refresh every 30 s — using ref so the callback never goes stale
-    if (detailIntervalRef.current) clearInterval(detailIntervalRef.current);
-    detailIntervalRef.current = setInterval(() => {
-      void fetchDetail(selectedIdRef.current);
-    }, 30_000);
-
     return () => {
-      if (detailIntervalRef.current) {
-        clearInterval(detailIntervalRef.current);
-        detailIntervalRef.current = null;
-      }
       if (locationIntervalRef.current) {
         clearInterval(locationIntervalRef.current);
         locationIntervalRef.current = null;

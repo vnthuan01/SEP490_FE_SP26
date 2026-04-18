@@ -45,6 +45,8 @@ type TeamItem = {
   name: string;
   description?: string | null;
   status: number;
+  teamType?: number;
+  teamTypeName?: string | null;
   leader?: string | null;
   members: number;
   area?: string | null;
@@ -199,6 +201,8 @@ export default function VolunteerAllocationPage() {
       name: toDisplayText(team.name, 'Chưa đặt tên'),
       description: team.description,
       status: Number(parseEnumValue(team.status)),
+      teamType: Number(team.teamType ?? 1),
+      teamTypeName: toDisplayText(team.teamTypeName, ''),
       leader: toDisplayText(team.leaderName ?? team.leader, ''),
       members: Number(team.totalMembers ?? team.members ?? 0),
       area: toDisplayText(team.area ?? team.currentArea, ''),
@@ -609,19 +613,33 @@ export default function VolunteerAllocationPage() {
                               : 'border-border hover:border-primary/40',
                           )}
                         >
-                          <div className="absolute right-0 top-0 p-3">
-                            <span
-                              className={cn(
-                                'inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium',
-                                statusClass,
-                              )}
-                            >
-                              {statusLabel}
-                            </span>
-                          </div>
-
-                          <div className="mb-4">
-                            <h4 className="text-lg font-bold text-foreground">{team.name}</h4>
+                          <div className="mb-4 space-y-3">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <h4 className="min-w-0 flex-1 pr-2 text-lg font-bold text-foreground break-words">
+                                {team.name}
+                              </h4>
+                              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                                <span
+                                  className={cn(
+                                    'inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium',
+                                    Number(team.teamType ?? 1) === 2
+                                      ? 'border-rose-200 bg-rose-500/10 text-rose-700 dark:border-rose-900/40 dark:text-rose-300'
+                                      : 'border-emerald-200 bg-emerald-500/10 text-emerald-700 dark:border-emerald-900/40 dark:text-emerald-300',
+                                  )}
+                                >
+                                  {team.teamTypeName ||
+                                    (Number(team.teamType ?? 1) === 2 ? 'Cứu hộ' : 'Cứu trợ')}
+                                </span>
+                                <span
+                                  className={cn(
+                                    'inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium',
+                                    statusClass,
+                                  )}
+                                >
+                                  {statusLabel}
+                                </span>
+                              </div>
+                            </div>
                             <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
                               <span className="material-symbols-outlined text-[16px]">
                                 location_on

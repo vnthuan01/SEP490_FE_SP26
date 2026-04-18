@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type SetStateAction } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { CheckedState } from '@radix-ui/react-checkbox';
@@ -20,13 +20,24 @@ import {
   RELIEF_DISTRIBUTION_KEYS,
   useCreateDistributionPoint,
   useCreateReliefPackage,
+  useDeleteDistributionPoint,
+  useDeleteReliefHousehold,
+  useDeleteReliefPackage,
+  usePatchDistributionPoint,
+  usePatchReliefHousehold,
+  usePatchReliefPackage,
   useReliefChecklist,
   useDistributionPoints,
   useReliefHouseholds,
   useReliefPackages,
 } from '@/hooks/useReliefDistribution';
 import { CampaignStatus, CampaignType, DeliveryMode } from '@/enums/beEnums';
-import { reliefDistributionService } from '@/services/reliefDistributionService';
+import {
+  reliefDistributionService,
+  type CampaignHouseholdResponse,
+  type DistributionPointResponse,
+  type ReliefPackageDefinitionResponse,
+} from '@/services/reliefDistributionService';
 import { CoordinatorReliefDistributionPageHeader } from './components/relief-distribution/CoordinatorReliefDistributionPageHeader';
 import { CoordinatorReliefDistributionSetupSteps } from './components/relief-distribution/CoordinatorReliefDistributionSetupSteps';
 import { CoordinatorReliefDistributionAssignmentStep } from './components/relief-distribution/CoordinatorReliefDistributionAssignmentStep';
@@ -39,6 +50,15 @@ import type {
   CoordinatorPackageItemForm,
 } from './components/relief-distribution/types';
 import { Separator } from '@/components/ui/separator';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { Textarea } from '@/components/ui/textarea';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ReliefStickySectionHeader } from './components/relief-distribution/ReliefStickySectionHeader';
 import { ReliefFilterBar } from './components/relief-distribution/ReliefFilterBar';
 import { ReliefPaginationBar } from './components/relief-distribution/ReliefPaginationBar';
@@ -65,6 +85,58 @@ const createDefaultPackageForm = (): CoordinatorPackageForm => ({
   isDefault: true,
   isActive: true,
   items: [{ supplyItemId: '', quantity: 1, unit: '' }],
+});
+
+const mapDistributionPointToForm = (
+  point: DistributionPointResponse,
+): CoordinatorDistributionPointForm => ({
+  name: point.name || '',
+  locationId: point.locationId || '',
+  address: point.address || '',
+  latitude: Number(point.latitude) || 16.0544,
+  longitude: Number(point.longitude) || 108.2022,
+  startsAt: point.startsAt || new Date().toISOString(),
+  endsAt: point.endsAt || '',
+  isActive: point.isActive,
+});
+
+const mapPackageToForm = (pkg: ReliefPackageDefinitionResponse): CoordinatorPackageForm => ({
+  name: pkg.name || '',
+  description: pkg.description || '',
+  isDefault: pkg.isDefault,
+  isActive: pkg.isActive,
+  items:
+    pkg.items?.length > 0
+      ? pkg.items.map((item) => ({
+          supplyItemId: item.supplyItemId,
+          quantity: item.quantity,
+          unit: item.unit,
+        }))
+      : [{ supplyItemId: '', quantity: 1, unit: '' }],
+});
+
+type HouseholdEditForm = {
+  headOfHouseholdName: string;
+  contactPhone: string;
+  address: string;
+  householdSize: number;
+  isIsolated: boolean;
+  deliveryMode: number;
+  notes: string;
+  latitude: number;
+  longitude: number;
+};
+
+const mapHouseholdToEditForm = (household: CampaignHouseholdResponse): HouseholdEditForm => ({
+  headOfHouseholdName: household.headOfHouseholdName || '',
+  contactPhone: household.contactPhone || '',
+  address: household.address || '',
+  householdSize: household.householdSize || 1,
+  isIsolated: !!household.isIsolated,
+  deliveryMode: Number(household.deliveryMode),
+  notes: household.notes || '',
+  latitude: Number(household.latitude) || 0,
+  longitude: Number(household.longitude) || 0,
 });
 
 const HOUSEHOLDS_PER_PAGE = 10;
@@ -122,6 +194,21 @@ export default function ReliefDistributionPage() {
   >('all');
   const [packageSearch, setPackageSearch] = useState('');
   const [packageCategoryFilter, setPackageCategoryFilter] = useState('all');
+  const [editingDistributionPoint, setEditingDistributionPoint] =
+    useState<DistributionPointResponse | null>(null);
+  const [editingPackage, setEditingPackage] = useState<ReliefPackageDefinitionResponse | null>(
+    null,
+  );
+  const [editingHousehold, setEditingHousehold] = useState<CampaignHouseholdResponse | null>(null);
+  const [householdEditForm, setHouseholdEditForm] = useState<HouseholdEditForm | null>(null);
+  const [householdEditErrors, setHouseholdEditErrors] = useState<Record<string, string>>({});
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<
+    | { type: 'household'; id: string; label: string }
+    | { type: 'distribution-point'; id: string; label: string }
+    | { type: 'package'; id: string; label: string }
+    | null
+  >(null);
 
   const { station } = useMyReliefStation();
   const hasAssignedStation = !!station?.reliefStationId;
@@ -162,10 +249,10 @@ export default function ReliefDistributionPage() {
   }, [reliefCampaigns, selectedCampaignId]);
 
   const { teams } = useCampaignTeams(effectiveSelectedCampaignId);
-  const { data: households = [] } = useReliefHouseholds(effectiveSelectedCampaignId);
-  const { data: checklist = [] } = useReliefChecklist(effectiveSelectedCampaignId);
-  const { data: distributionPoints = [] } = useDistributionPoints(effectiveSelectedCampaignId);
-  const { data: packages = [] } = useReliefPackages(effectiveSelectedCampaignId);
+  const { households } = useReliefHouseholds(effectiveSelectedCampaignId);
+  const { checklist } = useReliefChecklist(effectiveSelectedCampaignId);
+  const { distributionPoints } = useDistributionPoints(effectiveSelectedCampaignId);
+  const { packages } = useReliefPackages(effectiveSelectedCampaignId);
   const { data: provinces = [] } = useProvinces();
   const { data: inventoriesData } = useInventories(
     {
@@ -183,6 +270,12 @@ export default function ReliefDistributionPage() {
 
   const createPointMutation = useCreateDistributionPoint();
   const createPackageMutation = useCreateReliefPackage();
+  const patchPointMutation = usePatchDistributionPoint();
+  const deletePointMutation = useDeleteDistributionPoint();
+  const patchPackageMutation = usePatchReliefPackage();
+  const deletePackageMutation = useDeleteReliefPackage();
+  const patchHouseholdMutation = usePatchReliefHousehold();
+  const deleteHouseholdMutation = useDeleteReliefHousehold();
 
   const supplyItems = useMemo(
     () =>
@@ -259,10 +352,11 @@ export default function ReliefDistributionPage() {
   );
 
   const updateDistributionPointForm = (
-    updater: (prev: CoordinatorDistributionPointForm) => CoordinatorDistributionPointForm,
+    updater: SetStateAction<CoordinatorDistributionPointForm>,
   ) => {
     setDistributionPointForm((prev) => {
-      const next = updater(prev);
+      const next: CoordinatorDistributionPointForm =
+        typeof updater === 'function' ? (updater as any)(prev) : updater;
       setDistributionPointErrors((current) => {
         const updated = { ...current };
         if (next.name.trim()) delete updated.name;
@@ -276,14 +370,15 @@ export default function ReliefDistributionPage() {
     });
   };
 
-  const updatePackageForm = (updater: (prev: CoordinatorPackageForm) => CoordinatorPackageForm) => {
+  const updatePackageForm = (updater: SetStateAction<CoordinatorPackageForm>) => {
     setPackageForm((prev) => {
-      const next = updater(prev);
+      const next: CoordinatorPackageForm =
+        typeof updater === 'function' ? (updater as any)(prev) : updater;
       setPackageErrors((current) => {
         const updated = { ...current };
         if (next.name.trim()) delete updated.name;
         if (next.description.trim()) delete updated.description;
-        next.items.forEach((item, index) => {
+        next.items.forEach((item: CoordinatorPackageItemForm, index: number) => {
           if (item.supplyItemId) delete updated[`items.${index}.supplyItemId`];
           if (item.quantity > 0) delete updated[`items.${index}.quantity`];
           if (item.unit.trim()) delete updated[`items.${index}.unit`];
@@ -317,7 +412,7 @@ export default function ReliefDistributionPage() {
   };
 
   const handleCreatePoint = async () => {
-    if (!selectedCampaignId || !station?.reliefStationId) return;
+    if (!effectiveSelectedCampaignId || !station?.reliefStationId) return;
     const clientErrors: Record<string, string> = {};
 
     if (!distributionPointForm.name.trim()) clientErrors.name = 'Vui lòng nhập tên điểm phát.';
@@ -469,6 +564,262 @@ export default function ReliefDistributionPage() {
         );
       });
       setPackageErrors(nextErrors);
+    }
+  };
+
+  const handleStartEditDistributionPoint = (point: DistributionPointResponse) => {
+    setEditingDistributionPoint(point);
+    setDistributionPointForm(mapDistributionPointToForm(point));
+    setDistributionPointErrors({});
+    scrollToSection(DISTRIBUTION_SECTION_ID);
+  };
+
+  const handleCancelEditDistributionPoint = () => {
+    setEditingDistributionPoint(null);
+    setDistributionPointForm(createDefaultDistributionPointForm(station));
+    setDistributionPointErrors({});
+  };
+
+  const handleUpdatePoint = async () => {
+    if (!effectiveSelectedCampaignId || !editingDistributionPoint) return;
+    const clientErrors: Record<string, string> = {};
+
+    if (!distributionPointForm.name.trim()) clientErrors.name = 'Vui lòng nhập tên điểm phát.';
+    if (!distributionPointForm.address.trim())
+      clientErrors.address = 'Vui lòng chọn địa chỉ điểm phát.';
+    if (!distributionPointForm.locationId.trim())
+      clientErrors.locationId =
+        'Chưa map được locationId. Hãy chọn lại địa chỉ hoặc dùng vị trí trạm hiện tại.';
+    if (!distributionPointForm.startsAt) clientErrors.startsAt = 'Vui lòng chọn thời gian bắt đầu.';
+    if (distributionPointForm.latitude < -90 || distributionPointForm.latitude > 90) {
+      clientErrors.latitude = 'Vĩ độ phải nằm trong khoảng từ -90 đến 90.';
+    }
+    if (distributionPointForm.longitude < -180 || distributionPointForm.longitude > 180) {
+      clientErrors.longitude = 'Kinh độ phải nằm trong khoảng từ -180 đến 180.';
+    }
+    if (
+      distributionPointForm.endsAt &&
+      distributionPointForm.endsAt < distributionPointForm.startsAt
+    ) {
+      clientErrors.endsAt = 'Thời gian kết thúc phải sau thời gian bắt đầu.';
+    }
+
+    if (Object.keys(clientErrors).length > 0) {
+      setDistributionPointErrors(clientErrors);
+      toast.error(Object.values(clientErrors)[0]);
+      return;
+    }
+
+    try {
+      setDistributionPointErrors({});
+      await patchPointMutation.mutateAsync({
+        campaignId: effectiveSelectedCampaignId,
+        distributionPointId: editingDistributionPoint.distributionPointId,
+        data: {
+          name: distributionPointForm.name,
+          reliefStationId: station?.reliefStationId,
+          locationId: distributionPointForm.locationId || undefined,
+          address: distributionPointForm.address || undefined,
+          latitude: distributionPointForm.latitude,
+          longitude: distributionPointForm.longitude,
+          deliveryMode: DeliveryMode.PickupAtPoint,
+          startsAt: distributionPointForm.startsAt,
+          endsAt: distributionPointForm.endsAt || undefined,
+          isActive: distributionPointForm.isActive,
+        },
+      });
+      handleCancelEditDistributionPoint();
+    } catch (error) {
+      const parsed = parseApiError(error, 'Không thể cập nhật điểm phát');
+      setDistributionPointErrors({
+        name: pickFieldError(parsed.fieldErrors, 'Name', 'name'),
+        locationId: pickFieldError(parsed.fieldErrors, 'LocationId', 'locationId'),
+        address: pickFieldError(parsed.fieldErrors, 'Address', 'address'),
+        startsAt: pickFieldError(parsed.fieldErrors, 'StartsAt', 'startsAt'),
+        endsAt: pickFieldError(parsed.fieldErrors, 'EndsAt', 'endsAt'),
+        latitude: pickFieldError(parsed.fieldErrors, 'Latitude', 'latitude'),
+        longitude: pickFieldError(parsed.fieldErrors, 'Longitude', 'longitude'),
+      });
+    }
+  };
+
+  const handleStartEditPackage = (pkg: ReliefPackageDefinitionResponse) => {
+    setEditingPackage(pkg);
+    setPackageForm(mapPackageToForm(pkg));
+    setPackageErrors({});
+    scrollToSection(PACKAGE_SECTION_ID);
+  };
+
+  const handleCancelEditPackage = () => {
+    setEditingPackage(null);
+    setPackageForm(createDefaultPackageForm());
+    setPackageErrors({});
+  };
+
+  const handleUpdatePackage = async () => {
+    if (!effectiveSelectedCampaignId || !editingPackage) return;
+    const clientErrors: Record<string, string> = {};
+
+    if (!packageForm.name.trim()) clientErrors.name = 'Vui lòng nhập tên gói cứu trợ.';
+    const seenSupplyItems = new Set<string>();
+    if (
+      !packageForm.items.length ||
+      packageForm.items.some(
+        (item) => !item.supplyItemId || item.quantity <= 0 || !item.unit.trim(),
+      )
+    ) {
+      clientErrors.items = 'Vui lòng nhập đầy đủ vật phẩm thành phần, số lượng và đơn vị.';
+    }
+    packageForm.items.forEach((item, index) => {
+      if (!item.supplyItemId)
+        clientErrors[`items.${index}.supplyItemId`] = 'Vui lòng chọn vật phẩm.';
+      if (item.quantity <= 0) clientErrors[`items.${index}.quantity`] = 'Số lượng phải lớn hơn 0.';
+      if (!item.unit.trim()) clientErrors[`items.${index}.unit`] = 'Vui lòng nhập đơn vị.';
+      if (item.supplyItemId) {
+        if (seenSupplyItems.has(item.supplyItemId)) {
+          clientErrors[`items.${index}.supplyItemId`] =
+            'Vật phẩm này đã xuất hiện ở dòng khác. Không được chọn trùng.';
+        } else {
+          seenSupplyItems.add(item.supplyItemId);
+        }
+      }
+    });
+
+    if (Object.keys(clientErrors).length > 0) {
+      setPackageErrors(clientErrors);
+      toast.error(Object.values(clientErrors)[0]);
+      return;
+    }
+
+    try {
+      setPackageErrors({});
+      await patchPackageMutation.mutateAsync({
+        campaignId: effectiveSelectedCampaignId,
+        reliefPackageDefinitionId: editingPackage.reliefPackageDefinitionId,
+        data: {
+          ...packageForm,
+          outputSupplyItemId:
+            packageForm.items[0]?.supplyItemId || editingPackage.outputSupplyItemId,
+        },
+      });
+      handleCancelEditPackage();
+    } catch (error) {
+      const parsed = parseApiError(error, 'Không thể cập nhật gói cứu trợ');
+      setPackageErrors({
+        name: pickFieldError(parsed.fieldErrors, 'Name', 'name'),
+        description: pickFieldError(parsed.fieldErrors, 'Description', 'description'),
+        items: pickFieldError(parsed.fieldErrors, 'Items', 'items'),
+      });
+    }
+  };
+
+  const requestDelete = (
+    target:
+      | { type: 'household'; id: string; label: string }
+      | { type: 'distribution-point'; id: string; label: string }
+      | { type: 'package'; id: string; label: string },
+  ) => {
+    setDeleteTarget(target);
+    setConfirmDeleteOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!effectiveSelectedCampaignId || !deleteTarget) return;
+    try {
+      if (deleteTarget.type === 'household') {
+        await deleteHouseholdMutation.mutateAsync({
+          campaignId: effectiveSelectedCampaignId,
+          campaignHouseholdId: deleteTarget.id,
+        });
+        setSelectedHouseholdIds((prev) => {
+          const next = new Set(prev);
+          next.delete(deleteTarget.id);
+          return next;
+        });
+      }
+      if (deleteTarget.type === 'distribution-point') {
+        await deletePointMutation.mutateAsync({
+          campaignId: effectiveSelectedCampaignId,
+          distributionPointId: deleteTarget.id,
+        });
+        if (editingDistributionPoint?.distributionPointId === deleteTarget.id) {
+          handleCancelEditDistributionPoint();
+        }
+      }
+      if (deleteTarget.type === 'package') {
+        await deletePackageMutation.mutateAsync({
+          campaignId: effectiveSelectedCampaignId,
+          reliefPackageDefinitionId: deleteTarget.id,
+        });
+        if (editingPackage?.reliefPackageDefinitionId === deleteTarget.id) {
+          handleCancelEditPackage();
+        }
+      }
+    } finally {
+      setDeleteTarget(null);
+    }
+  };
+
+  const handleEditHousehold = (household: CampaignHouseholdResponse) => {
+    setEditingHousehold(household);
+    setHouseholdEditForm(mapHouseholdToEditForm(household));
+    setHouseholdEditErrors({});
+  };
+
+  const handleSaveHousehold = async () => {
+    if (!effectiveSelectedCampaignId || !editingHousehold || !householdEditForm) return;
+    const nextErrors: Record<string, string> = {};
+    if (!householdEditForm.headOfHouseholdName.trim())
+      nextErrors.headOfHouseholdName = 'Vui lòng nhập tên chủ hộ.';
+    if (householdEditForm.householdSize <= 0)
+      nextErrors.householdSize = 'Số nhân khẩu phải lớn hơn 0.';
+    if (householdEditForm.latitude < -90 || householdEditForm.latitude > 90)
+      nextErrors.latitude = 'Vĩ độ phải nằm trong khoảng từ -90 đến 90.';
+    if (householdEditForm.longitude < -180 || householdEditForm.longitude > 180)
+      nextErrors.longitude = 'Kinh độ phải nằm trong khoảng từ -180 đến 180.';
+    if (Object.keys(nextErrors).length > 0) {
+      setHouseholdEditErrors(nextErrors);
+      toast.error(Object.values(nextErrors)[0]);
+      return;
+    }
+
+    try {
+      setHouseholdEditErrors({});
+      await patchHouseholdMutation.mutateAsync({
+        campaignId: effectiveSelectedCampaignId,
+        campaignHouseholdId: editingHousehold.campaignHouseholdId,
+        data: {
+          headOfHouseholdName: householdEditForm.headOfHouseholdName,
+          contactPhone: householdEditForm.contactPhone || null,
+          address: householdEditForm.address || null,
+          householdSize: householdEditForm.householdSize,
+          isIsolated: householdEditForm.isIsolated,
+          deliveryMode: householdEditForm.deliveryMode,
+          notes: householdEditForm.notes || null,
+          latitude: householdEditForm.latitude,
+          longitude: householdEditForm.longitude,
+        },
+      });
+      setEditingHousehold(null);
+      setHouseholdEditForm(null);
+      setHouseholdEditErrors({});
+    } catch (error) {
+      const parsed = parseApiError(error, 'Không thể cập nhật hộ dân');
+      setHouseholdEditErrors({
+        headOfHouseholdName: pickFieldError(
+          parsed.fieldErrors,
+          'HeadOfHouseholdName',
+          'headOfHouseholdName',
+        ),
+        contactPhone: pickFieldError(parsed.fieldErrors, 'ContactPhone', 'contactPhone'),
+        address: pickFieldError(parsed.fieldErrors, 'Address', 'address'),
+        householdSize: pickFieldError(parsed.fieldErrors, 'HouseholdSize', 'householdSize'),
+        isIsolated: pickFieldError(parsed.fieldErrors, 'IsIsolated', 'isIsolated'),
+        deliveryMode: pickFieldError(parsed.fieldErrors, 'DeliveryMode', 'deliveryMode'),
+        notes: pickFieldError(parsed.fieldErrors, 'Notes', 'notes'),
+        latitude: pickFieldError(parsed.fieldErrors, 'Latitude', 'latitude'),
+        longitude: pickFieldError(parsed.fieldErrors, 'Longitude', 'longitude'),
+      });
     }
   };
 
@@ -829,6 +1180,28 @@ export default function ReliefDistributionPage() {
             distributionPointErrors={distributionPointErrors}
             packageErrors={packageErrors}
             onUseCurrentStation={handleUseCurrentStation}
+            distributionPointEditing={!!editingDistributionPoint}
+            onCancelDistributionPointEdit={handleCancelEditDistributionPoint}
+            onEditDistributionPoint={handleUpdatePoint}
+            onDeleteDistributionPoint={() => {
+              if (!editingDistributionPoint) return;
+              requestDelete({
+                type: 'distribution-point',
+                id: editingDistributionPoint.distributionPointId,
+                label: editingDistributionPoint.name,
+              });
+            }}
+            packageEditing={!!editingPackage}
+            onCancelPackageEdit={handleCancelEditPackage}
+            onEditPackage={handleUpdatePackage}
+            onDeletePackage={() => {
+              if (!editingPackage) return;
+              requestDelete({
+                type: 'package',
+                id: editingPackage.reliefPackageDefinitionId,
+                label: editingPackage.name,
+              });
+            }}
           />
 
           <CoordinatorDistributionPointsMap
@@ -838,6 +1211,70 @@ export default function ReliefDistributionPage() {
               lng: Number(station?.longitude) || distributionPointForm.longitude,
             }}
           />
+
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Danh sách điểm phát</h3>
+                <p className="text-sm text-muted-foreground">
+                  Chỉnh sửa hoặc xoá điểm phát đã tạo.
+                </p>
+              </div>
+              <Badge variant="outline" appearance="light">
+                {formatNumberVN(distributionPoints.length)} điểm phát
+              </Badge>
+            </div>
+
+            {distributionPoints.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Chưa có điểm phát nào.</p>
+            ) : (
+              <div className="space-y-3">
+                {distributionPoints.map((point) => (
+                  <div
+                    key={point.distributionPointId}
+                    className="flex flex-col gap-3 rounded-xl border border-border bg-muted/20 p-4 md:flex-row md:items-center md:justify-between"
+                  >
+                    <div>
+                      <p className="font-medium text-foreground">{point.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {point.address || 'Chưa có địa chỉ'}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {formatDateTimeVN(point.startsAt)}
+                        {point.endsAt ? ` - ${formatDateTimeVN(point.endsAt)}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-1"
+                        onClick={() => handleStartEditDistributionPoint(point)}
+                      >
+                        <span className="material-symbols-outlined text-[16px]">edit</span>
+                        Sửa
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        className="gap-1"
+                        onClick={() =>
+                          requestDelete({
+                            type: 'distribution-point',
+                            id: point.distributionPointId,
+                            label: point.name,
+                          })
+                        }
+                      >
+                        <span className="material-symbols-outlined text-[16px]">delete</span>
+                        Xoá
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="grid gap-6 xl:grid-cols-2">
             <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -1132,6 +1569,33 @@ export default function ReliefDistributionPage() {
                           </span>
                         )}
                       </div>
+
+                      <div className="mt-4 flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="gap-1"
+                          onClick={() => handleStartEditPackage(pkg)}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">edit</span>
+                          Sửa
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          className="gap-1"
+                          onClick={() =>
+                            requestDelete({
+                              type: 'package',
+                              id: pkg.reliefPackageDefinitionId,
+                              label: pkg.name,
+                            })
+                          }
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                          Xoá
+                        </Button>
+                      </div>
                     </div>
                   ))
                 )}
@@ -1194,6 +1658,16 @@ export default function ReliefDistributionPage() {
             onJumpToCreateTeam={() => navigate('/portal/coordinator/teams')}
             onJumpToCreatePackage={() => scrollToSection(PACKAGE_SECTION_ID)}
             assignErrors={assignErrors}
+            onEditHousehold={(household) =>
+              handleEditHousehold(household as CampaignHouseholdResponse)
+            }
+            onDeleteHousehold={(household) =>
+              requestDelete({
+                type: 'household',
+                id: household.campaignHouseholdId,
+                label: household.householdCode,
+              })
+            }
           />
 
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -1244,6 +1718,219 @@ export default function ReliefDistributionPage() {
               />
             )}
           </div>
+
+          <Sheet
+            open={!!editingHousehold}
+            onOpenChange={(open) => {
+              if (!open) {
+                setEditingHousehold(null);
+                setHouseholdEditForm(null);
+                setHouseholdEditErrors({});
+              }
+            }}
+          >
+            <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle>Chỉnh sửa hộ dân</SheetTitle>
+                <SheetDescription>
+                  Cập nhật nhanh thông tin hộ dân trước khi gán phân phối.
+                </SheetDescription>
+              </SheetHeader>
+
+              {householdEditForm && (
+                <div className="mt-6 space-y-4">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Tên chủ hộ</p>
+                    <Input
+                      value={householdEditForm.headOfHouseholdName}
+                      onChange={(e) =>
+                        setHouseholdEditForm((prev) =>
+                          prev ? { ...prev, headOfHouseholdName: e.target.value } : prev,
+                        )
+                      }
+                    />
+                    {householdEditErrors.headOfHouseholdName && (
+                      <p className="text-sm text-destructive">
+                        {householdEditErrors.headOfHouseholdName}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Số điện thoại</p>
+                    <Input
+                      value={householdEditForm.contactPhone}
+                      onChange={(e) =>
+                        setHouseholdEditForm((prev) =>
+                          prev ? { ...prev, contactPhone: e.target.value } : prev,
+                        )
+                      }
+                    />
+                    {householdEditErrors.contactPhone && (
+                      <p className="text-sm text-destructive">{householdEditErrors.contactPhone}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Địa chỉ</p>
+                    <Input
+                      value={householdEditForm.address}
+                      onChange={(e) =>
+                        setHouseholdEditForm((prev) =>
+                          prev ? { ...prev, address: e.target.value } : prev,
+                        )
+                      }
+                    />
+                    {householdEditErrors.address && (
+                      <p className="text-sm text-destructive">{householdEditErrors.address}</p>
+                    )}
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Số nhân khẩu</p>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={householdEditForm.householdSize}
+                        onChange={(e) =>
+                          setHouseholdEditForm((prev) =>
+                            prev ? { ...prev, householdSize: Number(e.target.value) || 0 } : prev,
+                          )
+                        }
+                      />
+                      {householdEditErrors.householdSize && (
+                        <p className="text-sm text-destructive">
+                          {householdEditErrors.householdSize}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Hình thức nhận</p>
+                      <select
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={householdEditForm.deliveryMode}
+                        onChange={(e) =>
+                          setHouseholdEditForm((prev) =>
+                            prev ? { ...prev, deliveryMode: Number(e.target.value) } : prev,
+                          )
+                        }
+                      >
+                        <option value={DeliveryMode.DoorToDoor}>Phát tại nhà</option>
+                        <option value={DeliveryMode.PickupAtPoint}>Nhận tại điểm phát</option>
+                      </select>
+                      {householdEditErrors.deliveryMode && (
+                        <p className="text-sm text-destructive">
+                          {householdEditErrors.deliveryMode}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={householdEditForm.isIsolated}
+                      onChange={(e) =>
+                        setHouseholdEditForm((prev) =>
+                          prev ? { ...prev, isIsolated: e.target.checked } : prev,
+                        )
+                      }
+                    />
+                    Hộ dân ở khu vực cách ly
+                  </label>
+                  {householdEditErrors.isIsolated && (
+                    <p className="text-sm text-destructive">{householdEditErrors.isIsolated}</p>
+                  )}
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Vĩ độ</p>
+                      <Input
+                        type="number"
+                        step="any"
+                        value={householdEditForm.latitude}
+                        onChange={(e) =>
+                          setHouseholdEditForm((prev) =>
+                            prev ? { ...prev, latitude: Number(e.target.value) || 0 } : prev,
+                          )
+                        }
+                      />
+                      {householdEditErrors.latitude && (
+                        <p className="text-sm text-destructive">{householdEditErrors.latitude}</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Kinh độ</p>
+                      <Input
+                        type="number"
+                        step="any"
+                        value={householdEditForm.longitude}
+                        onChange={(e) =>
+                          setHouseholdEditForm((prev) =>
+                            prev ? { ...prev, longitude: Number(e.target.value) || 0 } : prev,
+                          )
+                        }
+                      />
+                      {householdEditErrors.longitude && (
+                        <p className="text-sm text-destructive">{householdEditErrors.longitude}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Ghi chú</p>
+                    <Textarea
+                      value={householdEditForm.notes}
+                      onChange={(e) =>
+                        setHouseholdEditForm((prev) =>
+                          prev ? { ...prev, notes: e.target.value } : prev,
+                        )
+                      }
+                    />
+                    {householdEditErrors.notes && (
+                      <p className="text-sm text-destructive">{householdEditErrors.notes}</p>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingHousehold(null);
+                        setHouseholdEditForm(null);
+                        setHouseholdEditErrors({});
+                      }}
+                    >
+                      Huỷ
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleSaveHousehold}
+                      disabled={patchHouseholdMutation.isPending}
+                    >
+                      Lưu thay đổi
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </SheetContent>
+          </Sheet>
+
+          <ConfirmDialog
+            open={confirmDeleteOpen}
+            onOpenChange={(open) => {
+              setConfirmDeleteOpen(open);
+              if (!open) setDeleteTarget(null);
+            }}
+            title="Xác nhận xoá"
+            description={`Bạn có chắc muốn xoá ${deleteTarget?.label || 'mục này'} không? Hành động này không thể hoàn tác.`}
+            confirmText="Xoá"
+            cancelText="Huỷ"
+            variant="destructive"
+            onConfirm={handleConfirmDelete}
+          />
         </div>
       )}
     </DashboardLayout>

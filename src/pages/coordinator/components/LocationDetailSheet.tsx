@@ -97,7 +97,7 @@ export function LocationDetailSheet({
     <Sheet open={isOpen} onOpenChange={onClose} modal={false}>
       <SheetContent
         side="left"
-        className="w-[450px] sm:w-[540px] p-0 shadow-2xl border-r-0"
+        className="w-[500px] sm:w-[560px] max-w-[calc(100vw-1rem)] border-r-0 p-0 shadow-2xl"
         overlay={false}
       >
         <ScrollArea className="h-full">

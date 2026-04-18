@@ -48,8 +48,15 @@ type HouseholdRow = {
   campaignHouseholdId: string;
   householdCode: string;
   headOfHouseholdName: string;
+  contactPhone?: string | null;
+  address?: string | null;
+  latitude: number;
+  longitude: number;
+  householdSize: number;
+  isIsolated: boolean;
   deliveryMode: number;
   fulfillmentStatus: number;
+  notes?: string | null;
   campaignTeamId?: string | null;
 };
 
@@ -84,6 +91,8 @@ export function CoordinatorReliefDistributionAssignmentStep({
   onJumpToCreateTeam,
   onJumpToCreatePackage,
   assignErrors,
+  onEditHousehold,
+  onDeleteHousehold,
 }: {
   sectionId: string;
   assignForm: CoordinatorAssignForm;
@@ -112,6 +121,8 @@ export function CoordinatorReliefDistributionAssignmentStep({
   onJumpToCreateTeam: () => void;
   onJumpToCreatePackage: () => void;
   assignErrors: Record<string, string>;
+  onEditHousehold: (household: HouseholdRow) => void;
+  onDeleteHousehold: (household: HouseholdRow) => void;
 }) {
   const hasTeams = teams.length > 0;
   const [openScheduleCalendar, setOpenScheduleCalendar] = useState(false);
@@ -412,12 +423,13 @@ export function CoordinatorReliefDistributionAssignmentStep({
                 <TableHead>Hình thức nhận</TableHead>
                 <TableHead>Trạng thái</TableHead>
                 <TableHead>Team hiện tại</TableHead>
+                <TableHead className="text-right">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {households.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                     Không có hộ dân phù hợp bộ lọc hiện tại.
                   </TableCell>
                 </TableRow>
@@ -463,6 +475,30 @@ export function CoordinatorReliefDistributionAssignmentStep({
                         {assignedTeamNameByHouseholdId[household.campaignHouseholdId] ||
                           'Chưa gán team'}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => onEditHousehold(household)}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">edit</span>
+                          Sửa
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => onDeleteHousehold(household)}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                          Xoá
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))

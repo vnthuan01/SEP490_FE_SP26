@@ -105,6 +105,14 @@ type CancelSupplyTransferPayload = {
   evidenceUrls?: string[];
 };
 
+export interface ReplaceSupplyTransferEvidenceUrlsPayload {
+  evidenceUrls: string[];
+}
+
+export interface AppendSupplyTransferEvidencesPayload {
+  evidenceUrls: string[];
+}
+
 function mapSupplyTransfer(raw: RawSupplyTransfer): SupplyTransfer {
   return {
     id: raw.id || raw.supplyTransferId || '',
@@ -194,4 +202,10 @@ export const supplyTransferService = {
 
   cancel: (id: string, data?: CancelSupplyTransferPayload) =>
     apiClient.patch(`/SupplyTransfer/${id}/cancel`, data ?? {}),
+
+  replaceEvidenceUrls: (id: string, data: ReplaceSupplyTransferEvidenceUrlsPayload) =>
+    apiClient.put(`/SupplyTransfer/${id}/evidence-urls`, data),
+
+  appendEvidences: (id: string, data: AppendSupplyTransferEvidencesPayload) =>
+    apiClient.post(`/SupplyTransfer/${id}/evidences`, data),
 };

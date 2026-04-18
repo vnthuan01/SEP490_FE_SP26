@@ -7,14 +7,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useNavigate } from 'react-router-dom';
 import { useTeamMembers, useTeams, useTeamsInStation } from '@/hooks/useTeams';
-import {
-  useAssignTeamToCampaign,
-  useCampaignSummary,
-  useCampaignTeams,
-  useCampaigns,
-  useRemoveTeamFromCampaign,
-  useUpdateCampaignTeamStatus,
-} from '@/hooks/useCampaigns';
+import { useAssignTeamToCampaign, useCampaignTeams, useCampaigns } from '@/hooks/useCampaigns';
+import { campaignService } from '@/services/campaignService';
 import {
   Dialog,
   DialogContent,
@@ -40,31 +34,12 @@ import type { TeamStatus } from '@/enums/beEnums';
 import {
   CampaignTeamRole,
   CampaignTeamStatus,
+  CampaignType,
   TeamStatusLabel,
   VerificationStatus,
-  getCampaignStatusClass,
-  getCampaignStatusLabel,
-  getCampaignTypeLabel,
   getTeamStatusClass,
   parseEnumValue,
 } from '@/enums/beEnums';
-
-const CAMPAIGN_TEAM_ROLE_LABEL: Record<number, string> = {
-  [CampaignTeamRole.Logistics]: 'Hậu cần',
-  [CampaignTeamRole.Medical]: 'Y tế',
-  [CampaignTeamRole.Relief]: 'Cứu trợ',
-  [CampaignTeamRole.Communication]: 'Điều phối',
-  [CampaignTeamRole.Support]: 'Hỗ trợ',
-};
-
-const CAMPAIGN_TEAM_STATUS_LABEL: Record<number, string> = {
-  [CampaignTeamStatus.Invited]: 'Đã mời',
-  [CampaignTeamStatus.Accepted]: 'Đã chấp nhận',
-  [CampaignTeamStatus.Active]: 'Đang tham gia',
-  [CampaignTeamStatus.Completed]: 'Hoàn thành',
-  [CampaignTeamStatus.Withdrawn]: 'Rút lui',
-  [CampaignTeamStatus.Cancelled]: 'Đã hủy',
-};
 
 type LegacyStatus = 'available' | 'moving' | 'rescuing' | 'lost-contact';
 
@@ -73,6 +48,8 @@ type TeamItem = {
   name: string;
   description?: string | null;
   status: number | LegacyStatus;
+  teamType?: number;
+  teamTypeName?: string | null;
   leader: string | null;
   members: number;
   area?: string | null;
@@ -96,6 +73,19 @@ const toDisplayText = (value: unknown, fallback = ''): string => {
 type TeamStatusFilter = 'all' | 'active' | 'idle' | 'other';
 
 const TEAM_PAGE_SIZE = 6;
+const TEAM_TYPE_OPTIONS = [
+  { value: 1, label: 'Cứu trợ' },
+  { value: 2, label: 'Cứu hộ' },
+] as const;
+
+const CAMPAIGN_TEAM_STATUS_LABEL: Record<number, string> = {
+  0: 'Đã mời',
+  1: 'Đã chấp nhận',
+  2: 'Đang tham gia',
+  3: 'Hoàn thành',
+  4: 'Rút lui',
+  5: 'Đã hủy',
+};
 
 const buildPageItems = (currentPage: number, totalPages: number): Array<number | 'ellipsis'> => {
   if (totalPages <= 1) return [1];
@@ -147,27 +137,33 @@ export default function CoordinatorTeamManagementPage() {
   const [pageInput, setPageInput] = useState('1');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
-  const [isCampaignAssignmentOpen, setIsCampaignAssignmentOpen] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [teamType, setTeamType] = useState<string>('1');
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [selectedVolunteerIds, setSelectedVolunteerIds] = useState<string[]>([]);
-  const [selectedCampaignId, setSelectedCampaignId] = useState('');
-  const [selectedCampaignRole, setSelectedCampaignRole] = useState<string>(
-    String(CampaignTeamRole.Relief),
-  );
-  const [selectedCampaignInitialStatus, setSelectedCampaignInitialStatus] = useState<string>(
-    String(CampaignTeamStatus.Invited),
-  );
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isReliefCampaignAssignOpen, setIsReliefCampaignAssignOpen] = useState(false);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editContactPhone, setEditContactPhone] = useState('');
+  const [editTeamType, setEditTeamType] = useState<string>('1');
   const [editStatus, setEditStatus] = useState(0);
   const [editError, setEditError] = useState('');
   const [isEditing, setIsEditing] = useState(false);
-  const [viewCampaignId, setViewCampaignId] = useState('');
+  const [selectedReliefCampaignId, setSelectedReliefCampaignId] = useState('');
+  const [reliefCampaignAssignError, setReliefCampaignAssignError] = useState('');
+  const [assignedReliefCampaigns, setAssignedReliefCampaigns] = useState<
+    Array<{
+      campaignId: string;
+      campaignName: string;
+      status: number;
+      campaignTeamId: string;
+      memberCount: number;
+    }>
+  >([]);
   const navigate = useNavigate();
 
   const isLoading = isLoadingStation || isLoadingTeamList;
@@ -180,6 +176,8 @@ export default function CoordinatorTeamManagementPage() {
       name: toDisplayText(team.name, 'Chưa đặt tên'),
       description: team.description,
       status: (team.status ?? 0) as number | LegacyStatus,
+      teamType: Number(team.teamType ?? 1),
+      teamTypeName: toDisplayText(team.teamTypeName, ''),
       leader: toDisplayText(team.leaderName ?? team.leader, ''),
       members: Number(team.totalMembers ?? team.members ?? 0),
       area: toDisplayText(team.area ?? team.currentArea, ''),
@@ -211,25 +209,20 @@ export default function CoordinatorTeamManagementPage() {
     },
     { enabled: hasAssignedStation },
   );
-
-  const { campaigns, isLoading: isLoadingCampaigns } = useCampaigns(
+  const { campaigns } = useCampaigns(
     {
       pageIndex: 1,
       pageSize: 200,
+      locationId: station?.locationId,
+      type: CampaignType.Relief,
     },
-    { enabled: hasAssignedStation },
+    { enabled: !!station?.locationId },
   );
-  const { summary: selectedCampaignSummary } = useCampaignSummary(selectedCampaignId || '');
-  const { teams: assignedCampaignTeams, isLoading: isLoadingAssignedCampaignTeams } =
-    useCampaignTeams(selectedCampaignId || '');
-  const { teams: viewCampaignTeams, isLoading: isLoadingViewCampaignTeams } = useCampaignTeams(
-    viewCampaignId || '',
+  const { teams: assignedReliefCampaignTeams = [] } = useCampaignTeams(
+    selectedReliefCampaignId || '',
   );
   const { mutateAsync: assignTeamToCampaign, status: assignTeamToCampaignStatus } =
     useAssignTeamToCampaign();
-  const { mutateAsync: updateCampaignTeamStatus } = useUpdateCampaignTeamStatus();
-  const { mutateAsync: removeTeamFromCampaign, status: removeTeamFromCampaignStatus } =
-    useRemoveTeamFromCampaign();
 
   const filteredTeams = useMemo(() => {
     return teams.filter((t) => {
@@ -297,6 +290,7 @@ export default function CoordinatorTeamManagementPage() {
     setName('');
     setDescription('');
     setContactPhone('');
+    setTeamType('1');
     setCreateError('');
   };
 
@@ -310,20 +304,71 @@ export default function CoordinatorTeamManagementPage() {
     });
   }, [members, profiles]);
 
-  const assignedCampaignTeamIds = useMemo(
-    () => new Set((assignedCampaignTeams || []).map((item) => String(item.teamId))),
-    [assignedCampaignTeams],
-  );
-
-  const availableCampaigns = useMemo(
-    () => campaigns.filter((campaign) => Number(campaign.type) !== 0),
+  const reliefCampaigns = useMemo(
+    () => campaigns.filter((campaign) => Number(campaign.type) === CampaignType.Relief),
     [campaigns],
   );
 
-  const selectedCampaignLabel = useMemo(
-    () => availableCampaigns.find((campaign) => campaign.campaignId === selectedCampaignId),
-    [availableCampaigns, selectedCampaignId],
+  const selectedTeamIsRelief = Number(selectedTeam?.teamType ?? 1) === 1;
+  const reliefCampaignAssignmentExists = useMemo(
+    () =>
+      assignedReliefCampaignTeams.some((item) => String(item.teamId) === String(selectedTeamId)),
+    [assignedReliefCampaignTeams, selectedTeamId],
   );
+
+  useEffect(() => {
+    let active = true;
+
+    const loadAssignedReliefCampaigns = async () => {
+      if (
+        !selectedTeamId ||
+        Number(selectedTeam?.teamType ?? 1) !== 1 ||
+        reliefCampaigns.length === 0
+      ) {
+        if (active) setAssignedReliefCampaigns([]);
+        return;
+      }
+
+      const results = await Promise.all(
+        reliefCampaigns.map(async (campaign) => {
+          try {
+            const response = await campaignService.getTeams(campaign.campaignId);
+            const matched = (response.data || []).find(
+              (item) => String(item.teamId) === String(selectedTeamId),
+            );
+            if (!matched) return null;
+            return {
+              campaignId: campaign.campaignId,
+              campaignName: campaign.name,
+              status: matched.status,
+              campaignTeamId: matched.campaignTeamId,
+              memberCount: matched.memberCount,
+            };
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      if (active) {
+        setAssignedReliefCampaigns(
+          results.filter(Boolean) as Array<{
+            campaignId: string;
+            campaignName: string;
+            status: number;
+            campaignTeamId: string;
+            memberCount: number;
+          }>,
+        );
+      }
+    };
+
+    void loadAssignedReliefCampaigns();
+
+    return () => {
+      active = false;
+    };
+  }, [reliefCampaigns, selectedTeam?.teamType, selectedTeamId]);
 
   const handleCreateTeam = async () => {
     if (!reliefStationId) {
@@ -348,6 +393,7 @@ export default function CoordinatorTeamManagementPage() {
         name: trimmedName,
         description: trimmedDescription || undefined,
         contactPhone: trimmedContactPhone || undefined,
+        teamType: Number(teamType),
       });
 
       setIsCreateOpen(false);
@@ -391,56 +437,11 @@ export default function CoordinatorTeamManagementPage() {
     await removeMember(userId);
   };
 
-  const handleAssignTeamToSelectedCampaign = async () => {
-    if (!selectedTeamId) {
-      toast.error('Vui lòng chọn đội ngũ trước khi gán vào chiến dịch.');
-      return;
-    }
-
-    if (!selectedCampaignId) {
-      toast.error('Vui lòng chọn chiến dịch.');
-      return;
-    }
-
-    try {
-      await assignTeamToCampaign({
-        id: selectedCampaignId,
-        data: {
-          teamId: selectedTeamId,
-          role: Number(selectedCampaignRole),
-          initialStatus: Number(selectedCampaignInitialStatus),
-        },
-      });
-    } catch {
-      return;
-    }
-
-    await refetch();
-  };
-
-  const handleUpdateAssignedTeamStatus = async (
-    campaignId: string,
-    teamId: string,
-    status: number,
-  ) => {
-    try {
-      await updateCampaignTeamStatus({ id: campaignId, teamId, data: { status } });
-    } catch {
-      return;
-    }
-  };
-
-  const handleRemoveAssignedTeam = async (campaignId: string, teamId: string) => {
-    try {
-      await removeTeamFromCampaign({ id: campaignId, teamId });
-    } catch {
-      return;
-    }
-  };
-
   const handleOpenEdit = (team: TeamItem) => {
     setEditName(team.name);
     setEditDescription(team.description || '');
+    setEditContactPhone(team.contactPhone || '');
+    setEditTeamType(String(team.teamType ?? 1));
     setEditStatus(Number(parseEnumValue(team.status)));
     setEditError('');
     setIsEditOpen(true);
@@ -462,6 +463,8 @@ export default function CoordinatorTeamManagementPage() {
           name: trimmedName,
           description: editDescription.trim(),
           status: editStatus,
+          contactPhone: editContactPhone.trim() || undefined,
+          teamType: Number(editTeamType),
           leaderId: '',
         },
       });
@@ -477,25 +480,57 @@ export default function CoordinatorTeamManagementPage() {
     }
   };
 
+  const handleAssignReliefTeamToCampaign = async () => {
+    if (!selectedTeamId || !selectedTeamIsRelief) {
+      setReliefCampaignAssignError('Chỉ team cứu trợ mới được gán vào chiến dịch cứu trợ.');
+      return;
+    }
+    if (!selectedReliefCampaignId) {
+      setReliefCampaignAssignError('Vui lòng chọn chiến dịch cứu trợ của trạm.');
+      return;
+    }
+    if (reliefCampaignAssignmentExists) {
+      setReliefCampaignAssignError('Team này đã được gán vào chiến dịch cứu trợ đã chọn.');
+      return;
+    }
+
+    try {
+      setReliefCampaignAssignError('');
+      await assignTeamToCampaign({
+        id: selectedReliefCampaignId,
+        data: {
+          teamId: selectedTeamId,
+          role: CampaignTeamRole.Relief,
+          initialStatus: CampaignTeamStatus.Active,
+        },
+      });
+      setIsReliefCampaignAssignOpen(false);
+      setSelectedReliefCampaignId('');
+    } catch {
+      // handled by hook
+    }
+  };
+
   return (
     <DashboardLayout navGroups={coordinatorNavGroups}>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-2">
           <h1 className="text-4xl text-primary font-black">Quản lý nhóm cứu trợ</h1>
           <p className="text-muted-foreground text-lg">
-            Theo dõi và điều phối các đội tình nguyện tại các khu vực bị ảnh hưởng.
+            Quản lý đội ngũ và thành viên tại trạm. Việc điều phối đội cứu hộ theo yêu cầu được thực
+            hiện tại trang phân công cứu hộ.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => {
-              navigate('/portal/coordinator/volunteer-allocation');
+              navigate('/portal/coordinator/team-allocation');
             }}
             variant="outline"
             className="gap-2 text-base px-6 h-12"
           >
             <span className="material-symbols-outlined">add</span>
-            Phân công tình nguyện viên
+            Điều phối / phân công
           </Button>
           <TooltipProvider>
             <Tooltip>
@@ -526,6 +561,29 @@ export default function CoordinatorTeamManagementPage() {
           </TooltipProvider>
         </div>
       </div>
+
+      <Card className="mb-6 border-primary/20 bg-primary/5 shadow-sm">
+        <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-foreground">
+              Gán team cứu trợ vào chiến dịch cứu trợ
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Team cứu trợ có thể được gán vào chiến dịch cứu trợ của trạm ngay tại đây. Team cứu hộ
+              vẫn được quản lý chung nhưng không gán vào chiến dịch cứu trợ từ luồng này.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => setIsReliefCampaignAssignOpen(true)}
+            disabled={!selectedTeam || !selectedTeamIsRelief}
+          >
+            <span className="material-symbols-outlined">campaign</span>
+            Gán vào chiến dịch cứu trợ
+          </Button>
+        </CardContent>
+      </Card>
 
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card className="border-border bg-card">
@@ -905,18 +963,6 @@ export default function CoordinatorTeamManagementPage() {
                   </span>
                   <div className="flex gap-2">
                     <button
-                      className="p-2 text-muted-foreground hover:text-primary hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors"
-                      onClick={() => {
-                        setSelectedCampaignId('');
-                        setSelectedCampaignRole(String(CampaignTeamRole.Relief));
-                        setSelectedCampaignInitialStatus(String(CampaignTeamStatus.Invited));
-                        setIsCampaignAssignmentOpen(true);
-                      }}
-                      title="Gán đội vào chiến dịch"
-                    >
-                      <span className="material-symbols-outlined">campaign</span>
-                    </button>
-                    <button
                       className="p-2 text-muted-foreground hover:text-slate-900 dark:hover:text-foreground hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors"
                       onClick={() => selectedTeam && handleOpenEdit(selectedTeam)}
                       title="Chỉnh sửa đội ngũ"
@@ -931,6 +977,19 @@ export default function CoordinatorTeamManagementPage() {
                 <h3 className="text-2xl font-bold text-slate-900 dark:text-foreground mb-2">
                   {selectedTeam.name}
                 </h3>
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <span
+                    className={cn(
+                      'inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold',
+                      Number(selectedTeam.teamType ?? 1) === 2
+                        ? 'border-rose-200 bg-rose-500/10 text-rose-700'
+                        : 'border-emerald-200 bg-emerald-500/10 text-emerald-700',
+                    )}
+                  >
+                    {selectedTeam.teamTypeName ||
+                      (Number(selectedTeam.teamType ?? 1) === 2 ? 'Cứu hộ' : 'Cứu trợ')}
+                  </span>
+                </div>
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center text-muted-foreground text-sm">
                     <span className="material-symbols-outlined text-lg mr-2">location_on</span>
@@ -951,133 +1010,61 @@ export default function CoordinatorTeamManagementPage() {
                 <p className="mt-4 text-sm text-muted-foreground">
                   {selectedTeam.description?.trim() || 'Chưa có mô tả cho đội ngũ này.'}
                 </p>
-                <div className="mt-4 rounded-2xl border border-border bg-muted/20 p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
+                <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50/70 p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
                       <p className="text-sm font-semibold text-foreground">
-                        Chiến dịch được phân công
+                        Chiến dịch cứu trợ đã được gán
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Moderator điều phối đội vào chiến dịch từ đây.
+                      <p className="text-xs text-muted-foreground">
+                        Chỉ team loại Cứu trợ mới được gán vào chiến dịch loại Cứu trợ của trạm.
                       </p>
                     </div>
                     <Button
                       size="sm"
-                      className="gap-2"
-                      onClick={() => {
-                        setSelectedCampaignId('');
-                        setSelectedCampaignRole(String(CampaignTeamRole.Relief));
-                        setSelectedCampaignInitialStatus(String(CampaignTeamStatus.Invited));
-                        setIsCampaignAssignmentOpen(true);
-                      }}
+                      className="gap-2 sm:shrink-0"
+                      onClick={() => setIsReliefCampaignAssignOpen(true)}
+                      disabled={!selectedTeam || !selectedTeamIsRelief}
                     >
-                      <span className="material-symbols-outlined text-sm">add</span>
-                      Gán chiến dịch
+                      <span className="material-symbols-outlined text-sm">campaign</span>
+                      Gán vào chiến dịch cứu trợ
                     </Button>
                   </div>
-
-                  {/* Campaign viewer — pick any campaign and see its team list */}
-                  {availableCampaigns.length > 0 && (
-                    <Select value={viewCampaignId} onValueChange={setViewCampaignId}>
-                      <SelectTrigger className="h-9 text-xs">
-                        <SelectValue placeholder="Chọn chiến dịch để xem đội tham gia..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableCampaigns.map((c) => (
-                          <SelectItem key={c.campaignId} value={c.campaignId}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-
-                  {viewCampaignId ? (
-                    isLoadingViewCampaignTeams ? (
-                      <p className="text-sm text-muted-foreground">Đang tải...</p>
-                    ) : viewCampaignTeams.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        Chiến dịch này chưa có đội nào được gán.
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {viewCampaignTeams.map((assignment) => {
-                          const isCurrentTeam =
-                            String(assignment.teamId) === String(selectedTeam.id);
-                          return (
-                            <div
-                              key={assignment.campaignTeamId}
-                              className={cn(
-                                'rounded-2xl border p-3 space-y-2',
-                                isCurrentTeam
-                                  ? 'border-primary/40 bg-primary/5'
-                                  : 'border-border bg-background',
-                              )}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div>
-                                  <p className="text-sm font-semibold text-foreground">
-                                    {assignment.teamName}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {CAMPAIGN_TEAM_ROLE_LABEL[assignment.role] ||
-                                      `Vai trò #${assignment.role}`}
-                                    {' · '}
-                                    {assignment.memberCount} thành viên
-                                  </p>
-                                </div>
-                                <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-foreground">
-                                  {CAMPAIGN_TEAM_STATUS_LABEL[assignment.status] ??
-                                    String(assignment.status)}
-                                </span>
-                              </div>
-                              {isCurrentTeam && (
-                                <div className="flex flex-wrap gap-2">
-                                  <Select
-                                    onValueChange={(value) =>
-                                      handleUpdateAssignedTeamStatus(
-                                        viewCampaignId,
-                                        assignment.teamId,
-                                        Number(value),
-                                      )
-                                    }
-                                  >
-                                    <SelectTrigger className="h-8 w-auto min-w-[160px] text-xs">
-                                      <SelectValue placeholder="Cập nhật trạng thái" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {Object.entries(CAMPAIGN_TEAM_STATUS_LABEL).map(
-                                        ([key, label]) => (
-                                          <SelectItem key={key} value={key}>
-                                            {label}
-                                          </SelectItem>
-                                        ),
-                                      )}
-                                    </SelectContent>
-                                  </Select>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="text-xs text-destructive"
-                                    onClick={() =>
-                                      handleRemoveAssignedTeam(viewCampaignId, assignment.teamId)
-                                    }
-                                    disabled={removeTeamFromCampaignStatus === 'pending'}
-                                  >
-                                    Gỡ khỏi chiến dịch
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                  <div className="mt-3 space-y-2">
+                    {!selectedTeamIsRelief ? (
+                      <div className="rounded-xl border border-dashed border-border bg-background/70 p-3 text-xs text-muted-foreground">
+                        Team cứu hộ không hiển thị danh sách chiến dịch cứu trợ và không được gán
+                        vào campaign loại này.
                       </div>
-                    )
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Chọn chiến dịch phía trên để xem danh sách đội tham gia.
-                    </p>
-                  )}
+                    ) : assignedReliefCampaigns.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-border bg-background/70 p-3 text-xs text-muted-foreground">
+                        Team này chưa được gán vào chiến dịch cứu trợ nào.
+                      </div>
+                    ) : (
+                      assignedReliefCampaigns.map((campaign) => (
+                        <div
+                          key={campaign.campaignTeamId}
+                          className="rounded-xl border border-border bg-background/80 p-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">
+                                {campaign.campaignName}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {campaign.memberCount} thành viên · Mã gán:{' '}
+                                {campaign.campaignTeamId.slice(0, 8)}
+                              </p>
+                            </div>
+                            <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-500/10 px-2.5 py-1 text-[11px] font-medium text-blue-700 dark:border-blue-900/40 dark:text-blue-300">
+                              {CAMPAIGN_TEAM_STATUS_LABEL[campaign.status] ||
+                                `Trạng thái ${campaign.status}`}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
                 {/* Mini Map Preview Placeholder */}
                 <div className="relative mt-4 flex h-32 w-full items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 dark:border-border dark:bg-background group cursor-pointer">
@@ -1236,6 +1223,22 @@ export default function CoordinatorTeamManagementPage() {
               />
             </div>
 
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Loại team</label>
+              <Select value={teamType} onValueChange={setTeamType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn loại team" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TEAM_TYPE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={String(option.value)}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {createError ? <p className="text-sm text-red-500">{createError}</p> : null}
           </div>
 
@@ -1376,169 +1379,6 @@ export default function CoordinatorTeamManagementPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isCampaignAssignmentOpen} onOpenChange={setIsCampaignAssignmentOpen}>
-        <DialogContent className="sm:max-w-[760px]">
-          <DialogHeader>
-            <DialogTitle>Gán đội vào chiến dịch</DialogTitle>
-            <DialogDescription>
-              Chỉ dùng các API teams/campaigns dành cho moderator điều phối đội vào chiến dịch.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Chọn chiến dịch</label>
-              <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={isLoadingCampaigns ? 'Đang tải chiến dịch...' : 'Chọn chiến dịch'}
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableCampaigns.map((campaign) => (
-                    <SelectItem key={campaign.campaignId} value={campaign.campaignId}>
-                      {campaign.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {selectedCampaignLabel && (
-              <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold text-foreground">{selectedCampaignLabel.name}</p>
-                  <span
-                    className={cn(
-                      'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium',
-                      getCampaignStatusClass(selectedCampaignLabel.status),
-                    )}
-                  >
-                    {getCampaignStatusLabel(selectedCampaignLabel.status)}
-                  </span>
-                  <span className="inline-flex items-center rounded-full border border-border px-2.5 py-1 text-xs font-medium">
-                    {getCampaignTypeLabel(selectedCampaignLabel.type)}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Thời gian: {new Date(selectedCampaignLabel.startDate).toLocaleDateString('vi-VN')}{' '}
-                  - {new Date(selectedCampaignLabel.endDate).toLocaleDateString('vi-VN')}
-                </p>
-                {selectedCampaignSummary && (
-                  <p className="text-xs text-muted-foreground">
-                    Ngân sách còn lại:{' '}
-                    {selectedCampaignSummary.remainingBudget?.toLocaleString('vi-VN')} • Tiến độ
-                    nhân lực: {selectedCampaignSummary.peopleReached}/
-                    {selectedCampaignSummary.peopleTarget}
-                  </p>
-                )}
-                {selectedTeam && assignedCampaignTeamIds.has(String(selectedTeam.id)) && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
-                    Đội này đã được gán vào chiến dịch được chọn.
-                  </p>
-                )}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Vai trò trong chiến dịch</label>
-                <Select value={selectedCampaignRole} onValueChange={setSelectedCampaignRole}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn vai trò" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(CAMPAIGN_TEAM_ROLE_LABEL).map(([key, label]) => (
-                      <SelectItem key={key} value={key}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Trạng thái ban đầu</label>
-                <Select
-                  value={selectedCampaignInitialStatus}
-                  onValueChange={setSelectedCampaignInitialStatus}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn trạng thái" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(CAMPAIGN_TEAM_STATUS_LABEL).map(([key, label]) => (
-                      <SelectItem key={key} value={key}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {selectedCampaignId && (
-              <div className="rounded-xl border border-border bg-background p-4 space-y-3">
-                <p className="text-sm font-semibold text-foreground">Đội đã tham gia chiến dịch</p>
-                {isLoadingAssignedCampaignTeams ? (
-                  <p className="text-sm text-muted-foreground">Đang tải danh sách đội...</p>
-                ) : assignedCampaignTeams.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Chưa có đội nào trong chiến dịch này.
-                  </p>
-                ) : (
-                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
-                    {assignedCampaignTeams.map((assignment) => (
-                      <div
-                        key={assignment.campaignTeamId}
-                        className={cn(
-                          'rounded-lg border px-3 py-2',
-                          String(assignment.teamId) === String(selectedTeamId)
-                            ? 'border-primary/40 bg-primary/5'
-                            : 'border-border',
-                        )}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-foreground">
-                              {assignment.teamName}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {CAMPAIGN_TEAM_ROLE_LABEL[assignment.role] || assignment.role} •{' '}
-                              {CAMPAIGN_TEAM_STATUS_LABEL[assignment.status] || assignment.status}
-                            </p>
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {assignment.memberCount} thành viên
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCampaignAssignmentOpen(false)}>
-              Đóng
-            </Button>
-            <Button
-              onClick={handleAssignTeamToSelectedCampaign}
-              disabled={
-                !selectedTeamId ||
-                !selectedCampaignId ||
-                assignTeamToCampaignStatus === 'pending' ||
-                assignedCampaignTeamIds.has(String(selectedTeamId))
-              }
-            >
-              {assignTeamToCampaignStatus === 'pending' ? 'Đang gán...' : 'Gán đội vào chiến dịch'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* ── Edit Team Dialog ── */}
       <Dialog
         open={isEditOpen}
@@ -1572,6 +1412,29 @@ export default function CoordinatorTeamManagementPage() {
               />
             </div>
             <div className="space-y-2">
+              <label className="text-sm font-medium">Số điện thoại liên hệ</label>
+              <Input
+                value={editContactPhone}
+                onChange={(e) => setEditContactPhone(e.target.value)}
+                placeholder="VD: 0901234567"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Loại team</label>
+              <Select value={editTeamType} onValueChange={setEditTeamType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn loại team" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TEAM_TYPE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={String(option.value)}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <label className="text-sm font-medium">Trạng thái</label>
               <Select value={String(editStatus)} onValueChange={(v) => setEditStatus(Number(v))}>
                 <SelectTrigger>
@@ -1595,6 +1458,70 @@ export default function CoordinatorTeamManagementPage() {
             </Button>
             <Button onClick={handleEditTeam} disabled={isEditing}>
               {isEditing ? 'Đang lưu...' : 'Lưu thay đổi'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isReliefCampaignAssignOpen}
+        onOpenChange={(open) => {
+          setIsReliefCampaignAssignOpen(open);
+          if (!open) {
+            setSelectedReliefCampaignId('');
+            setReliefCampaignAssignError('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Gán team vào chiến dịch cứu trợ</DialogTitle>
+            <DialogDescription>
+              Chỉ team loại Cứu trợ mới được phép gán vào chiến dịch loại Cứu trợ của trạm.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm">
+              <p className="font-semibold text-foreground">Team đang chọn</p>
+              <p className="mt-1 text-muted-foreground">
+                {selectedTeam?.name || 'Chưa chọn team'} ·{' '}
+                {selectedTeam?.teamTypeName || (selectedTeamIsRelief ? 'Cứu trợ' : 'Cứu hộ')}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Chọn chiến dịch cứu trợ</label>
+              <Select value={selectedReliefCampaignId} onValueChange={setSelectedReliefCampaignId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn chiến dịch cứu trợ của trạm" />
+                </SelectTrigger>
+                <SelectContent>
+                  {reliefCampaigns.map((campaign) => (
+                    <SelectItem key={campaign.campaignId} value={campaign.campaignId}>
+                      {campaign.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {reliefCampaignAssignError ? (
+              <p className="text-sm text-destructive">{reliefCampaignAssignError}</p>
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsReliefCampaignAssignOpen(false)}>
+              Hủy
+            </Button>
+            <Button
+              onClick={handleAssignReliefTeamToCampaign}
+              disabled={
+                assignTeamToCampaignStatus === 'pending' || !selectedTeam || !selectedTeamIsRelief
+              }
+            >
+              {assignTeamToCampaignStatus === 'pending' ? 'Đang gán...' : 'Gán vào chiến dịch'}
             </Button>
           </DialogFooter>
         </DialogContent>

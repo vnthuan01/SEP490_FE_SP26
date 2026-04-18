@@ -18,6 +18,17 @@ import {
   trackingPointsToCoords,
 } from './mapRouteUtils';
 
+const OPERATION_STATUS_LABEL_MAP: Record<string, string> = {
+  Pending: 'Chờ xử lý',
+  Assigned: 'Đã phân công',
+  EnRoute: 'Đang di chuyển',
+  Rescuing: 'Đang cứu hộ',
+  RescueCompleted: 'Hoàn thành',
+  Returning: 'Đang về trạm',
+  Closed: 'Đã đóng ca',
+  Cancelled: 'Đã hủy',
+};
+
 export function MissionTrackingMapSection({
   detail,
   currentOperation,
@@ -45,7 +56,7 @@ export function MissionTrackingMapSection({
   onRecalculateEta: () => void;
   goongMapKey: string;
   goongApiKey: string;
-   
+
   formatDate: (arg?: string | null) => string;
 }) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -71,12 +82,15 @@ export function MissionTrackingMapSection({
     return { lat, lng };
   }, [detail?.latitude, detail?.longitude]);
 
+  const teamLat = teamLocation?.currentLatitude ?? detail?.assignedRescueTeam?.currentLatitude;
+  const teamLng = teamLocation?.currentLongitude ?? detail?.assignedRescueTeam?.currentLongitude;
+
   const teamCoords = useMemo(() => {
-    const lat = teamLocation?.currentLatitude ?? detail?.assignedRescueTeam?.currentLatitude;
-    const lng = teamLocation?.currentLongitude ?? detail?.assignedRescueTeam?.currentLongitude;
-    if (!lat || !lng) return null;
+    const lat = Number(teamLat);
+    const lng = Number(teamLng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return null;
     return { lat, lng };
-  }, [teamLocation, detail?.assignedRescueTeam]);
+  }, [teamLat, teamLng]);
 
   // ── Stable popup HTML builders (metadata updates without recreating markers) ─
   const victimPopupHtml = useMemo(
@@ -87,8 +101,8 @@ export function MissionTrackingMapSection({
 
   const teamPopupHtml = useMemo(
     () =>
-      `<div style="font-family:sans-serif;padding:2px 0;min-width:160px"><p style="font-weight:700;font-size:13px;margin:0 0 4px;color:#1e40af">Đội cứu hộ</p>${currentOperation?.teamName ? `<p style="font-size:12px;color:#374151;margin:0 0 2px">${currentOperation.teamName}</p>` : ''}${currentOperation?.stationName ? `<p style="font-size:11px;color:#6b7280;margin:0 0 2px">Trạm: ${currentOperation.stationName}</p>` : ''}${opStatus ? `<p style="font-size:11px;color:#2563eb;font-weight:600;margin:4px 0 0">Trạng thái: ${opStatus}</p>` : ''}</div>`,
-    [currentOperation, opStatus],
+      `<div style="font-family:sans-serif;padding:2px 0;min-width:160px"><p style="font-weight:700;font-size:13px;margin:0 0 4px;color:#1e40af">Đội cứu hộ</p>${currentOperation?.teamName ? `<p style="font-size:12px;color:#374151;margin:0 0 2px">${currentOperation.teamName}</p>` : ''}${currentOperation?.stationName ? `<p style="font-size:11px;color:#6b7280;margin:0 0 2px">Trạm: ${currentOperation.stationName}</p>` : ''}${opStatus ? `<p style="font-size:11px;color:#2563eb;font-weight:600;margin:4px 0 0">Trạng thái: ${OPERATION_STATUS_LABEL_MAP[opStatus] ?? opStatus}</p>` : ''}</div>`,
+    [currentOperation?.teamName, currentOperation?.stationName, opStatus],
   );
 
   // ── routePolyline fallback from assignedRescueTeam ────────────────────────

@@ -22,6 +22,8 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { TransferPdfWorkflowDialog } from '@/components/pdf/TransferPdfWorkflowDialog';
+import { PdfSignaturePad } from '@/components/pdf/PdfSignaturePad';
+import { PdfPreviewCard } from '@/components/pdf/PdfPreviewCard';
 import { CampaignAllocationDialog } from './components/CampaignAllocationDialog';
 import type { ExportItem } from '@/types/exportInventory';
 import { CreateInventoryItemDialog } from './components/CreateItem';
@@ -40,7 +42,9 @@ import { useSupplyItems } from '@/hooks/useSupplies';
 import { useCreateSupplyAllocation } from '@/hooks/useSupplies';
 import { useCloudinaryUpload } from '@/hooks/useCloudinaryUpload';
 import {
+  useAppendSupplyTransferEvidences,
   useCreateSupplyTransfer,
+  useReplaceSupplyTransferEvidenceUrls,
   useSupplyTransferDetails,
   useSupplyTransfersByDestinationStation,
   useSupplyTransfersBySourceStation,
@@ -66,6 +70,16 @@ import {
 import { toast } from 'sonner';
 import type { Stock } from '@/services/inventoryService';
 import { useAuthContext } from '@/components/provider/auth/AuthProvider';
+import {
+  attachSignatureToPdf,
+  buildTransferPdf,
+  type TransferPdfFillData,
+} from '@/lib/pdfTransferUtils';
+import {
+  convertNumberToVietnameseWords,
+  formatTransferApprovalNotes,
+  parseTransferNotes,
+} from '@/lib/transferNotes';
 
 // ─── Local helpers ──────────────────────────────────────────────────────────
 
@@ -209,24 +223,6 @@ function sortLotsByExpiration(lots: Stock[]): Stock[] {
   });
 }
 
-function parseTransferNotes(note?: string | null): {
-  reason?: string;
-  note?: string;
-  raw?: string;
-} {
-  if (!note) return {};
-
-  const match = note.match(/^Reason:\s*(.*?)\s*(?:\|\s*Notes:\s*(.*))?$/i);
-  if (!match) {
-    return { raw: note };
-  }
-
-  return {
-    reason: match[1]?.trim() || undefined,
-    note: match[2]?.trim() || undefined,
-  };
-}
-
 // ─── Page Component ──────────────────────────────────────────────────────────
 
 export default function CoordinatorInventoryPage() {
@@ -249,6 +245,19 @@ export default function CoordinatorInventoryPage() {
   const [openTransferDetail, setOpenTransferDetail] = useState(false);
   const [openTransferPdfWorkflow, setOpenTransferPdfWorkflow] = useState(false);
   const [selectedTransferId, setSelectedTransferId] = useState<string | null>(null);
+  const [approveTransferForm, setApproveTransferForm] = useState<{
+    actualQuantities: Record<string, number>;
+    referenceAmount: string;
+    approverName: string;
+    approverSignatureDataUrl: string;
+    pdfBytes: Uint8Array | null;
+  }>({
+    actualQuantities: {},
+    referenceAmount: '',
+    approverName: '',
+    approverSignatureDataUrl: '',
+    pdfBytes: null,
+  });
   const [openOutgoingTransferSection, setOpenOutgoingTransferSection] = useState(true);
   const [openActionableTransferSection, setOpenActionableTransferSection] = useState(true);
   const [outgoingTransferPage, setOutgoingTransferPage] = useState(1);
@@ -367,6 +376,8 @@ export default function CoordinatorInventoryPage() {
   const { mutateAsync: createTransaction } = useCreateTransaction();
   const { mutateAsync: createSupplyTransfer, status: createSupplyTransferStatus } =
     useCreateSupplyTransfer();
+  const { mutateAsync: replaceTransferEvidenceUrls } = useReplaceSupplyTransferEvidenceUrls();
+  const { mutateAsync: appendTransferEvidences } = useAppendSupplyTransferEvidences();
   const { uploadFile, isUploading: isUploadingTransferEvidence } = useCloudinaryUpload();
   const { mutateAsync: createSupplyAllocation } = useCreateSupplyAllocation();
   const { mutateAsync: approveTransfer, status: approveTransferStatus } =
@@ -708,6 +719,61 @@ export default function CoordinatorInventoryPage() {
     selectedSourceStockMapBySupplyItemId,
   ]);
 
+  const selectedTransferPdfData = useMemo<TransferPdfFillData | null>(() => {
+    if (!selectedTransfer) return null;
+
+    const parsedNotes = parseTransferNotes(selectedTransfer.notes);
+    const referenceAmount = parseFormattedNumber(approveTransferForm.referenceAmount || '0');
+    const approverName = approveTransferForm.approverName.trim();
+
+    return {
+      transferCode: selectedTransfer.transferCode || selectedTransfer.id,
+      creatorName: selectedTransfer.requestedByName || 'Người lập phiếu',
+      sourceName: selectedTransfer.sourceStationName || selectedTransfer.sourceStationId || '—',
+      sourceInventoryName:
+        selectedTransfer.sourceStationName || selectedTransfer.sourceStationId || '—',
+      destinationName:
+        selectedTransfer.destinationStationName || selectedTransfer.destinationStationId || '—',
+      createdAt: selectedTransfer.createdAt
+        ? new Date(selectedTransfer.createdAt).toLocaleString('vi-VN')
+        : new Date().toLocaleString('vi-VN'),
+      decidedBy:
+        approverName || profile?.displayName || user?.fullName || user?.email || 'Người duyệt',
+      approverName,
+      reason: selectedTransfer.reason || parsedNotes.reason,
+      notes: parsedNotes.note || parsedNotes.raw || selectedTransfer.notes || '',
+      signedDateLabel: new Date().toLocaleDateString('vi-VN'),
+      referenceAmount,
+      referenceAmountText: convertNumberToVietnameseWords(referenceAmount),
+      items: (selectedTransfer.items || []).map((item, index) => {
+        const matchedSupply = supplyMap.get(item.supplyItemId);
+        const key = `${item.supplyItemId}-${index}`;
+        const actualQuantity =
+          approveTransferForm.actualQuantities[key] ??
+          item.actualQuantity ??
+          item.requestedQuantity ??
+          item.quantity ??
+          0;
+        return {
+          name: item.supplyItemName || matchedSupply?.name || item.supplyItemId,
+          quantity: item.requestedQuantity ?? item.quantity ?? 0,
+          unit: matchedSupply?.unit || 'Đơn vị',
+          actualQuantity,
+          notes: item.notes,
+        };
+      }),
+    };
+  }, [
+    approveTransferForm.actualQuantities,
+    approveTransferForm.approverName,
+    approveTransferForm.referenceAmount,
+    profile?.displayName,
+    selectedTransfer,
+    supplyMap,
+    user?.email,
+    user?.fullName,
+  ]);
+
   const todayTransactionSummary = useMemo(() => {
     const todayKey = new Date().toDateString();
     let importToday = 0;
@@ -1001,14 +1067,21 @@ export default function CoordinatorInventoryPage() {
       }),
     );
 
-    await createSupplyTransfer({
+    const createdTransferResponse = await createSupplyTransfer({
       sourceStationId: transferForm.sourceStationId,
       destinationStationId: station.reliefStationId,
       reason: transferForm.reason.trim(),
       notes: transferForm.notes.trim(),
-      evidenceUrls: uploadedEvidenceUrls,
       items: validItems,
     });
+
+    const createdTransferId = createdTransferResponse?.data?.id;
+    if (createdTransferId && uploadedEvidenceUrls.length > 0) {
+      await replaceTransferEvidenceUrls({
+        id: createdTransferId,
+        data: { evidenceUrls: uploadedEvidenceUrls },
+      });
+    }
 
     await Promise.all([refetchStocks(), refetchTransactions()]);
     clearDialogDraft(TRANSFER_REQUEST_DRAFT_KEY);
@@ -1098,7 +1171,62 @@ export default function CoordinatorInventoryPage() {
     }
 
     try {
-      await approveTransfer({ id: selectedTransfer.id, data: { evidenceUrls: [] } });
+      const referenceAmount = parseFormattedNumber(approveTransferForm.referenceAmount || '0');
+      if (!approveTransferForm.approverName.trim()) {
+        toast.error('Vui lòng nhập người phê duyệt.');
+        return;
+      }
+      if (!approveTransferForm.approverSignatureDataUrl) {
+        toast.error('Vui lòng ký vào ô người phê duyệt.');
+        return;
+      }
+
+      let evidenceUrls = [...(selectedTransfer.evidenceUrls || [])];
+      if (selectedTransferPdfData) {
+        const existingPdfUrl = (selectedTransfer.evidenceUrls || []).find((url) =>
+          url.toLowerCase().includes('.pdf'),
+        );
+
+        const basePdfBytes = existingPdfUrl
+          ? new Uint8Array(await (await fetch(existingPdfUrl)).arrayBuffer())
+          : await buildTransferPdf(selectedTransferPdfData);
+
+        const signedPdf = await attachSignatureToPdf(
+          basePdfBytes,
+          approveTransferForm.approverSignatureDataUrl,
+          {
+            signerName: approveTransferForm.approverName.trim(),
+            box: 'approver',
+          },
+        );
+
+        const pdfFile = new File(
+          [new Uint8Array(signedPdf)],
+          `phieu-phe-duyet-${selectedTransfer.transferCode || selectedTransfer.id}.pdf`,
+          { type: 'application/pdf' },
+        );
+        const uploaded = await uploadFile({
+          file: pdfFile,
+          folder: 'reliefhub/supply-transfer-evidence',
+          resourceType: 'raw',
+        });
+        evidenceUrls = [...evidenceUrls, uploaded.secureUrl];
+      }
+
+      if (evidenceUrls.length > 0) {
+        await appendTransferEvidences({
+          id: selectedTransfer.id,
+          data: { evidenceUrls },
+        });
+      }
+
+      await approveTransfer({
+        id: selectedTransfer.id,
+        data: {
+          notes: formatTransferApprovalNotes(referenceAmount, approveTransferForm.approverName),
+          evidenceUrls,
+        },
+      });
 
       await Promise.all([
         refetchStocks(),
@@ -1106,6 +1234,13 @@ export default function CoordinatorInventoryPage() {
         refetchSourceTransfers(),
         refetchDestinationTransfers(),
       ]);
+      setApproveTransferForm({
+        actualQuantities: {},
+        referenceAmount: '',
+        approverName: '',
+        approverSignatureDataUrl: '',
+        pdfBytes: null,
+      });
       setOpenApproveTransfer(false);
       setSelectedTransferId(null);
       toast.success(
@@ -1118,7 +1253,14 @@ export default function CoordinatorInventoryPage() {
 
   const handleShipTransfer = async () => {
     if (!selectedTransfer) return;
-    await shipTransfer({ id: selectedTransfer.id, data: { evidenceUrls: [] } });
+    if (selectedTransfer.evidenceUrls?.length) {
+      await appendTransferEvidences({
+        id: selectedTransfer.id,
+        data: { evidenceUrls: selectedTransfer.evidenceUrls },
+      });
+    }
+
+    await shipTransfer({ id: selectedTransfer.id, data: {} });
     await Promise.all([refetchSourceTransfers(), refetchDestinationTransfers()]);
     setOpenShipTransfer(false);
     setSelectedTransferId(null);
@@ -1130,7 +1272,6 @@ export default function CoordinatorInventoryPage() {
     await receiveTransfer({
       id: selectedTransfer.id,
       data: {
-        evidenceUrls: [],
         items: (selectedTransfer.items || []).map((item) => ({
           supplyItemId: item.supplyItemId,
           actualQuantity: item.requestedQuantity ?? item.quantity ?? 0,
@@ -1151,7 +1292,14 @@ export default function CoordinatorInventoryPage() {
 
   const handleCancelTransfer = async () => {
     if (!selectedTransfer) return;
-    await cancelTransfer({ id: selectedTransfer.id, data: { evidenceUrls: [] } });
+    if (selectedTransfer.evidenceUrls?.length) {
+      await appendTransferEvidences({
+        id: selectedTransfer.id,
+        data: { evidenceUrls: selectedTransfer.evidenceUrls },
+      });
+    }
+
+    await cancelTransfer({ id: selectedTransfer.id, data: {} });
     await Promise.all([refetchSourceTransfers(), refetchDestinationTransfers()]);
     setOpenCancelTransfer(false);
     setSelectedTransferId(null);
@@ -1164,6 +1312,19 @@ export default function CoordinatorInventoryPage() {
 
   const openApproveTransferDialog = (transferId: string) => {
     setSelectedTransferId(transferId);
+    const transfer = relatedTransfersDetailed.find((item) => item.id === transferId) ?? null;
+    setApproveTransferForm({
+      actualQuantities: Object.fromEntries(
+        (transfer?.items || []).map((item, index) => [
+          `${item.supplyItemId}-${index}`,
+          item.actualQuantity ?? item.requestedQuantity ?? item.quantity ?? 0,
+        ]),
+      ),
+      referenceAmount: '',
+      approverName: profile?.displayName || user?.fullName || '',
+      approverSignatureDataUrl: '',
+      pdfBytes: null,
+    });
     setOpenApproveTransfer(true);
   };
 
@@ -2461,21 +2622,298 @@ export default function CoordinatorInventoryPage() {
         onAttachPdf={(file) => handleAddTransferEvidenceFiles([file], 'generated')}
       />
 
-      <ConfirmDialog
+      <Dialog
         open={openApproveTransfer}
         onOpenChange={(open) => {
           setOpenApproveTransfer(open);
           if (!open) setSelectedTransferId(null);
         }}
-        title="Phê duyệt phiếu điều phối"
-        description={`${selectedTransferSummary.join(' • ')}. Phiếu sẽ chuyển sang trạng thái đã duyệt và sẵn sàng giao hàng.`}
-        confirmText={approveTransferStatus === 'pending' ? 'Đang phê duyệt...' : 'Phê duyệt phiếu'}
-        cancelText="Đóng"
-        variant="success"
-        onConfirm={() => {
-          void handleApproveTransfer();
-        }}
-      />
+      >
+        <DialogContent className="!max-w-none w-[96vw] max-w-7xl h-[92vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
+            <DialogTitle>Phê duyệt phiếu điều phối</DialogTitle>
+            <DialogDescription>
+              Điền số lượng thực tế, số tiền, số tiền bằng chữ, ký vào ô người phê duyệt và lưu PDF
+              vào hồ sơ phiếu.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedTransfer ? (
+            <div className="flex-1 min-h-0 overflow-y-auto p-6 grid grid-cols-1 xl:grid-cols-[minmax(0,1.1fr)_420px] gap-6">
+              <div className="space-y-6 min-w-0">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <Card className="border-sky-500/20 bg-sky-500/5">
+                    <CardContent className="p-4 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Mã phiếu</p>
+                      <p className="text-lg font-semibold text-foreground break-all">
+                        {selectedTransfer.transferCode || selectedTransfer.id}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Kho nguồn</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {selectedTransfer.sourceStationName ||
+                          selectedTransfer.sourceStationId ||
+                          '—'}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Kho đích</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {selectedTransfer.destinationStationName ||
+                          selectedTransfer.destinationStationId ||
+                          '—'}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Người yêu cầu</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {selectedTransfer.requestedByName || 'Chưa rõ'}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card className="shadow-sm">
+                  <CardContent className="p-5 space-y-4">
+                    <div>
+                      <p className="text-base font-semibold text-foreground">
+                        Danh sách vật phẩm cần xử lý
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Điền số lượng thực tế trước khi phê duyệt để lưu đúng nội dung PDF và dữ
+                        liệu phiếu.
+                      </p>
+                    </div>
+                    <div className="space-y-3">
+                      {(selectedTransfer.items || []).map((item, index) => {
+                        const matchedSupply = supplyMap.get(item.supplyItemId);
+                        const fieldKey = `${item.supplyItemId}-${index}`;
+                        return (
+                          <div
+                            key={fieldKey}
+                            className="rounded-xl border border-border bg-muted/10 p-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]"
+                          >
+                            <div className="space-y-2 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold text-foreground">
+                                  {item.supplyItemName || matchedSupply?.name || item.supplyItemId}
+                                </p>
+                                {matchedSupply && (
+                                  <Badge
+                                    variant="outline"
+                                    appearance="outline"
+                                    size="xs"
+                                    className={`gap-1 border ${getSupplyCategoryClass(matchedSupply.category)}`}
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">
+                                      {getSupplyCategoryIcon(matchedSupply.category)}
+                                    </span>
+                                    {getSupplyCategoryLabel(matchedSupply.category)}
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                SL yêu cầu:{' '}
+                                <span className="font-semibold text-foreground">
+                                  {formatNumberVN(item.requestedQuantity ?? item.quantity ?? 0)}{' '}
+                                  {matchedSupply?.unit || ''}
+                                </span>
+                              </p>
+                              {item.notes && (
+                                <p className="text-sm text-muted-foreground">
+                                  Ghi chú: {item.notes}
+                                </p>
+                              )}
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-foreground">
+                                SL thực tế
+                              </label>
+                              <Input
+                                value={formatNumberInputVN(
+                                  approveTransferForm.actualQuantities[fieldKey] ??
+                                    item.actualQuantity ??
+                                    item.requestedQuantity ??
+                                    item.quantity ??
+                                    0,
+                                )}
+                                onChange={(e) =>
+                                  setApproveTransferForm((prev) => ({
+                                    ...prev,
+                                    actualQuantities: {
+                                      ...prev.actualQuantities,
+                                      [fieldKey]: parseFormattedNumber(e.target.value),
+                                    },
+                                  }))
+                                }
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Đơn vị: {matchedSupply?.unit || 'Đơn vị'}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-sm">
+                  <CardContent className="p-5 space-y-4">
+                    <div>
+                      <p className="text-base font-semibold text-foreground">Thông tin phê duyệt</p>
+                      <p className="text-sm text-muted-foreground">
+                        Các dữ liệu này sẽ được điền vào PDF và lưu vào evidenceUrls.
+                      </p>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">
+                          Người phê duyệt
+                        </label>
+                        <Input
+                          value={approveTransferForm.approverName}
+                          onChange={(e) =>
+                            setApproveTransferForm((prev) => ({
+                              ...prev,
+                              approverName: e.target.value,
+                            }))
+                          }
+                          placeholder="Nhập tên người phê duyệt"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">
+                          Số tiền tham chiếu
+                        </label>
+                        <Input
+                          value={approveTransferForm.referenceAmount}
+                          onChange={(e) =>
+                            setApproveTransferForm((prev) => ({
+                              ...prev,
+                              referenceAmount: formatNumberInputVN(
+                                parseFormattedNumber(e.target.value),
+                              ),
+                            }))
+                          }
+                          placeholder="Ví dụ: 12.500.000"
+                        />
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+                      <p className="font-medium text-foreground">Số tiền bằng chữ</p>
+                      <p className="mt-1">
+                        {convertNumberToVietnameseWords(
+                          parseFormattedNumber(approveTransferForm.referenceAmount || '0'),
+                        ) || 'Chưa có dữ liệu'}
+                      </p>
+                    </div>
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium text-foreground">Chữ ký người phê duyệt</p>
+                      <PdfSignaturePad
+                        onSave={(dataUrl) =>
+                          setApproveTransferForm((prev) => ({
+                            ...prev,
+                            approverSignatureDataUrl: dataUrl,
+                          }))
+                        }
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="space-y-6 min-w-0">
+                <PdfPreviewCard
+                  pdfBytes={approveTransferForm.pdfBytes}
+                  title="Xem trước PDF phê duyệt"
+                  className="h-[520px]"
+                />
+
+                <Card className="shadow-sm">
+                  <CardContent className="p-5 space-y-4">
+                    <div>
+                      <p className="text-base font-semibold text-foreground">
+                        Bằng chứng PDF hiện có
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Các file PDF đã lưu trong hồ sơ phiếu sẽ hiển thị ở đây để kiểm tra nhanh.
+                      </p>
+                    </div>
+                    {(selectedTransfer.evidenceUrls || []).length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+                        Chưa có PDF/bằng chứng nào được lưu.
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+                        {(selectedTransfer.evidenceUrls || []).map((url, index) => (
+                          <div
+                            key={`${url}-${index}`}
+                            className="rounded-xl border border-border bg-card p-4 space-y-3"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-sm font-medium text-foreground break-all">
+                                PDF #{index + 1}
+                              </p>
+                              <Button variant="outline" size="sm" asChild>
+                                <a href={url} target="_blank" rel="noreferrer">
+                                  Mở link
+                                </a>
+                              </Button>
+                            </div>
+                            <iframe
+                              title={`pdf-evidence-${index}`}
+                              src={url}
+                              className="h-64 w-full rounded-xl border border-border bg-background"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          ) : (
+            <div className="p-6 text-sm text-muted-foreground">Chưa chọn phiếu điều phối.</div>
+          )}
+
+          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2 shrink-0">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                if (!selectedTransferPdfData) return;
+                const builtPdf = await buildTransferPdf(selectedTransferPdfData);
+                setApproveTransferForm((prev) => ({ ...prev, pdfBytes: builtPdf }));
+              }}
+            >
+              Xem trước PDF
+            </Button>
+            <Button variant="outline" onClick={() => setOpenApproveTransfer(false)}>
+              Đóng
+            </Button>
+            <Button
+              variant="primary"
+              className="gap-2"
+              disabled={approveTransferStatus === 'pending' || isUploadingTransferEvidence}
+              onClick={() => {
+                void handleApproveTransfer();
+              }}
+            >
+              {approveTransferStatus === 'pending' || isUploadingTransferEvidence
+                ? 'Đang phê duyệt...'
+                : 'Phê duyệt và lưu PDF'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={openShipTransfer}
@@ -2539,129 +2977,279 @@ export default function CoordinatorInventoryPage() {
           </DialogHeader>
 
           {selectedTransfer ? (
-            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
-              <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-5 space-y-3 text-sm shadow-sm">
-                <p>
-                  <span className="text-muted-foreground font-medium">Mã phiếu:</span>{' '}
-                  <span className="font-semibold text-foreground text-base">
-                    {selectedTransfer.transferCode || selectedTransfer.id}
-                  </span>
-                </p>
-                <p>
-                  <span className="text-muted-foreground font-medium">Kho/trạm nguồn:</span>{' '}
-                  <span className="font-medium text-foreground">
-                    {selectedTransfer.sourceStationName || selectedTransfer.sourceStationId}
-                  </span>
-                </p>
-                <p>
-                  <span className="text-muted-foreground font-medium">→ Kho đích:</span>{' '}
-                  <span className="font-medium text-foreground">
-                    {selectedTransfer.destinationStationName ||
-                      selectedTransfer.destinationStationId}
-                  </span>
-                </p>
-                <p>
-                  <span className="text-muted-foreground font-medium">Người yêu cầu:</span>{' '}
-                  <span className="font-medium text-foreground">
-                    {selectedTransfer.requestedByName || 'Chưa rõ'}
-                  </span>
-                </p>
-                <p>
-                  <span className="text-muted-foreground font-medium">Tổng dòng:</span>{' '}
-                  {formatNumberVN(
-                    selectedTransfer.totalRequestedItems || selectedTransfer.items?.length || 0,
-                  )}
-                  {' • '}
-                  <span className="text-muted-foreground font-medium">Tổng số lượng:</span>{' '}
-                  {formatNumberVN(selectedTransfer.totalRequestedQuantity || 0)}
-                </p>
-                {(() => {
-                  const parsedNotes = parseTransferNotes(selectedTransfer.notes);
-                  return (
-                    <>
-                      {(selectedTransfer.reason || parsedNotes.reason) && (
-                        <p>
-                          <span className="text-muted-foreground font-medium">Lý do:</span>{' '}
-                          {selectedTransfer.reason || parsedNotes.reason}
-                        </p>
-                      )}
-                      <p>
-                        <span className="text-muted-foreground font-medium">Ghi chú:</span>{' '}
-                        {parsedNotes.note || parsedNotes.raw || 'Không có ghi chú'}
+            <div className="flex-1 min-h-0 overflow-y-auto p-6 grid grid-cols-1 xl:grid-cols-[minmax(0,1.05fr)_380px] gap-6">
+              <div className="space-y-5 min-w-0">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <Card className="border-sky-500/20 bg-sky-500/5">
+                    <CardContent className="p-4 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Mã phiếu</p>
+                      <p className="text-base font-semibold text-foreground break-all">
+                        {selectedTransfer.transferCode || selectedTransfer.id}
                       </p>
-                    </>
-                  );
-                })()}
-              </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Nguồn</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {selectedTransfer.sourceStationName || selectedTransfer.sourceStationId}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Đích</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {selectedTransfer.destinationStationName ||
+                          selectedTransfer.destinationStationId}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Người yêu cầu</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {selectedTransfer.requestedByName || 'Chưa rõ'}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
 
-              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
-                <p className="mb-3 text-sm font-semibold text-foreground">Danh sách vật phẩm</p>
-                <div className="space-y-2 text-sm text-muted-foreground">
-                  {(selectedTransfer.items || []).length === 0 ? (
-                    <p>Phiếu này chưa có dữ liệu vật phẩm chi tiết.</p>
-                  ) : (
-                    selectedTransfer.items.map((item, index) => {
-                      const matchedSupply = supplyMap.get(item.supplyItemId);
-                      return (
-                        <div
-                          key={`${selectedTransfer.id}-${item.supplyItemId}-${index}`}
-                          className="rounded-xl border border-border bg-background p-4 shadow-sm"
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="size-11 rounded-xl border border-border bg-muted/40 flex items-center justify-center shrink-0">
-                              <span className="material-symbols-outlined text-primary">
-                                {matchedSupply
-                                  ? getSupplyCategoryIcon(matchedSupply.category)
-                                  : 'inventory_2'}
-                              </span>
-                            </div>
-                            <div className="min-w-0 flex-1 space-y-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="font-semibold text-foreground text-base">
-                                  {item.supplyItemName || matchedSupply?.name || item.supplyItemId}
-                                </p>
-                                {matchedSupply && (
-                                  <Badge
-                                    variant="outline"
-                                    appearance="outline"
-                                    size="xs"
-                                    className={`gap-1 border ${getSupplyCategoryClass(matchedSupply.category)}`}
-                                  >
-                                    <span className="material-symbols-outlined text-[14px]">
-                                      {getSupplyCategoryIcon(matchedSupply.category)}
-                                    </span>
-                                    {getSupplyCategoryLabel(matchedSupply.category)}
-                                  </Badge>
-                                )}
-                              </div>
-                              <p className="text-xs text-muted-foreground">
-                                Mã vật phẩm: {item.supplyItemId.slice(0, 8)}...
+                <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-5 space-y-3 text-sm shadow-sm">
+                  <p>
+                    <span className="text-muted-foreground font-medium">Mã phiếu:</span>{' '}
+                    <span className="font-semibold text-foreground text-base">
+                      {selectedTransfer.transferCode || selectedTransfer.id}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground font-medium">Kho/trạm nguồn:</span>{' '}
+                    <span className="font-medium text-foreground">
+                      {selectedTransfer.sourceStationName || selectedTransfer.sourceStationId}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground font-medium">→ Kho đích:</span>{' '}
+                    <span className="font-medium text-foreground">
+                      {selectedTransfer.destinationStationName ||
+                        selectedTransfer.destinationStationId}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground font-medium">Người yêu cầu:</span>{' '}
+                    <span className="font-medium text-foreground">
+                      {selectedTransfer.requestedByName || 'Chưa rõ'}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground font-medium">Tổng dòng:</span>{' '}
+                    {formatNumberVN(
+                      selectedTransfer.totalRequestedItems || selectedTransfer.items?.length || 0,
+                    )}
+                    {' • '}
+                    <span className="text-muted-foreground font-medium">Tổng số lượng:</span>{' '}
+                    {formatNumberVN(selectedTransfer.totalRequestedQuantity || 0)}
+                  </p>
+                  {(() => {
+                    const parsedNotes = parseTransferNotes(selectedTransfer.notes);
+                    return (
+                      <div className="space-y-2">
+                        {(selectedTransfer.reason || parsedNotes.reason) && (
+                          <p>
+                            <span className="text-muted-foreground font-medium">Lý do:</span>{' '}
+                            {selectedTransfer.reason || parsedNotes.reason}
+                          </p>
+                        )}
+                        <p>
+                          <span className="text-muted-foreground font-medium">Ghi chú:</span>{' '}
+                          {parsedNotes.note || parsedNotes.raw || 'Không có ghi chú'}
+                        </p>
+                        {(parsedNotes.approvalAmount ||
+                          parsedNotes.approvalAmountInWords ||
+                          parsedNotes.approver) && (
+                          <div className="rounded-xl border border-border bg-background/80 p-3 space-y-1 text-sm">
+                            {parsedNotes.approvalAmount && (
+                              <p>
+                                <span className="text-muted-foreground font-medium">Số tiền:</span>{' '}
+                                <span className="font-medium text-foreground">
+                                  {parsedNotes.approvalAmount}
+                                </span>
                               </p>
-                              <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-1">
-                                <p className="text-sm font-semibold text-foreground">
-                                  SL yêu cầu:{' '}
-                                  {formatNumberVN(item.requestedQuantity ?? item.quantity ?? 0)}
-                                  {matchedSupply?.unit ? ` ${matchedSupply.unit}` : ''}
+                            )}
+                            {parsedNotes.approvalAmountInWords && (
+                              <p>
+                                <span className="text-muted-foreground font-medium">Bằng chữ:</span>{' '}
+                                <span className="font-medium text-foreground">
+                                  {parsedNotes.approvalAmountInWords}
+                                </span>
+                              </p>
+                            )}
+                            {parsedNotes.approver && (
+                              <p>
+                                <span className="text-muted-foreground font-medium">
+                                  Người phê duyệt:
+                                </span>{' '}
+                                <span className="font-medium text-foreground">
+                                  {parsedNotes.approver}
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {(parsedNotes.approvalAmount ||
+                          parsedNotes.approvalAmountInWords ||
+                          parsedNotes.approver) && (
+                          <div className="rounded-xl border border-border bg-background/80 p-3 space-y-1 text-sm">
+                            {parsedNotes.approvalAmount && (
+                              <p>
+                                <span className="text-muted-foreground font-medium">Số tiền:</span>{' '}
+                                <span className="font-medium text-foreground">
+                                  {parsedNotes.approvalAmount}
+                                </span>
+                              </p>
+                            )}
+                            {parsedNotes.approvalAmountInWords && (
+                              <p>
+                                <span className="text-muted-foreground font-medium">Bằng chữ:</span>{' '}
+                                <span className="font-medium text-foreground">
+                                  {parsedNotes.approvalAmountInWords}
+                                </span>
+                              </p>
+                            )}
+                            {parsedNotes.approver && (
+                              <p>
+                                <span className="text-muted-foreground font-medium">
+                                  Người phê duyệt:
+                                </span>{' '}
+                                <span className="font-medium text-foreground">
+                                  {parsedNotes.approver}
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
+                  <p className="mb-3 text-sm font-semibold text-foreground">Danh sách vật phẩm</p>
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    {(selectedTransfer.items || []).length === 0 ? (
+                      <p>Phiếu này chưa có dữ liệu vật phẩm chi tiết.</p>
+                    ) : (
+                      selectedTransfer.items.map((item, index) => {
+                        const matchedSupply = supplyMap.get(item.supplyItemId);
+                        return (
+                          <div
+                            key={`${selectedTransfer.id}-${item.supplyItemId}-${index}`}
+                            className="rounded-xl border border-border bg-background p-4 shadow-sm"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="size-11 rounded-xl border border-border bg-muted/40 flex items-center justify-center shrink-0">
+                                <span className="material-symbols-outlined text-primary">
+                                  {matchedSupply
+                                    ? getSupplyCategoryIcon(matchedSupply.category)
+                                    : 'inventory_2'}
+                                </span>
+                              </div>
+                              <div className="min-w-0 flex-1 space-y-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-semibold text-foreground text-base">
+                                    {item.supplyItemName ||
+                                      matchedSupply?.name ||
+                                      item.supplyItemId}
+                                  </p>
+                                  {matchedSupply && (
+                                    <Badge
+                                      variant="outline"
+                                      appearance="outline"
+                                      size="xs"
+                                      className={`gap-1 border ${getSupplyCategoryClass(matchedSupply.category)}`}
+                                    >
+                                      <span className="material-symbols-outlined text-[14px]">
+                                        {getSupplyCategoryIcon(matchedSupply.category)}
+                                      </span>
+                                      {getSupplyCategoryLabel(matchedSupply.category)}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Mã vật phẩm: {item.supplyItemId.slice(0, 8)}...
                                 </p>
-                                {typeof item.actualQuantity === 'number' && (
-                                  <p className="text-xs text-muted-foreground">
-                                    SL thực tế: {formatNumberVN(item.actualQuantity)}
+                                <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-1">
+                                  <p className="text-sm font-semibold text-foreground">
+                                    SL yêu cầu:{' '}
+                                    {formatNumberVN(item.requestedQuantity ?? item.quantity ?? 0)}
                                     {matchedSupply?.unit ? ` ${matchedSupply.unit}` : ''}
+                                  </p>
+                                  {typeof item.actualQuantity === 'number' && (
+                                    <p className="text-xs text-muted-foreground">
+                                      SL thực tế: {formatNumberVN(item.actualQuantity)}
+                                      {matchedSupply?.unit ? ` ${matchedSupply.unit}` : ''}
+                                    </p>
+                                  )}
+                                </div>
+                                {item.notes && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Ghi chú: {item.notes}
                                   </p>
                                 )}
                               </div>
-                              {item.notes && (
-                                <p className="text-xs text-muted-foreground">
-                                  Ghi chú: {item.notes}
-                                </p>
-                              )}
                             </div>
                           </div>
-                        </div>
-                      );
-                    })
-                  )}
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
+              </div>
+
+              <div className="space-y-5 min-w-0">
+                <Card className="shadow-sm">
+                  <CardContent className="p-5 space-y-4">
+                    <div>
+                      <p className="text-base font-semibold text-foreground">
+                        PDF / evidence đã lưu
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Xem nhanh file PDF liên quan tới phiếu ngay trong màn hình chi tiết.
+                      </p>
+                    </div>
+                    {(selectedTransfer.evidenceUrls || []).length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+                        Chưa có evidence URL nào.
+                      </div>
+                    ) : (
+                      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+                        {(selectedTransfer.evidenceUrls || []).map((url, index) => (
+                          <div
+                            key={`${url}-${index}`}
+                            className="rounded-xl border border-border bg-card p-4 space-y-3"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="font-medium text-foreground">PDF #{index + 1}</p>
+                                <p className="text-xs text-muted-foreground break-all">{url}</p>
+                              </div>
+                              <Button variant="outline" size="sm" asChild>
+                                <a href={url} target="_blank" rel="noreferrer">
+                                  Mở file
+                                </a>
+                              </Button>
+                            </div>
+                            <iframe
+                              title={`transfer-detail-pdf-${index}`}
+                              src={url}
+                              className="h-[420px] w-full rounded-xl border border-border bg-background"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
             </div>
           ) : (

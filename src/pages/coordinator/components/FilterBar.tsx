@@ -49,10 +49,10 @@ export function FilterBar({
     'text-xs font-medium text-muted-foreground flex items-center gap-1 min-h-5';
 
   return (
-    <div className={`border-b space-y-3 ${isFullscreen ? 'p-2' : ''}`}>
+    <div className={`border-b space-y-3 ${isFullscreen ? 'p-2' : 'px-1 pb-2'}`}>
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-bold text-primary leading-tight">
-          Điều phối cứu trợ những yêu cầu gần trạm quản lý của bạn
+          Điều phối đội cứu trợ cho các yêu cầu gần trạm quản lý của bạn
         </h1>
         <div className="flex gap-2 overflow-x-auto pb-1">
           <Badge variant="secondary">Tổng: {stats.total}</Badge>
@@ -67,13 +67,13 @@ export function FilterBar({
           </Badge>
         </div>
       </div>
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="grid flex-1 min-w-0 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <div className="flex flex-col gap-1">
             {/* Label */}
             <label className={labelClassName}>Tìm kiếm</label>
             {/* Input */}
-            <div className="relative w-64">
+            <div className="relative w-full">
               <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">
                 search
               </span>
@@ -113,13 +113,13 @@ export function FilterBar({
           </div>
 
           {/* Filter mức độ khẩn cấp */}
-          <div className="flex flex-col gap-1 h-16">
+          <div className="flex flex-col gap-1">
             <label className={labelClassName}>
               <span className="material-symbols-outlined text-sm text-red-500">error</span>
               Mức độ
             </label>
             <Select value={urgencyFilter} onValueChange={onUrgencyFilterChange}>
-              <SelectTrigger className="w-[160px] ">
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Mức độ" />
               </SelectTrigger>
               <SelectContent>
@@ -159,7 +159,7 @@ export function FilterBar({
               Trạng thái
             </label>
             <Select value={statusFilter} onValueChange={onStatusFilterChange}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Trạng thái" />
               </SelectTrigger>
               <SelectContent>
@@ -208,7 +208,7 @@ export function FilterBar({
             </label>
 
             <Select value={needsFilter} onValueChange={onNeedsFilterChange}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Chọn nhu cầu" />
               </SelectTrigger>
 
@@ -252,7 +252,7 @@ export function FilterBar({
           </div>
 
           {/* Action buttons */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 xl:justify-end">
             {/* Group title */}
             <div className="text-xs font-medium text-muted-foreground flex items-center gap-1">
               <span className="material-symbols-outlined text-sm text-green-500">map</span>

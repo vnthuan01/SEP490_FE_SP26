@@ -9,6 +9,8 @@ import type {
   AddTeamMembersBulkPayload,
   CreateTeamJoinRequestPayload,
   ReviewTeamJoinRequestPayload,
+  PagedResponse,
+  Team,
 } from '@/services/teamService';
 import { teamJoinRequestService } from '@/services/teamService';
 import { handleHookError } from './hookErrorUtils';
@@ -35,7 +37,7 @@ export function useTeams(
   const queryClient = useQueryClient();
 
   const {
-    data: teams,
+    data: teamsData,
     isLoading: isLoadingTeams,
     isError: isErrorTeams,
     refetch: refetchTeams,
@@ -43,7 +45,8 @@ export function useTeams(
     queryKey: TEAM_QUERY_KEYS.all,
     queryFn: async () => {
       const response = await teamService.getAll();
-      return response.data;
+      const data = response.data as Team[] | PagedResponse<Team>;
+      return Array.isArray(data) ? data : data.items || [];
     },
     enabled: options?.enabledList ?? true,
   });
@@ -72,7 +75,7 @@ export function useTeams(
     queryFn: async () => {
       if (!searchParams) throw new Error('Search params required');
       const response = await teamService.search(searchParams);
-      return response.data;
+      return response.data?.items || [];
     },
     enabled: (options?.enabledSearch ?? true) && !!searchParams,
   });
@@ -106,7 +109,8 @@ export function useTeams(
 
   return {
     // Queries
-    teams: teams || [],
+    teams: teamsData || [],
+    teamsPaging: undefined,
     isLoadingTeams,
     isErrorTeams,
     refetchTeams,
@@ -211,6 +215,9 @@ export function useTeamMembers(teamId: string) {
       return response.data;
     },
     enabled: !!teamId,
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const addMemberMutation = useMutation({
@@ -290,6 +297,9 @@ export function useTeamLatestTracking(teamId: string, limit = 100) {
       return response.data;
     },
     enabled: !!teamId,
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   return {

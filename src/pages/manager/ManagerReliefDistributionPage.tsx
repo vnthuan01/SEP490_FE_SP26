@@ -51,6 +51,32 @@ const createDefaultHouseholdSample = (): HouseholdSampleForm => ({
   deliveryMode: DeliveryMode.PickupAtPoint,
 });
 
+const buildDistinctCloneCode = (baseCode: string, existingCodes: Set<string>) => {
+  const normalizedBase = baseCode.trim() || 'HH';
+  let clonedCode = `${normalizedBase}-CLONE`;
+  let copyCounter = 2;
+
+  while (existingCodes.has(clonedCode.toUpperCase())) {
+    clonedCode = `${normalizedBase}-CLONE-${copyCounter}`;
+    copyCounter += 1;
+  }
+
+  return clonedCode;
+};
+
+const buildDistinctCloneName = (baseName: string, existingNames: Set<string>) => {
+  const normalizedBase = baseName.trim() || 'Hộ dân thử nghiệm';
+  let clonedName = `${normalizedBase} (Clone)`;
+  let copyCounter = 2;
+
+  while (existingNames.has(clonedName.toUpperCase())) {
+    clonedName = `${normalizedBase} (Clone ${copyCounter})`;
+    copyCounter += 1;
+  }
+
+  return clonedName;
+};
+
 export default function ManagerReliefDistributionPage() {
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [householdSamples, setHouseholdSamples] = useState<HouseholdSampleForm[]>([
@@ -86,9 +112,9 @@ export default function ManagerReliefDistributionPage() {
   const { campaign: selectedCampaignDetail } = useCampaign(effectiveSelectedCampaignId);
   const { data: provinces } = useProvinces();
   const { teams } = useCampaignTeams(effectiveSelectedCampaignId);
-  const { data: households = [] } = useReliefHouseholds(effectiveSelectedCampaignId);
-  const { data: distributionPoints = [] } = useDistributionPoints(effectiveSelectedCampaignId);
-  const { data: packages = [] } = useReliefPackages(effectiveSelectedCampaignId);
+  const { households } = useReliefHouseholds(effectiveSelectedCampaignId);
+  const { distributionPoints } = useDistributionPoints(effectiveSelectedCampaignId);
+  const { packages } = useReliefPackages(effectiveSelectedCampaignId);
   const importMutation = useImportReliefHouseholds();
 
   const selectedCampaignLocationName = useMemo(
@@ -166,9 +192,6 @@ export default function ManagerReliefDistributionPage() {
 
     if (!effectiveSelectedCampaignId) nextErrors.form = 'Vui lòng chọn chiến dịch cứu trợ.';
     if (householdSamples.length === 0) nextErrors.form = 'Cần ít nhất 1 hộ dân để import.';
-    if (!canSeedHouseholds)
-      nextErrors.form = 'Chiến dịch này đã có dữ liệu hộ dân, không thể seed thêm mẫu.';
-
     if (Object.keys(nextErrors).length > 0) {
       setSampleErrors(nextErrors);
       toast.error(Object.values(nextErrors)[0]);
@@ -212,7 +235,49 @@ export default function ManagerReliefDistributionPage() {
     setHouseholdSamples((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
   };
 
-  const canSeedHouseholds = households.length === 0;
+  const cloneHouseholdSample = (index: number) => {
+    setHouseholdSamples((prev) => {
+      const sampleToClone = prev[index];
+      if (!sampleToClone) return prev;
+
+      const existingCodes = new Set(
+        prev.map((sample) => sample.householdCode.trim().toUpperCase()),
+      );
+      const existingNames = new Set(
+        prev.map((sample) => sample.headOfHouseholdName.trim().toUpperCase()).filter(Boolean),
+      );
+
+      const clonedCode = buildDistinctCloneCode(sampleToClone.householdCode, existingCodes);
+      const clonedName = buildDistinctCloneName(sampleToClone.headOfHouseholdName, existingNames);
+      const normalizedPhone = (sampleToClone.contactPhone || '').trim();
+      const clonedPhone = normalizedPhone
+        ? `${normalizedPhone.slice(0, Math.max(0, normalizedPhone.length - 1))}${Math.floor(
+            Math.random() * 10,
+          )}`
+        : '';
+      const clonedAddress = sampleToClone.address?.trim()
+        ? `${sampleToClone.address.trim()} - bản clone`
+        : 'Địa chỉ hộ dân clone';
+
+      const clonedSample: HouseholdSampleForm = {
+        ...sampleToClone,
+        householdCode: clonedCode,
+        headOfHouseholdName: clonedName,
+        contactPhone: clonedPhone,
+        address: clonedAddress,
+      };
+
+      const next = [...prev];
+      next.splice(index + 1, 0, clonedSample);
+      return next;
+    });
+
+    setSampleErrors((prev) => {
+      const next = { ...prev };
+      delete next.form;
+      return next;
+    });
+  };
 
   return (
     <DashboardLayout navGroups={managerNavGroups}>
@@ -265,19 +330,20 @@ export default function ManagerReliefDistributionPage() {
           <CardContent className="flex flex-col gap-2 p-4 text-sm text-primary">
             <p className="font-semibold">Vai trò tại màn hình Manager</p>
             <p>
-              Manager chỉ xem thông số chiến dịch và tạo dữ liệu mẫu hộ dân khi chiến dịch chưa có
-              dataseed. Các bước cấu hình điểm phát, tạo gói cứu trợ và phân công team được chuyển
-              sang màn hình điều phối.
+              Manager xem thông số chiến dịch và có thể thêm nhanh dữ liệu mẫu hộ dân để
+              test/import. Các bước cấu hình điểm phát, tạo gói cứu trợ và phân công team được
+              chuyển sang màn hình điều phối.
             </p>
           </CardContent>
         </Card>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+        <div className="grid gap-6 grid-cols-1">
           <div className="min-w-0">
             <ManagerReliefDistributionHouseholdSampleTable
               householdSamples={householdSamples}
               updateHouseholdSample={updateHouseholdSample}
               removeHouseholdSample={removeHouseholdSample}
+              cloneHouseholdSample={cloneHouseholdSample}
               addHouseholdSample={addHouseholdSample}
               applyLatitude={(latitude) =>
                 setHouseholdSamples((prev) => prev.map((item) => ({ ...item, latitude })))
@@ -286,16 +352,14 @@ export default function ManagerReliefDistributionPage() {
                 setHouseholdSamples((prev) => prev.map((item) => ({ ...item, longitude })))
               }
               handleImport={handleImport}
-              submitDisabled={
-                !selectedCampaignId || householdSamples.length === 0 || !canSeedHouseholds
-              }
+              submitDisabled={!effectiveSelectedCampaignId || householdSamples.length === 0}
               sampleErrors={sampleErrors}
               globalError={sampleErrors.form}
             />
-            {!canSeedHouseholds && (
+            {households.length > 0 && (
               <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">
-                Chiến dịch này đã có dữ liệu hộ dân. Manager chỉ nên theo dõi hoặc seed mẫu khi chưa
-                có dữ liệu ban đầu.
+                Chiến dịch này đã có dữ liệu hộ dân. Bạn vẫn có thể thêm tiếp để test, miễn là mã hộ
+                không bị trùng.
               </p>
             )}
           </div>

@@ -15,7 +15,7 @@ export const coordinatorNavGroups = [
         icon: 'volunteer_activism',
       },
       { label: 'Theo dõi nhiệm vụ', path: '/portal/coordinator/mission-tracking', icon: 'radar' },
-      { label: 'Điều phối & Bản đồ', path: '/portal/coordinator/maps', icon: 'map' },
+      // { label: 'Điều phối & Bản đồ', path: '/portal/coordinator/maps', icon: 'map' },
     ],
   },
   {

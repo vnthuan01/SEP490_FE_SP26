@@ -5,6 +5,9 @@ export interface Team {
   name: string;
   description: string;
   status: number;
+  teamType?: number;
+  teamTypeName?: string | null;
+  contactPhone?: string | null;
   moderatorId: string;
   moderatorName: string;
   leaderId: string | null;
@@ -18,19 +21,24 @@ export interface CreateTeamPayload {
   name: string;
   description?: string;
   contactPhone?: string;
+  teamType?: number;
 }
 
 export interface UpdateTeamPayload {
-  name: string;
-  description: string;
-  status: number;
-  leaderId: string;
+  name?: string;
+  description?: string;
+  status?: number;
+  leaderId?: string;
+  contactPhone?: string;
+  teamType?: number;
 }
 
 export interface SearchTeamParams {
   Name?: string;
+  Search?: string;
   Status?: number;
   ModeratorId?: string;
+  TeamType?: number;
   PageIndex?: number;
   PageSize?: number;
 }
@@ -84,7 +92,15 @@ export interface TeamTrackingPoint {
 
 export const teamService = {
   //Team CRUD
-  getAll: () => apiClient.get<Team[]>('/Team'),
+  getAll: (pageIndex = 1, pageSize = 50, search?: string, teamType?: number) =>
+    apiClient.get<PagedResponse<Team>>('/Team', {
+      params: {
+        PageIndex: pageIndex,
+        PageSize: pageSize,
+        Search: search || undefined,
+        TeamType: teamType,
+      },
+    }),
 
   getTeamInStation: (reliefStationId: string, pageIndex = 1, pageSize = 50) =>
     apiClient.get<PagedResponse<Team>>('/Team/in-station', {

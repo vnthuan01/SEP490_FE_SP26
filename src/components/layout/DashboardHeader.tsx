@@ -51,9 +51,7 @@ export function DashboardHeader({
     }
 
     if (item.referenceId) {
-      navigate(
-        `/portal/coordinator/mission-tracking?requestId=${encodeURIComponent(item.referenceId)}`,
-      );
+      navigate(`/portal/coordinator/requests?requestId=${encodeURIComponent(item.referenceId)}`);
     }
 
     setOpenNotification(false);

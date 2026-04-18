@@ -30,6 +30,7 @@ export interface RequestNotification {
   thumbnailUrls?: string[];
   isRead?: boolean;
   readAt?: string | null;
+  targetRequestId?: string;
 }
 
 export interface RealtimeTokenResponse {

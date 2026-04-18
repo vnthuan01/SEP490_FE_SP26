@@ -17,7 +17,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { DeliveryMode } from '@/enums/beEnums';
-import { TrashIcon } from 'lucide-react';
+import { CopyIcon, TrashIcon } from 'lucide-react';
 import { formatNumberInputVN, parseFormattedNumber } from '@/lib/utils';
 import type { HouseholdSampleForm } from './types';
 
@@ -25,6 +25,7 @@ export function ManagerReliefDistributionHouseholdSampleTable({
   householdSamples,
   updateHouseholdSample,
   removeHouseholdSample,
+  cloneHouseholdSample,
   addHouseholdSample,
   applyLatitude,
   applyLongitude,
@@ -36,6 +37,7 @@ export function ManagerReliefDistributionHouseholdSampleTable({
   householdSamples: HouseholdSampleForm[];
   updateHouseholdSample: (index: number, patch: Partial<HouseholdSampleForm>) => void;
   removeHouseholdSample: (index: number) => void;
+  cloneHouseholdSample: (index: number) => void;
   addHouseholdSample: () => void;
   applyLatitude: (value: number) => void;
   applyLongitude: (value: number) => void;
@@ -64,7 +66,7 @@ export function ManagerReliefDistributionHouseholdSampleTable({
                 <TableHead className="w-[90px]">Số người</TableHead>
                 <TableHead className="w-[170px]">Hình thức nhận</TableHead>
                 <TableHead className="w-[140px]">Tình trạng</TableHead>
-                <TableHead className="w-[90px] text-right">Thao tác</TableHead>
+                <TableHead className="w-[150px] text-right">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -189,15 +191,25 @@ export function ManagerReliefDistributionHouseholdSampleTable({
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={householdSamples.length === 1}
-                      onClick={() => removeHouseholdSample(index)}
-                    >
-                      <TrashIcon className="w-4 h-4" />
-                      Xóa
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => cloneHouseholdSample(index)}
+                      >
+                        <CopyIcon className="w-4 h-4" />
+                        Clone mới
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={householdSamples.length === 1}
+                        onClick={() => removeHouseholdSample(index)}
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                        Xóa
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

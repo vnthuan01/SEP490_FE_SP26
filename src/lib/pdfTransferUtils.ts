@@ -30,9 +30,12 @@ export interface TransferPdfFillData {
   destinationName: string;
   createdAt: string;
   decidedBy?: string;
+  approverName?: string;
   reason?: string;
   notes?: string;
   signedDateLabel?: string;
+  referenceAmount?: number | null;
+  referenceAmountText?: string;
   clauses?: string[];
   items: Array<{
     name: string;
@@ -418,7 +421,7 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
       sanitizePdfText(item.name),
       sanitizePdfText(item.unit || 'Đơn vị'),
       new Intl.NumberFormat('vi-VN').format(item.quantity || 0),
-      '',
+      new Intl.NumberFormat('vi-VN').format(item.actualQuantity || 0),
       sanitizePdfText(item.notes || ''),
     ];
 
@@ -504,20 +507,32 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
     clauseY -= 10;
   });
 
-  page.drawText('Tổng số tiền tham chiếu: ................', {
-    x: PAGE_MARGIN_X,
-    y: 170,
-    size: 10,
-    font: bold,
-    color: rgb(0.14, 0.24, 0.43),
-  });
-  page.drawText('Bằng chữ: ...................................', {
-    x: 280,
-    y: 170,
-    size: 10,
-    font,
-    color: rgb(0.24, 0.27, 0.34),
-  });
+  page.drawText(
+    `Tổng số tiền tham chiếu: ${
+      sanitizePdfText(
+        data.referenceAmount != null
+          ? new Intl.NumberFormat('vi-VN').format(data.referenceAmount)
+          : '',
+      ) || '................'
+    }`,
+    {
+      x: PAGE_MARGIN_X,
+      y: 170,
+      size: 10,
+      font: bold,
+      color: rgb(0.14, 0.24, 0.43),
+    },
+  );
+  page.drawText(
+    `Bằng chữ: ${sanitizePdfText(data.referenceAmountText) || '...................................'}`,
+    {
+      x: 280,
+      y: 170,
+      size: 10,
+      font,
+      color: rgb(0.24, 0.27, 0.34),
+    },
+  );
 
   page.drawText('Người lập phiếu', {
     x: 104,
@@ -598,7 +613,7 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
     font: bold,
     color: rgb(0.28, 0.31, 0.38),
   });
-  page.drawText('................................', {
+  page.drawText(sanitizePdfText(data.approverName) || '................................', {
     x: APPROVER_BOX.x,
     y: APPROVER_BOX.y - 28,
     size: 9,
@@ -614,6 +629,7 @@ export async function attachSignatureToPdf(
   signatureDataUrl: string,
   options?: {
     signerName?: string;
+    box?: 'creator' | 'approver';
   },
 ) {
   const pdfDoc = await PDFDocument.load(pdfBytes);
@@ -621,14 +637,15 @@ export async function attachSignatureToPdf(
   const lastPage = pages[pages.length - 1];
   const { regular: font } = await loadVietnameseFonts(pdfDoc);
   const pngImage = await pdfDoc.embedPng(signatureDataUrl);
+  const targetBox = options?.box === 'approver' ? APPROVER_BOX : SIGN_BOX;
   const imageScale = Math.min(
-    SIGN_BOX.width / pngImage.width,
-    (SIGN_BOX.height - 24) / pngImage.height,
+    targetBox.width / pngImage.width,
+    (targetBox.height - 24) / pngImage.height,
     1,
   );
   const dims = pngImage.scale(imageScale);
-  const drawX = SIGN_BOX.x + (SIGN_BOX.width - dims.width) / 2;
-  const drawY = SIGN_BOX.y + 16 + (SIGN_BOX.height - 30 - dims.height) / 2;
+  const drawX = targetBox.x + (targetBox.width - dims.width) / 2;
+  const drawY = targetBox.y + 16 + (targetBox.height - 30 - dims.height) / 2;
 
   lastPage.drawImage(pngImage, {
     x: drawX,
@@ -639,22 +656,22 @@ export async function attachSignatureToPdf(
 
   if (options?.signerName) {
     lastPage.drawRectangle({
-      x: SIGN_BOX.x,
-      y: SIGN_BOX.y - 34,
+      x: targetBox.x,
+      y: targetBox.y - 34,
       width: 180,
       height: 26,
       color: rgb(1, 1, 1),
     });
     lastPage.drawText('Họ và tên:', {
-      x: SIGN_BOX.x,
-      y: SIGN_BOX.y - 14,
+      x: targetBox.x,
+      y: targetBox.y - 14,
       size: 9,
       font,
       color: rgb(0.28, 0.31, 0.38),
     });
     lastPage.drawText(sanitizePdfText(options.signerName), {
-      x: SIGN_BOX.x,
-      y: SIGN_BOX.y - 28,
+      x: targetBox.x,
+      y: targetBox.y - 28,
       size: 9,
       font,
       color: rgb(0.12, 0.16, 0.24),

@@ -43,6 +43,7 @@ export interface TeamMember {
 export interface Team {
   id: string;
   name: string;
+  teamType?: number;
   currentLocation: { lat: number; lng: number };
   vehicle: 'truck' | 'boat' | 'motorcycle' | 'helicopter';
   capacity: { people: number; cargo: number };

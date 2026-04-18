@@ -96,6 +96,14 @@ export function CoordinatorReliefDistributionSetupSteps({
   distributionPointErrors,
   packageErrors,
   onUseCurrentStation,
+  distributionPointEditing,
+  onCancelDistributionPointEdit,
+  onEditDistributionPoint,
+  onDeleteDistributionPoint,
+  packageEditing,
+  onCancelPackageEdit,
+  onEditPackage,
+  onDeletePackage,
 }: {
   distributionSectionId: string;
   packageSectionId: string;
@@ -118,6 +126,14 @@ export function CoordinatorReliefDistributionSetupSteps({
   distributionPointErrors: FieldErrors;
   packageErrors: FieldErrors;
   onUseCurrentStation: () => void;
+  distributionPointEditing: boolean;
+  onCancelDistributionPointEdit: () => void;
+  onEditDistributionPoint: () => void;
+  onDeleteDistributionPoint: () => void;
+  packageEditing: boolean;
+  onCancelPackageEdit: () => void;
+  onEditPackage: () => void;
+  onDeletePackage: () => void;
 }) {
   const [openStartCalendar, setOpenStartCalendar] = useState(false);
   const [openEndCalendar, setOpenEndCalendar] = useState(false);
@@ -498,10 +514,40 @@ export function CoordinatorReliefDistributionSetupSteps({
           </div>
 
           <div className="flex justify-end">
-            <Button onClick={onCreatePoint} disabled={createPointDisabled} className="gap-2">
-              <span className="material-symbols-outlined text-[18px]">save</span>
-              Lưu điểm phát
-            </Button>
+            <div className="flex flex-wrap justify-end gap-2">
+              {distributionPointEditing && (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onCancelDistributionPointEdit}
+                    className="gap-2"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">close</span>
+                    Huỷ sửa
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={onDeleteDistributionPoint}
+                    className="gap-2"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                    Xoá điểm phát
+                  </Button>
+                  <Button onClick={onEditDistributionPoint} className="gap-2">
+                    <span className="material-symbols-outlined text-[18px]">save</span>
+                    Cập nhật điểm phát
+                  </Button>
+                </>
+              )}
+              {!distributionPointEditing && (
+                <Button onClick={onCreatePoint} disabled={createPointDisabled} className="gap-2">
+                  <span className="material-symbols-outlined text-[18px]">save</span>
+                  Lưu điểm phát
+                </Button>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -697,10 +743,44 @@ export function CoordinatorReliefDistributionSetupSteps({
           </div>
 
           <div className="flex justify-end">
-            <Button onClick={onCreatePackage} disabled={createPackageDisabled} className="gap-2">
-              <span className="material-symbols-outlined text-[18px]">inventory_2</span>
-              Lưu gói hỗ trợ
-            </Button>
+            <div className="flex flex-wrap justify-end gap-2">
+              {packageEditing && (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onCancelPackageEdit}
+                    className="gap-2"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">close</span>
+                    Huỷ sửa
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={onDeletePackage}
+                    className="gap-2"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                    Xoá gói
+                  </Button>
+                  <Button onClick={onEditPackage} className="gap-2">
+                    <span className="material-symbols-outlined text-[18px]">inventory_2</span>
+                    Cập nhật gói hỗ trợ
+                  </Button>
+                </>
+              )}
+              {!packageEditing && (
+                <Button
+                  onClick={onCreatePackage}
+                  disabled={createPackageDisabled}
+                  className="gap-2"
+                >
+                  <span className="material-symbols-outlined text-[18px]">inventory_2</span>
+                  Lưu gói hỗ trợ
+                </Button>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>

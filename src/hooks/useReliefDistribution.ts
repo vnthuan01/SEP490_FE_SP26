@@ -5,16 +5,23 @@ import {
   reliefDistributionService,
   type AssembleReliefPackageRequest,
   type AssignHouseholdRequest,
+  type CompleteDeliveriesBatchRequest,
   type CompleteHouseholdDeliveryRequest,
   type CreateDistributionPointRequest,
   type CreateReliefPackageDefinitionRequest,
   type CreateSupplyShortageRequest,
   type GetChecklistParams,
+  type GetDeliveriesParams,
+  type GetDistributionPointsParams,
   type GetHouseholdsParams,
   type GetPackageAssemblyAvailabilityParams,
+  type GetReliefPackagesParams,
   type GetShortageRequestsParams,
   type ImportCampaignHouseholdsRequest,
   type ReviewSupplyShortageRequest,
+  type UpdateCampaignHouseholdRequest,
+  type UpdateDistributionPointRequest,
+  type UpdateReliefPackageDefinitionRequest,
 } from '@/services/reliefDistributionService';
 
 export const RELIEF_DISTRIBUTION_KEYS = {
@@ -23,9 +30,14 @@ export const RELIEF_DISTRIBUTION_KEYS = {
     ['relief-distribution', 'households', campaignId, params] as const,
   checklist: (campaignId: string, params?: GetChecklistParams) =>
     ['relief-distribution', 'checklist', campaignId, params] as const,
-  distributionPoints: (campaignId: string) =>
-    ['relief-distribution', 'distribution-points', campaignId] as const,
-  packages: (campaignId: string) => ['relief-distribution', 'packages', campaignId] as const,
+  distributionPoints: (campaignId: string, params?: GetDistributionPointsParams) =>
+    ['relief-distribution', 'distribution-points', campaignId, params] as const,
+  packages: (campaignId: string, params?: GetReliefPackagesParams) =>
+    ['relief-distribution', 'packages', campaignId, params] as const,
+  deliveries: (campaignId: string, params?: GetDeliveriesParams) =>
+    ['relief-distribution', 'deliveries', campaignId, params] as const,
+  deliveryDetail: (campaignId: string, householdDeliveryId: string) =>
+    ['relief-distribution', 'deliveries', 'detail', campaignId, householdDeliveryId] as const,
   assemblyAvailability: (
     campaignId: string,
     reliefPackageDefinitionId: string,
@@ -55,34 +67,83 @@ export const RELIEF_DISTRIBUTION_KEYS = {
 };
 
 export function useReliefHouseholds(campaignId: string, params?: GetHouseholdsParams) {
-  return useQuery({
+  const query = useQuery({
     queryKey: RELIEF_DISTRIBUTION_KEYS.households(campaignId, params),
     queryFn: async () => (await reliefDistributionService.getHouseholds(campaignId, params)).data,
     enabled: !!campaignId,
   });
+
+  return {
+    ...query,
+    households: query.data?.items ?? [],
+    pagination: query.data,
+  };
 }
 
 export function useReliefChecklist(campaignId: string, params?: GetChecklistParams) {
-  return useQuery({
+  const query = useQuery({
     queryKey: RELIEF_DISTRIBUTION_KEYS.checklist(campaignId, params),
     queryFn: async () => (await reliefDistributionService.getChecklist(campaignId, params)).data,
     enabled: !!campaignId,
   });
+
+  return {
+    ...query,
+    checklist: query.data?.items ?? [],
+    pagination: query.data,
+  };
 }
 
-export function useDistributionPoints(campaignId: string) {
-  return useQuery({
-    queryKey: RELIEF_DISTRIBUTION_KEYS.distributionPoints(campaignId),
-    queryFn: async () => (await reliefDistributionService.getDistributionPoints(campaignId)).data,
+export function useDistributionPoints(campaignId: string, params?: GetDistributionPointsParams) {
+  const query = useQuery({
+    queryKey: RELIEF_DISTRIBUTION_KEYS.distributionPoints(campaignId, params),
+    queryFn: async () =>
+      (await reliefDistributionService.getDistributionPoints(campaignId, params)).data,
     enabled: !!campaignId,
   });
+
+  return {
+    ...query,
+    distributionPoints: query.data?.items ?? [],
+    pagination: query.data,
+  };
 }
 
-export function useReliefPackages(campaignId: string) {
-  return useQuery({
-    queryKey: RELIEF_DISTRIBUTION_KEYS.packages(campaignId),
-    queryFn: async () => (await reliefDistributionService.getReliefPackages(campaignId)).data,
+export function useReliefPackages(campaignId: string, params?: GetReliefPackagesParams) {
+  const query = useQuery({
+    queryKey: RELIEF_DISTRIBUTION_KEYS.packages(campaignId, params),
+    queryFn: async () =>
+      (await reliefDistributionService.getReliefPackages(campaignId, params)).data,
     enabled: !!campaignId,
+  });
+
+  return {
+    ...query,
+    packages: query.data?.items ?? [],
+    pagination: query.data,
+  };
+}
+
+export function useReliefDeliveries(campaignId: string, params?: GetDeliveriesParams) {
+  const query = useQuery({
+    queryKey: RELIEF_DISTRIBUTION_KEYS.deliveries(campaignId, params),
+    queryFn: async () => (await reliefDistributionService.getDeliveries(campaignId, params)).data,
+    enabled: !!campaignId,
+  });
+
+  return {
+    ...query,
+    deliveries: query.data?.items ?? [],
+    pagination: query.data,
+  };
+}
+
+export function useReliefDeliveryDetail(campaignId: string, householdDeliveryId: string) {
+  return useQuery({
+    queryKey: RELIEF_DISTRIBUTION_KEYS.deliveryDetail(campaignId, householdDeliveryId),
+    queryFn: async () =>
+      (await reliefDistributionService.getDeliveryDetail(campaignId, householdDeliveryId)).data,
+    enabled: !!campaignId && !!householdDeliveryId,
   });
 }
 
@@ -156,6 +217,7 @@ const invalidateCampaign = async (
       queryKey: RELIEF_DISTRIBUTION_KEYS.distributionPoints(campaignId),
     }),
     queryClient.invalidateQueries({ queryKey: RELIEF_DISTRIBUTION_KEYS.packages(campaignId) }),
+    queryClient.invalidateQueries({ queryKey: RELIEF_DISTRIBUTION_KEYS.deliveries(campaignId) }),
     queryClient.invalidateQueries({
       queryKey: RELIEF_DISTRIBUTION_KEYS.shortageRequests(campaignId),
     }),
@@ -203,6 +265,44 @@ export function useAssignReliefHousehold() {
   });
 }
 
+export function usePatchReliefHousehold() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      campaignHouseholdId,
+      data,
+    }: {
+      campaignId: string;
+      campaignHouseholdId: string;
+      data: UpdateCampaignHouseholdRequest;
+    }) => reliefDistributionService.patchHousehold(campaignId, campaignHouseholdId, data),
+    onSuccess: async (_, { campaignId }) => {
+      toast.success('Đã cập nhật hộ dân');
+      await invalidateCampaign(queryClient, campaignId);
+    },
+    onError: (error) => handleHookError(error, 'Không thể cập nhật hộ dân'),
+  });
+}
+
+export function useDeleteReliefHousehold() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      campaignHouseholdId,
+    }: {
+      campaignId: string;
+      campaignHouseholdId: string;
+    }) => reliefDistributionService.deleteHousehold(campaignId, campaignHouseholdId),
+    onSuccess: async (_, { campaignId }) => {
+      toast.success('Đã xoá hộ dân');
+      await invalidateCampaign(queryClient, campaignId);
+    },
+    onError: (error) => handleHookError(error, 'Không thể xoá hộ dân'),
+  });
+}
+
 export function useCreateDistributionPoint() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -223,6 +323,48 @@ export function useCreateDistributionPoint() {
   });
 }
 
+export function usePatchDistributionPoint() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      distributionPointId,
+      data,
+    }: {
+      campaignId: string;
+      distributionPointId: string;
+      data: UpdateDistributionPointRequest;
+    }) => reliefDistributionService.patchDistributionPoint(campaignId, distributionPointId, data),
+    onSuccess: async (_, { campaignId }) => {
+      toast.success('Đã cập nhật điểm phát');
+      await queryClient.invalidateQueries({
+        queryKey: RELIEF_DISTRIBUTION_KEYS.distributionPoints(campaignId),
+      });
+    },
+    onError: (error) => handleHookError(error, 'Không thể cập nhật điểm phát'),
+  });
+}
+
+export function useDeleteDistributionPoint() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      distributionPointId,
+    }: {
+      campaignId: string;
+      distributionPointId: string;
+    }) => reliefDistributionService.deleteDistributionPoint(campaignId, distributionPointId),
+    onSuccess: async (_, { campaignId }) => {
+      toast.success('Đã xoá điểm phát');
+      await queryClient.invalidateQueries({
+        queryKey: RELIEF_DISTRIBUTION_KEYS.distributionPoints(campaignId),
+      });
+    },
+    onError: (error) => handleHookError(error, 'Không thể xoá điểm phát'),
+  });
+}
+
 export function useCreateReliefPackage() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -240,6 +382,48 @@ export function useCreateReliefPackage() {
       });
     },
     onError: (error) => handleHookError(error, 'Không thể tạo gói cứu trợ'),
+  });
+}
+
+export function usePatchReliefPackage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      reliefPackageDefinitionId,
+      data,
+    }: {
+      campaignId: string;
+      reliefPackageDefinitionId: string;
+      data: UpdateReliefPackageDefinitionRequest;
+    }) => reliefDistributionService.patchReliefPackage(campaignId, reliefPackageDefinitionId, data),
+    onSuccess: async (_, { campaignId }) => {
+      toast.success('Đã cập nhật gói cứu trợ');
+      await queryClient.invalidateQueries({
+        queryKey: RELIEF_DISTRIBUTION_KEYS.packages(campaignId),
+      });
+    },
+    onError: (error) => handleHookError(error, 'Không thể cập nhật gói cứu trợ'),
+  });
+}
+
+export function useDeleteReliefPackage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      reliefPackageDefinitionId,
+    }: {
+      campaignId: string;
+      reliefPackageDefinitionId: string;
+    }) => reliefDistributionService.deleteReliefPackage(campaignId, reliefPackageDefinitionId),
+    onSuccess: async (_, { campaignId }) => {
+      toast.success('Đã xoá gói cứu trợ');
+      await queryClient.invalidateQueries({
+        queryKey: RELIEF_DISTRIBUTION_KEYS.packages(campaignId),
+      });
+    },
+    onError: (error) => handleHookError(error, 'Không thể xoá gói cứu trợ'),
   });
 }
 
@@ -303,6 +487,24 @@ export function useCompleteReliefDelivery() {
       await invalidateCampaign(queryClient, campaignId);
     },
     onError: (error) => handleHookError(error, 'Không thể hoàn tất phát quà'),
+  });
+}
+
+export function useCompleteReliefDeliveryBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      data,
+    }: {
+      campaignId: string;
+      data: CompleteDeliveriesBatchRequest;
+    }) => reliefDistributionService.completeDeliveryBatch(campaignId, data),
+    onSuccess: async (_, { campaignId }) => {
+      toast.success('Đã hoàn tất phát quà theo lô');
+      await invalidateCampaign(queryClient, campaignId);
+    },
+    onError: (error) => handleHookError(error, 'Không thể hoàn tất phát quà theo lô'),
   });
 }
 
