@@ -28,6 +28,7 @@ interface ProjectItem {
 interface DashboardSidebarProps {
   projects?: ProjectItem[];
   navItems?: NavItem[];
+  navGroups?: Array<{ title: string; items: NavItem[] }>;
   isCollapsed?: boolean;
   isMobileOpen?: boolean;
   onMobileClose?: () => void;
@@ -36,6 +37,7 @@ interface DashboardSidebarProps {
 export function DashboardSidebar({
   projects,
   navItems,
+  navGroups,
   isCollapsed = false,
   isMobileOpen = false,
   onMobileClose,
@@ -91,98 +93,151 @@ export function DashboardSidebar({
         style={{ padding: isCollapsed ? '1rem 0.5rem' : '1rem' }}
       >
         <TooltipProvider delayDuration={300}>
-          {/* Projects Section */}
-          {defaultProjects.length > 0 && (
+          {navGroups ? (
+            /* Grouped navigation mode */
             <>
-              {!isCollapsed && (
-                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-2 mb-2 mt-2">
-                  Hệ thống
-                </div>
-              )}
-              {defaultProjects.map((project) => {
-                const linkContent = (
-                  <Link
-                    key={project.path}
-                    to={project.path}
-                    onClick={onMobileClose}
-                    className={`flex items-center rounded-lg transition-colors ${
-                      isCollapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
-                    } ${
-                      isActive(project.path)
-                        ? 'bg-primary/10 text-primary font-medium'
-                        : 'text-muted-foreground hover:bg-muted'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[20px] flex-shrink-0">
-                      {project.icon}
-                    </span>
-                    {!isCollapsed && (
-                      <span className="text-sm whitespace-nowrap">{project.label}</span>
-                    )}
-                  </Link>
-                );
+              {navGroups.map((group, groupIndex) => (
+                <div key={group.title}>
+                  {groupIndex > 0 && <div className="h-px bg-border my-2" />}
+                  {!isCollapsed && (
+                    <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-2 mb-2 mt-2">
+                      {group.title}
+                    </div>
+                  )}
+                  {group.items.map((item) => {
+                    const linkContent = (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        onClick={onMobileClose}
+                        className={`flex items-center rounded-lg transition-colors ${
+                          isCollapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
+                        } ${
+                          isActive(item.path)
+                            ? 'bg-primary/10 text-primary font-medium'
+                            : 'text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[20px] flex-shrink-0">
+                          {item.icon}
+                        </span>
+                        {!isCollapsed && (
+                          <span className="text-sm whitespace-nowrap">{item.label}</span>
+                        )}
+                      </Link>
+                    );
 
-                return isCollapsed ? (
-                  <Tooltip key={project.path}>
-                    <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                    <TooltipContent side="right" className="ml-2">
-                      <p>{project.label}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  linkContent
-                );
-              })}
+                    return isCollapsed ? (
+                      <Tooltip key={item.path}>
+                        <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                        <TooltipContent side="right" className="ml-2">
+                          <p>{item.label}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      linkContent
+                    );
+                  })}
+                </div>
+              ))}
             </>
-          )}
-
-          {/* Divider */}
-          {defaultNavItems.length > 0 && (
-            <div className={`h-px bg-border my-2 ${isCollapsed ? 'mx-2' : ''}`}></div>
-          )}
-
-          {/* System Navigation */}
-          {defaultNavItems.length > 0 && (
+          ) : (
+            /* Legacy flat navigation mode */
             <>
-              {!isCollapsed && (
-                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-2 mb-2">
-                  Báo cáo
-                </div>
-              )}
-              {defaultNavItems.map((item) => {
-                const linkContent = (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    onClick={onMobileClose}
-                    className={`flex items-center rounded-lg transition-colors ${
-                      isCollapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
-                    } ${
-                      isActive(item.path)
-                        ? 'bg-primary/10 text-primary font-medium'
-                        : 'text-muted-foreground hover:bg-muted'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[20px] flex-shrink-0">
-                      {item.icon}
-                    </span>
-                    {!isCollapsed && (
-                      <span className="text-sm whitespace-nowrap">{item.label}</span>
-                    )}
-                  </Link>
-                );
+              {/* Projects Section */}
+              {defaultProjects.length > 0 && (
+                <>
+                  {!isCollapsed && (
+                    <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-2 mb-2 mt-2">
+                      Hệ thống
+                    </div>
+                  )}
+                  {defaultProjects.map((project) => {
+                    const linkContent = (
+                      <Link
+                        key={project.path}
+                        to={project.path}
+                        onClick={onMobileClose}
+                        className={`flex items-center rounded-lg transition-colors ${
+                          isCollapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
+                        } ${
+                          isActive(project.path)
+                            ? 'bg-primary/10 text-primary font-medium'
+                            : 'text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[20px] flex-shrink-0">
+                          {project.icon}
+                        </span>
+                        {!isCollapsed && (
+                          <span className="text-sm whitespace-nowrap">{project.label}</span>
+                        )}
+                      </Link>
+                    );
 
-                return isCollapsed ? (
-                  <Tooltip key={item.path}>
-                    <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                    <TooltipContent side="right" className="ml-2">
-                      <p>{item.label}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  linkContent
-                );
-              })}
+                    return isCollapsed ? (
+                      <Tooltip key={project.path}>
+                        <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                        <TooltipContent side="right" className="ml-2">
+                          <p>{project.label}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      linkContent
+                    );
+                  })}
+                </>
+              )}
+
+              {/* Divider */}
+              {defaultNavItems.length > 0 && (
+                <div className={`h-px bg-border my-2 ${isCollapsed ? 'mx-2' : ''}`}></div>
+              )}
+
+              {/* System Navigation */}
+              {defaultNavItems.length > 0 && (
+                <>
+                  {!isCollapsed && (
+                    <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider px-2 mb-2">
+                      Báo cáo
+                    </div>
+                  )}
+                  {defaultNavItems.map((item) => {
+                    const linkContent = (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        onClick={onMobileClose}
+                        className={`flex items-center rounded-lg transition-colors ${
+                          isCollapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'
+                        } ${
+                          isActive(item.path)
+                            ? 'bg-primary/10 text-primary font-medium'
+                            : 'text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[20px] flex-shrink-0">
+                          {item.icon}
+                        </span>
+                        {!isCollapsed && (
+                          <span className="text-sm whitespace-nowrap">{item.label}</span>
+                        )}
+                      </Link>
+                    );
+
+                    return isCollapsed ? (
+                      <Tooltip key={item.path}>
+                        <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                        <TooltipContent side="right" className="ml-2">
+                          <p>{item.label}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      linkContent
+                    );
+                  })}
+                </>
+              )}
             </>
           )}
         </TooltipProvider>

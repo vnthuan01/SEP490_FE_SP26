@@ -1,7 +1,9 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   supplyTransferService,
+  type AppendSupplyTransferEvidencesPayload,
   type CreateSupplyTransferPayload,
+  type ReplaceSupplyTransferEvidenceUrlsPayload,
   type SearchSupplyTransferByStatusParams,
 } from '@/services/supplyTransferService';
 import { toast } from 'sonner';
@@ -140,3 +142,35 @@ export const useCancelSupplyTransfer = createStatusMutation(
   supplyTransferService.cancel,
   'Đã huỷ phiếu chuyển hàng',
 );
+
+export function useReplaceSupplyTransferEvidenceUrls() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: ReplaceSupplyTransferEvidenceUrlsPayload }) =>
+      supplyTransferService.replaceEvidenceUrls(id, data),
+    onSuccess: (_, variables) => {
+      toast.success('Đã cập nhật danh sách bằng chứng');
+      queryClient.invalidateQueries({ queryKey: SUPPLY_TRANSFER_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: SUPPLY_TRANSFER_KEYS.detail(variables.id) });
+    },
+    onError: (error: any) => {
+      handleHookError(error, 'Không thể cập nhật danh sách bằng chứng');
+    },
+  });
+}
+
+export function useAppendSupplyTransferEvidences() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: AppendSupplyTransferEvidencesPayload }) =>
+      supplyTransferService.appendEvidences(id, data),
+    onSuccess: (_, variables) => {
+      toast.success('Đã thêm bằng chứng');
+      queryClient.invalidateQueries({ queryKey: SUPPLY_TRANSFER_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: SUPPLY_TRANSFER_KEYS.detail(variables.id) });
+    },
+    onError: (error: any) => {
+      handleHookError(error, 'Không thể thêm bằng chứng');
+    },
+  });
+}

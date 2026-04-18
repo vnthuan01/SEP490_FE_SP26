@@ -1,20 +1,45 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
 import { Button } from '@/components/ui/button';
 
 export function PdfSignaturePad({ onSave }: { onSave: (dataUrl: string) => void }) {
   const signatureRef = useRef<SignatureCanvas | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [canvasWidth, setCanvasWidth] = useState(520);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const updateCanvasWidth = () => {
+      const nextWidth = Math.max(Math.floor(container.clientWidth - 16), 280);
+      setCanvasWidth(nextWidth);
+    };
+
+    updateCanvasWidth();
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateCanvasWidth();
+    });
+
+    resizeObserver.observe(container);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border border-border bg-background p-2">
+      <div ref={containerRef} className="rounded-xl border border-border bg-background p-2">
         <SignatureCanvas
+          key={canvasWidth}
           ref={signatureRef}
           penColor="black"
           canvasProps={{
-            width: 520,
+            width: canvasWidth,
             height: 180,
-            className: 'w-full h-[180px] rounded-lg bg-white',
+            className: 'block h-[180px] rounded-lg bg-white',
           }}
         />
       </div>

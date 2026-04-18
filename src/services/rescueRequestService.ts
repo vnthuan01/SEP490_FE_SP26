@@ -39,9 +39,21 @@ export interface RescueRequestItem {
   reporterFullName?: string | null;
   reporterPhone?: string | null;
   priority?: number | null;
+  priorityLevel: number | null;
   rescueRequestStatus?: string | number | null;
   dispatchMode?: string | null;
   note?: string | null;
+  weatherCondition?: string | null;
+  weatherTempC?: number | null;
+  weatherWindKph?: number | null;
+  weatherPrecipMm?: number | null;
+  weatherVisibilityKm?: number | null;
+  weatherHumidity?: number | null;
+  weatherRiskScore?: number | null;
+  weatherRiskLevel?: string | null;
+  weatherObservedAt?: string | null;
+  campaignId?: string | null;
+  campaignName?: string | null;
   stationToRequestDistanceKm?: number | null;
   stationToRequestDurationMinutes?: number | null;
   stationToRequestDistanceMeters?: number | null;
@@ -89,6 +101,35 @@ export interface RescueRequestPaging {
 
 export interface RescueRequestListResult {
   items: RescueRequestItem[];
+  paging: RescueRequestPaging | null;
+}
+
+export interface RescueRequestListQueryParams {
+  statusFilter?: number;
+  verificationStatus?: number;
+  pageNumber?: number;
+  pageSize?: number;
+  search?: string;
+}
+
+export interface DispatchCandidateItem {
+  requestId: string;
+  rescueRequestType?: string | number | null;
+  rescueRequestStatus?: string | null;
+  reporterFullName?: string | null;
+  priorityPoint?: number | null;
+  priorityLevel?: string | number | null;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  alreadyAssignedTeamId?: string | null;
+  isInOtherActiveBatch?: boolean;
+  canDispatch?: boolean;
+  dispatchBlockReason?: string | null;
+}
+
+export interface DispatchCandidateListResult {
+  items: DispatchCandidateItem[];
   paging: RescueRequestPaging | null;
 }
 
@@ -157,6 +198,16 @@ export const normalizeRescueRequestListResponse = (payload: unknown): RescueRequ
   };
 };
 
+export const normalizeDispatchCandidateListResponse = (
+  payload: unknown,
+): DispatchCandidateListResult => {
+  const normalized = normalizeRescueRequestListResponse(payload as any);
+  return {
+    items: normalized.items as DispatchCandidateItem[],
+    paging: normalized.paging,
+  };
+};
+
 // ─── Types for Mission Tracking ───────────────────────────────────────────────
 
 export interface AssignedRescueTeamDto {
@@ -200,6 +251,67 @@ export interface RescueRequestDetail extends RescueRequestItem {
   assignedRescueTeam?: AssignedRescueTeamDto | null;
 }
 
+export interface RescueBatchQueueItem {
+  rescueRequestId: string;
+  rescueRequestType?: string | number | null;
+  priorityPoint?: number | null;
+  priorityLevel?: string | number | null;
+  status?: string | null;
+  description?: string | null;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  distanceKm?: number | null;
+  estimatedMinutes?: number | null;
+}
+
+export interface RescueBatchQueueResponseDto {
+  rescueBatchId?: string | null;
+  teamId?: string | null;
+  teamName?: string | null;
+  items: RescueBatchQueueItem[];
+}
+
+export interface DispatchPreviewPayload {
+  teamId: string;
+  allowPreempt: boolean;
+  normalNearRouteThresholdKm: number;
+  emergencyNearRouteThresholdKm: number;
+}
+
+export interface SmartAssignPayload extends DispatchPreviewPayload {
+  note?: string;
+}
+
+export interface ReorderBatchPayload {
+  requestIdsInOrder: string[];
+}
+
+export interface DispatchPreviewResponseDto {
+  requestId?: string;
+  teamId?: string;
+  eligible?: boolean;
+  recommendedAction?: string | null;
+  willPreemptCurrentInProgress?: boolean;
+  currentInProgressRequestId?: string | null;
+  recommendedQueueIndex?: number | null;
+  distanceFromTeamKm?: number | null;
+  distanceToCurrentInProgressKm?: number | null;
+  isNearCurrentRoute?: boolean;
+  requiresBacktrack?: boolean;
+  currentRoutePolyline?: string | null;
+  currentRouteDistanceMeters?: number | null;
+  currentRouteDurationSeconds?: number | null;
+  minDistanceToCurrentRouteMeters?: number | null;
+  detourMeters?: number | null;
+  detourSeconds?: number | null;
+  rescueRequestType?: string | number | null;
+  priorityPoint?: number | null;
+  priorityLevel?: string | number | null;
+  reasons?: string[];
+  proposedRequestIdsInOrder?: string[];
+}
+
 export interface UpdateOperationStatusPayload {
   status: number;
   note?: string;
@@ -214,7 +326,7 @@ export interface CompleteOperationPayload {
 
 export const rescueRequestService = {
   getRequests: async (statusFilter: number | undefined, pageNumber = 1, pageSize = 10) => {
-    const params: Record<string, number> = { pageNumber, pageSize };
+    const params: RescueRequestListQueryParams = { pageNumber, pageSize };
     if (typeof statusFilter === 'number') {
       params.statusFilter = statusFilter;
     }
@@ -222,6 +334,49 @@ export const rescueRequestService = {
     const response = await apiClient.get('/RescueRequest', { params });
 
     return normalizeRescueRequestListResponse(response.data);
+  },
+
+  getMyStationRequests: async ({
+    statusFilter,
+    verificationStatus,
+    pageNumber = 1,
+    pageSize = 10,
+    search,
+  }: RescueRequestListQueryParams = {}) => {
+    const params: RescueRequestListQueryParams = { pageNumber, pageSize };
+
+    if (typeof statusFilter === 'number') {
+      params.statusFilter = statusFilter;
+    }
+    if (typeof verificationStatus === 'number') {
+      params.verificationStatus = verificationStatus;
+    }
+    if (search && search.trim()) {
+      params.search = search.trim();
+    }
+
+    const response = await apiClient.get('/RescueRequest/my-station', { params });
+    return normalizeRescueRequestListResponse(response.data);
+  },
+
+  getDispatchCandidates: async (
+    teamId: string,
+    pageNumber = 1,
+    pageSize = 20,
+    search?: string,
+    verificationStatus?: number,
+  ) => {
+    const response = await apiClient.get('/RescueRequest/dispatch-candidates', {
+      params: {
+        teamId,
+        pageNumber,
+        pageSize,
+        search: search || undefined,
+        verificationStatus,
+      },
+    });
+
+    return normalizeDispatchCandidateListResponse(response.data);
   },
 
   getPendingRequests: async (pageNumber = 1, pageSize = 10) => {
@@ -254,6 +409,30 @@ export const rescueRequestService = {
   /** POST /api/RescueRequest/{requestId}/operations/{operationId}/complete */
   completeOperation: (requestId: string, operationId: string, payload: CompleteOperationPayload) =>
     apiClient.post(`/RescueRequest/${requestId}/operations/${operationId}/complete`, payload),
+
+  getActiveBatch: async (teamId: string): Promise<RescueBatchQueueResponseDto> => {
+    const response = await apiClient.get(`/RescueRequest/teams/${teamId}/active-batch`);
+    return (response.data?.data ?? response.data) as RescueBatchQueueResponseDto;
+  },
+
+  dispatchPreview: async (
+    requestId: string,
+    payload: DispatchPreviewPayload,
+  ): Promise<DispatchPreviewResponseDto> => {
+    const response = await apiClient.post(`/RescueRequest/${requestId}/dispatch-preview`, payload);
+    return (response.data?.data ?? response.data) as DispatchPreviewResponseDto;
+  },
+
+  smartAssign: async (
+    requestId: string,
+    payload: SmartAssignPayload,
+  ): Promise<RescueBatchQueueResponseDto> => {
+    const response = await apiClient.post(`/RescueRequest/${requestId}/smart-assign`, payload);
+    return (response.data?.data ?? response.data) as RescueBatchQueueResponseDto;
+  },
+
+  reorderActiveBatch: (teamId: string, payload: ReorderBatchPayload) =>
+    apiClient.patch(`/RescueRequest/teams/${teamId}/active-batch/reorder`, payload),
 
   /** POST /api/RescueRequest/teams/{teamId}/active-batch/recalculate-eta */
   recalculateEta: (teamId: string) =>

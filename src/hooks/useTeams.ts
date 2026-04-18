@@ -1,5 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query';
 import { teamService } from '@/services/teamService';
+import { rescueRequestService } from '@/services/rescueRequestService';
 import type {
   CreateTeamPayload,
   UpdateTeamPayload,
@@ -8,6 +9,8 @@ import type {
   AddTeamMembersBulkPayload,
   CreateTeamJoinRequestPayload,
   ReviewTeamJoinRequestPayload,
+  PagedResponse,
+  Team,
 } from '@/services/teamService';
 import { teamJoinRequestService } from '@/services/teamService';
 import { handleHookError } from './hookErrorUtils';
@@ -26,11 +29,15 @@ export const TEAM_QUERY_KEYS = {
 };
 
 // 1. Main hook for global teams management
-export function useTeams(id?: string, searchParams?: SearchTeamParams) {
+export function useTeams(
+  id?: string,
+  searchParams?: SearchTeamParams,
+  options?: { enabledList?: boolean; enabledDetail?: boolean; enabledSearch?: boolean },
+) {
   const queryClient = useQueryClient();
 
   const {
-    data: teams,
+    data: teamsData,
     isLoading: isLoadingTeams,
     isError: isErrorTeams,
     refetch: refetchTeams,
@@ -38,8 +45,10 @@ export function useTeams(id?: string, searchParams?: SearchTeamParams) {
     queryKey: TEAM_QUERY_KEYS.all,
     queryFn: async () => {
       const response = await teamService.getAll();
-      return response.data;
+      const data = response.data as Team[] | PagedResponse<Team>;
+      return Array.isArray(data) ? data : data.items || [];
     },
+    enabled: options?.enabledList ?? true,
   });
 
   const {
@@ -54,7 +63,7 @@ export function useTeams(id?: string, searchParams?: SearchTeamParams) {
       const response = await teamService.getById(id);
       return response.data;
     },
-    enabled: !!id,
+    enabled: (options?.enabledDetail ?? true) && !!id,
   });
 
   const {
@@ -66,9 +75,9 @@ export function useTeams(id?: string, searchParams?: SearchTeamParams) {
     queryFn: async () => {
       if (!searchParams) throw new Error('Search params required');
       const response = await teamService.search(searchParams);
-      return response.data;
+      return response.data?.items || [];
     },
-    enabled: !!searchParams,
+    enabled: (options?.enabledSearch ?? true) && !!searchParams,
   });
 
   // Mutations
@@ -100,7 +109,8 @@ export function useTeams(id?: string, searchParams?: SearchTeamParams) {
 
   return {
     // Queries
-    teams: teams || [],
+    teams: teamsData || [],
+    teamsPaging: undefined,
     isLoadingTeams,
     isErrorTeams,
     refetchTeams,
@@ -205,6 +215,9 @@ export function useTeamMembers(teamId: string) {
       return response.data;
     },
     enabled: !!teamId,
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const addMemberMutation = useMutation({
@@ -284,6 +297,9 @@ export function useTeamLatestTracking(teamId: string, limit = 100) {
       return response.data;
     },
     enabled: !!teamId,
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   return {
@@ -401,4 +417,32 @@ export function useTeamJoinRequests(teamId?: string) {
     rejectRequest: rejectRequestMutation.mutateAsync,
     rejectRequestStatus: rejectRequestMutation.status,
   };
+}
+
+/**
+ * Lấy active-batch của nhiều team song song.
+ * Rule cho TeamAllocation: team nào còn active batch thì không cho assign thêm.
+ * Lý do: team đó đã có mission đang chạy hoặc đang trên đường xử lý.
+ */
+export function useTeamsActiveBatches(teamIds: string[]) {
+  const results = useQueries({
+    queries: teamIds.map((teamId) => ({
+      queryKey: ['teams', teamId, 'active-batch'] as const,
+      queryFn: () => rescueRequestService.getActiveBatch(teamId),
+      staleTime: 10_000,
+      retry: false,
+    })),
+  });
+
+  const busyTeamIds = new Set<string>();
+  results.forEach((result, index) => {
+    const batch = result.data;
+    if (!batch) return;
+    const hasActiveBatch = (batch.items || []).length > 0;
+    if (hasActiveBatch) busyTeamIds.add(teamIds[index]);
+  });
+
+  const isLoading = results.some((r) => r.isLoading);
+
+  return { busyTeamIds, isLoading };
 }

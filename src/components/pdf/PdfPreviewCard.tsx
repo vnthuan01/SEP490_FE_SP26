@@ -5,9 +5,11 @@ import { Button } from '@/components/ui/button';
 export function PdfPreviewCard({
   pdfBytes,
   title,
+  className,
 }: {
   pdfBytes: Uint8Array | null;
   title: string;
+  className?: string;
 }) {
   const pdfUrl = useMemo(() => {
     if (!pdfBytes) return '';
@@ -24,8 +26,8 @@ export function PdfPreviewCard({
   }, [pdfUrl]);
 
   return (
-    <Card className="border-border bg-card">
-      <CardContent className="p-4 space-y-3">
+    <Card className={`border-border bg-card ${className || ''}`}>
+      <CardContent className="p-4 space-y-3 h-full flex flex-col">
         <div className="flex items-center justify-between gap-3">
           <p className="font-semibold text-foreground">{title}</p>
           {pdfUrl && (
@@ -41,10 +43,10 @@ export function PdfPreviewCard({
           <iframe
             title={title}
             src={pdfUrl}
-            className="h-[480px] w-full rounded-xl border border-border bg-background"
+            className="min-h-[640px] flex-1 w-full rounded-xl border border-border bg-background"
           />
         ) : (
-          <div className="flex h-[220px] items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 text-sm text-muted-foreground">
+          <div className="flex min-h-[640px] flex-1 items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 text-sm text-muted-foreground">
             Chưa có PDF để xem trước.
           </div>
         )}

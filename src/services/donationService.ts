@@ -16,6 +16,8 @@ export interface CreateDonationCheckoutPayload {
   amount: number;
   donorName: string;
   message?: string;
+  returnUrl?: string;
+  cancelUrl?: string;
 }
 
 export interface DonationCheckoutResponse {

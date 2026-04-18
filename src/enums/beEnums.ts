@@ -204,6 +204,41 @@ export const RescuePriorityLevel = {
 
 export type RescuePriorityLevel = (typeof RescuePriorityLevel)[keyof typeof RescuePriorityLevel];
 
+export const PriorityLevelLabel: Record<RescuePriorityLevel, string> = {
+  [RescuePriorityLevel.Low]: 'Thấp',
+  [RescuePriorityLevel.Medium]: 'Trung bình',
+  [RescuePriorityLevel.High]: 'Cao',
+  [RescuePriorityLevel.Critical]: 'Khẩn cấp',
+};
+export function getPriorityLevelLabel(value: number | string | null | undefined) {
+  if (value == null) return 'Không có mức ưu tiên';
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+
+    if (normalized === '0' || normalized === 'low') {
+      return PriorityLevelLabel[RescuePriorityLevel.Low];
+    }
+    if (normalized === '1' || normalized === 'medium') {
+      return PriorityLevelLabel[RescuePriorityLevel.Medium];
+    }
+    if (normalized === '2' || normalized === 'high') {
+      return PriorityLevelLabel[RescuePriorityLevel.High];
+    }
+    if (normalized === '3' || normalized === 'critical') {
+      return PriorityLevelLabel[RescuePriorityLevel.Critical];
+    }
+
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) {
+      return PriorityLevelLabel[parsed as RescuePriorityLevel] ?? 'Không hợp lệ';
+    }
+
+    return 'Không hợp lệ';
+  }
+
+  return PriorityLevelLabel[value as RescuePriorityLevel] ?? 'Không hợp lệ';
+}
 // ─── Disaster / Urgency ────────────────────────────────────────────────────────
 
 export const DisasterType = {
@@ -467,6 +502,34 @@ export const CampaignTeamRole = {
 } as const;
 
 export type CampaignTeamRole = (typeof CampaignTeamRole)[keyof typeof CampaignTeamRole];
+
+export const DeliveryMode = {
+  DoorToDoor: 0,
+  PickupAtPoint: 1,
+} as const;
+
+export type DeliveryMode = (typeof DeliveryMode)[keyof typeof DeliveryMode];
+
+export const HouseholdFulfillmentStatus = {
+  Pending: 0,
+  PartiallyDelivered: 1,
+  Delivered: 2,
+  Skipped: 3,
+} as const;
+
+export type HouseholdFulfillmentStatus =
+  (typeof HouseholdFulfillmentStatus)[keyof typeof HouseholdFulfillmentStatus];
+
+export const SupplyShortageRequestStatus = {
+  Pending: 0,
+  Approved: 1,
+  Fulfilled: 2,
+  Rejected: 3,
+  Cancelled: 4,
+} as const;
+
+export type SupplyShortageRequestStatus =
+  (typeof SupplyShortageRequestStatus)[keyof typeof SupplyShortageRequestStatus];
 
 export const CampaignTaskStatus = {
   Planned: 0,
@@ -843,6 +906,55 @@ export const CampaignTypeLabel: Record<CampaignType, string> = {
   [CampaignType.Relief]: 'Cứu trợ',
   [CampaignType.Rescue]: 'Cứu hộ',
 };
+
+export const DeliveryModeLabel: Record<DeliveryMode, string> = {
+  [DeliveryMode.DoorToDoor]: 'Phát tận nơi',
+  [DeliveryMode.PickupAtPoint]: 'Nhận tại điểm phát',
+};
+
+export const HouseholdFulfillmentStatusLabel: Record<HouseholdFulfillmentStatus, string> = {
+  [HouseholdFulfillmentStatus.Pending]: 'Chờ phát',
+  [HouseholdFulfillmentStatus.PartiallyDelivered]: 'Phát một phần',
+  [HouseholdFulfillmentStatus.Delivered]: 'Đã phát',
+  [HouseholdFulfillmentStatus.Skipped]: 'Bỏ qua',
+};
+
+export const SupplyShortageRequestStatusLabel: Record<SupplyShortageRequestStatus, string> = {
+  [SupplyShortageRequestStatus.Pending]: 'Chờ duyệt',
+  [SupplyShortageRequestStatus.Approved]: 'Đã duyệt',
+  [SupplyShortageRequestStatus.Fulfilled]: 'Đã đáp ứng',
+  [SupplyShortageRequestStatus.Rejected]: 'Từ chối',
+  [SupplyShortageRequestStatus.Cancelled]: 'Đã hủy',
+};
+
+export function getDeliveryModeBadgeVariant(value: unknown): 'info' | 'warning' | 'outline' {
+  const n = parseEnumValue(value);
+  if (n === DeliveryMode.DoorToDoor) return 'warning';
+  if (n === DeliveryMode.PickupAtPoint) return 'info';
+  return 'outline';
+}
+
+export function getHouseholdFulfillmentStatusBadgeVariant(
+  value: unknown,
+): 'success' | 'warning' | 'destructive' | 'outline' {
+  const n = parseEnumValue(value);
+  if (n === HouseholdFulfillmentStatus.Delivered) return 'success';
+  if (n === HouseholdFulfillmentStatus.PartiallyDelivered) return 'warning';
+  if (n === HouseholdFulfillmentStatus.Skipped) return 'destructive';
+  return 'outline';
+}
+
+export function getSupplyShortageRequestStatusBadgeVariant(
+  value: unknown,
+): 'success' | 'warning' | 'destructive' | 'info' | 'outline' {
+  const n = parseEnumValue(value);
+  if (n === SupplyShortageRequestStatus.Approved) return 'success';
+  if (n === SupplyShortageRequestStatus.Pending) return 'warning';
+  if (n === SupplyShortageRequestStatus.Rejected || n === SupplyShortageRequestStatus.Cancelled)
+    return 'destructive';
+  if (n === SupplyShortageRequestStatus.Fulfilled) return 'info';
+  return 'outline';
+}
 
 export const DisasterTypeLabel: Record<DisasterType, string> = {
   [DisasterType.Flood]: 'Lũ lụt',
@@ -1342,6 +1454,64 @@ export function getCampaignTypeLabel(value: unknown): string {
     if (normalized === 'fundraising') return CampaignTypeLabel[CampaignType.Fundraising];
     if (normalized === 'relief') return CampaignTypeLabel[CampaignType.Relief];
     if (normalized === 'rescue') return CampaignTypeLabel[CampaignType.Rescue];
+    return value;
+  }
+
+  return 'Không rõ';
+}
+
+export function getDeliveryModeLabel(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in DeliveryModeLabel) return DeliveryModeLabel[n as DeliveryMode];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'doortodoor') return DeliveryModeLabel[DeliveryMode.DoorToDoor];
+    if (normalized === 'pickupatpoint') return DeliveryModeLabel[DeliveryMode.PickupAtPoint];
+    return value;
+  }
+
+  return 'Không rõ';
+}
+
+export function getHouseholdFulfillmentStatusLabel(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in HouseholdFulfillmentStatusLabel)
+    return HouseholdFulfillmentStatusLabel[n as HouseholdFulfillmentStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'pending')
+      return HouseholdFulfillmentStatusLabel[HouseholdFulfillmentStatus.Pending];
+    if (normalized === 'partiallydelivered')
+      return HouseholdFulfillmentStatusLabel[HouseholdFulfillmentStatus.PartiallyDelivered];
+    if (normalized === 'delivered')
+      return HouseholdFulfillmentStatusLabel[HouseholdFulfillmentStatus.Delivered];
+    if (normalized === 'skipped')
+      return HouseholdFulfillmentStatusLabel[HouseholdFulfillmentStatus.Skipped];
+    return value;
+  }
+
+  return 'Không rõ';
+}
+
+export function getSupplyShortageRequestStatusLabel(value: unknown): string {
+  const n = parseEnumValue(value);
+  if (n in SupplyShortageRequestStatusLabel)
+    return SupplyShortageRequestStatusLabel[n as SupplyShortageRequestStatus];
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'pending')
+      return SupplyShortageRequestStatusLabel[SupplyShortageRequestStatus.Pending];
+    if (normalized === 'approved')
+      return SupplyShortageRequestStatusLabel[SupplyShortageRequestStatus.Approved];
+    if (normalized === 'fulfilled')
+      return SupplyShortageRequestStatusLabel[SupplyShortageRequestStatus.Fulfilled];
+    if (normalized === 'rejected')
+      return SupplyShortageRequestStatusLabel[SupplyShortageRequestStatus.Rejected];
+    if (normalized === 'cancelled' || normalized === 'canceled')
+      return SupplyShortageRequestStatusLabel[SupplyShortageRequestStatus.Cancelled];
     return value;
   }
 

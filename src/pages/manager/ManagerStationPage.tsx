@@ -51,7 +51,7 @@ import {
   ReliefStationStatusLabel,
   getReliefStationStatusClass,
 } from '@/enums/beEnums';
-import { managerNavItems, managerProjects } from './components/sidebarConfig';
+import { managerNavGroups } from './components/sidebarConfig';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import goongjs from '@goongmaps/goong-js';
@@ -358,7 +358,7 @@ export default function ManagerStationPage() {
   const pagination = stationsResponse;
 
   return (
-    <DashboardLayout projects={managerProjects} navItems={managerNavItems}>
+    <DashboardLayout navGroups={managerNavGroups}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>

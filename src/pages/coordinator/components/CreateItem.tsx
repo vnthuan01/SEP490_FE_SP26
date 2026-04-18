@@ -15,8 +15,7 @@ import { Separator } from '@/components/ui/separator';
 import type { NewInventoryItem, ItemInventoryProps } from '@/types/createItemInventory';
 import CustomCalendar from '@/components/ui/customCalendar';
 import { clearDialogDraft, readDialogDraft, writeDialogDraft } from '@/lib/dialogDraft';
-
-const UNIT_OPTIONS = ['Thùng', 'Hộp', 'Bao', 'Chai', 'Cái', 'Gói'];
+import { formatNumberInputVN, parseFormattedNumber } from '@/lib/utils';
 
 const parseLocalDateFromYmd = (value?: string | null) => {
   if (!value) return undefined;
@@ -49,6 +48,46 @@ export function CreateInventoryItemDialog({
   existingStock,
 }: ItemInventoryProps) {
   const CREATE_ITEM_DRAFT_KEY = 'coordinator-create-item-draft';
+  const buildInitialForm = React.useCallback(
+    (draft?: NewInventoryItem | null): NewInventoryItem => {
+      const selected = supplyItems.find((item) => item.id === initialSupplyItemId);
+      const isQuickImportExistingItem = Boolean(existingStock && selected);
+
+      if (isQuickImportExistingItem) {
+        return {
+          supplyItemId: selected?.id || '',
+          name: selected?.name || '',
+          category: selected?.category || '',
+          icon: selected?.icon || '',
+          iconUrl: selected?.iconUrl || selected?.icon || '',
+          unit: selected?.unit || '',
+          quantity: draft?.quantity && draft.quantity > 0 ? draft.quantity : 1,
+          capacity: existingStock?.maximumStockLevel,
+          expirationDate: null,
+          note: draft?.note || '',
+        };
+      }
+
+      if (draft) {
+        return draft;
+      }
+
+      return {
+        supplyItemId: selected?.id || '',
+        name: selected?.name || '',
+        category: selected?.category || '',
+        icon: selected?.icon || '',
+        iconUrl: selected?.iconUrl || selected?.icon || '',
+        unit: selected?.unit || '',
+        quantity: 1,
+        capacity: existingStock?.maximumStockLevel,
+        expirationDate: null,
+        note: '',
+      };
+    },
+    [existingStock, initialSupplyItemId, supplyItems],
+  );
+
   const [form, setForm] = React.useState<NewInventoryItem>({
     supplyItemId: '',
     name: '',
@@ -61,28 +100,17 @@ export function CreateInventoryItemDialog({
   });
   const [openExpirationDateCalendarDialog, setOpenExpirationDateCalendarDialog] =
     React.useState(false);
+  const [errors, setErrors] = React.useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
-    const selected = supplyItems.find((item) => item.id === initialSupplyItemId);
     const draft = readDialogDraft<NewInventoryItem | null>(CREATE_ITEM_DRAFT_KEY, null);
-    if (draft) {
-      setForm(draft);
-      return;
-    }
-    setForm({
-      supplyItemId: selected?.id || '',
-      name: selected?.name || '',
-      category: selected?.category || '',
-      icon: selected?.icon || '',
-      iconUrl: selected?.iconUrl || selected?.icon || '',
-      unit: selected?.unit || '',
-      quantity: 1,
-      capacity: existingStock?.maximumStockLevel,
-      expirationDate: null,
-    });
+    setErrors({});
+    setSubmitting(false);
+    setForm(buildInitialForm(draft));
     setOpenExpirationDateCalendarDialog(false);
-  }, [open, initialSupplyItemId, supplyItems, existingStock]);
+  }, [open, buildInitialForm]);
 
   React.useEffect(() => {
     writeDialogDraft(CREATE_ITEM_DRAFT_KEY, form);
@@ -90,9 +118,12 @@ export function CreateInventoryItemDialog({
 
   const update = <K extends keyof NewInventoryItem>(key: K, value: NewInventoryItem[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next[key as string];
+      return next;
+    });
   };
-
-  const canSubmit = form.supplyItemId && form.unit.trim() && form.quantity > 0;
 
   const handleSelectSupplyItem = (supplyItemId: string) => {
     const selected = supplyItems.find((item) => item.id === supplyItemId);
@@ -107,6 +138,21 @@ export function CreateInventoryItemDialog({
       iconUrl: selected.iconUrl || selected.icon,
       unit: selected.unit,
     }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next['supplyItemId'];
+      delete next['unit'];
+      return next;
+    });
+  };
+
+  const validate = (): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    if (!form.supplyItemId) errs['supplyItemId'] = 'Vui lòng chọn vật tư từ danh mục.';
+    if (!form.unit.trim()) errs['unit'] = 'Không tìm thấy đơn vị của vật tư đã chọn.';
+    if (!form.quantity || form.quantity <= 0) errs['quantity'] = 'Số lượng phải lớn hơn 0.';
+    if (existingStock && !form.note?.trim()) errs['note'] = 'Vui lòng nhập lý do nhập kho.';
+    return errs;
   };
 
   const closeExpirationDateCalendarDialogAction = () => {
@@ -128,8 +174,14 @@ export function CreateInventoryItemDialog({
             <Label>
               Chọn vật tư có sẵn <span className="text-red-500">*</span>
             </Label>
-            <Select value={form.supplyItemId} onValueChange={handleSelectSupplyItem}>
-              <SelectTrigger>
+            <Select
+              value={form.supplyItemId}
+              onValueChange={handleSelectSupplyItem}
+              disabled={!!existingStock}
+            >
+              <SelectTrigger
+                className={errors['supplyItemId'] ? 'border-red-500 focus:ring-red-500' : ''}
+              >
                 <SelectValue placeholder="Chọn vật tư từ danh mục" />
               </SelectTrigger>
               <SelectContent>
@@ -148,6 +200,12 @@ export function CreateInventoryItemDialog({
                 ))}
               </SelectContent>
             </Select>
+            {errors['supplyItemId'] && (
+              <p className="text-xs text-red-500 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px]">error</span>
+                {errors['supplyItemId']}
+              </p>
+            )}
           </div>
 
           {/* NAME */}
@@ -160,16 +218,6 @@ export function CreateInventoryItemDialog({
           <div className="space-y-2">
             <Label>Danh mục</Label>
             <Input placeholder="Danh mục tự động điền theo vật tư" value={form.category} readOnly />
-          </div>
-
-          {/* ICON */}
-          <div className="space-y-2">
-            <Label>Icon</Label>
-            <Input
-              placeholder="Icon tự động điền theo vật tư"
-              value={form.iconUrl || form.icon || ''}
-              readOnly
-            />
           </div>
 
           <Separator />
@@ -205,39 +253,34 @@ export function CreateInventoryItemDialog({
                 Số lượng nhập <span className="text-red-500">*</span>
               </Label>
               <Input
-                type="number"
-                min={1}
-                value={form.quantity}
+                value={formatNumberInputVN(form.quantity)}
+                className={errors['quantity'] ? 'border-red-500 focus:ring-red-500' : ''}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  update('quantity', Number(e.target.value))
+                  update('quantity', parseFormattedNumber(e.target.value))
                 }
               />
+              {errors['quantity'] && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">error</span>
+                  {errors['quantity']}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
-              <Label>
-                Đơn vị <span className="text-red-500">*</span>
-              </Label>
-
-              <select
+              <Label>Đơn vị</Label>
+              <Input
                 value={form.unit}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                  update('unit', e.target.value)
-                }
-                className="
-                  w-full h-10 rounded-md border border-border
-                  bg-background px-3 text-sm text-foreground
-                  focus:outline-none focus:ring-2 focus:ring-primary
-                "
-              >
-                <option value="">-- Chọn đơn vị --</option>
-
-                {UNIT_OPTIONS.map((unit) => (
-                  <option key={unit} value={unit}>
-                    {unit}
-                  </option>
-                ))}
-              </select>
+                readOnly
+                placeholder="Đơn vị sẽ tự động lấy theo vật tư đã chọn"
+                className={errors['unit'] ? 'border-red-500 focus:ring-red-500' : ''}
+              />
+              {errors['unit'] && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">error</span>
+                  {errors['unit']}
+                </p>
+              )}
             </div>
           </div>
 
@@ -247,13 +290,14 @@ export function CreateInventoryItemDialog({
               {existingStock ? 'Sức chứa tối đa hiện tại' : 'Sức chứa tối đa (optional)'}
             </Label>
             <Input
-              type="number"
-              min={form.quantity}
-              placeholder="Ví dụ: 1000"
-              value={form.capacity ?? ''}
+              placeholder="Ví dụ: 1.000"
+              value={formatNumberInputVN(form.capacity ?? '')}
               disabled={!!existingStock}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                update('capacity', e.target.value ? Number(e.target.value) : undefined)
+                update(
+                  'capacity',
+                  e.target.value ? parseFormattedNumber(e.target.value) : undefined,
+                )
               }
             />
           </div>
@@ -339,11 +383,17 @@ export function CreateInventoryItemDialog({
                 rows={3}
                 placeholder="Ví dụ: Bổ sung vật tư do nhu cầu sử dụng tăng cao"
                 value={form.note || ''}
+                className={`resize-none ${errors['note'] ? 'border-red-500 focus:ring-red-500' : ''}`}
                 onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                   update('note', e.target.value)
                 }
-                className="resize-none"
               />
+              {errors['note'] && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">error</span>
+                  {errors['note']}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -354,18 +404,8 @@ export function CreateInventoryItemDialog({
             variant="outline"
             onClick={() => {
               clearDialogDraft(CREATE_ITEM_DRAFT_KEY);
-              const selected = supplyItems.find((item) => item.id === initialSupplyItemId);
-              setForm({
-                supplyItemId: selected?.id || '',
-                name: selected?.name || '',
-                category: selected?.category || '',
-                icon: selected?.icon || '',
-                iconUrl: selected?.iconUrl || selected?.icon || '',
-                unit: selected?.unit || '',
-                quantity: 1,
-                capacity: existingStock?.maximumStockLevel,
-                expirationDate: null,
-              });
+              setErrors({});
+              setForm(buildInitialForm(null));
             }}
           >
             <span className="material-symbols-outlined mr-1">remove_done</span>
@@ -377,15 +417,24 @@ export function CreateInventoryItemDialog({
           </Button>
           <Button
             variant="primary"
-            disabled={!canSubmit}
-            onClick={() => {
+            disabled={submitting}
+            onClick={async () => {
+              const errs = validate();
+              if (Object.keys(errs).length > 0) {
+                setErrors(errs);
+                return;
+              }
               clearDialogDraft(CREATE_ITEM_DRAFT_KEY);
-              onSubmit(form);
-              onOpenChange(false);
+              setSubmitting(true);
+              try {
+                await onSubmit(form);
+              } finally {
+                setSubmitting(false);
+              }
             }}
           >
             <span className="material-symbols-outlined mr-2">add</span>
-            Nhập kho
+            {submitting ? 'Đang nhập...' : 'Nhập kho'}
           </Button>
         </div>
       </DialogContent>

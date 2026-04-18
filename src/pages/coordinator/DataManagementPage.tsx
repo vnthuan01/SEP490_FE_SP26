@@ -16,7 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { ReliefMap } from './components/ReliefMap';
 import { HEADQUARTERS, reliefLocationsData, teamsData } from './components/mockData';
-import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { coordinatorNavGroups } from './components/sidebarConfig';
 
 const GOONG_MAP_KEY = import.meta.env.VITE_GOONG_MAP_KEY || 'YOUR_GOONG_MAP_KEY';
 const GOONG_API_KEY = import.meta.env.VITE_GOONG_API_KEY || '';
@@ -135,7 +135,7 @@ export default function CoordinatorDataManagementPage() {
   };
 
   return (
-    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+    <DashboardLayout navGroups={coordinatorNavGroups}>
       {/* Page Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-5 mb-8">
         <div className="flex flex-col gap-2 max-w-2xl">

@@ -6,6 +6,8 @@ import DonationManagementPage from '@/pages/admin/DonationManagementPage';
 import AdminUserManagementPage from '@/pages/admin/UserManagementPage';
 import PublicDonatePage from '@/pages/public/PublicDonatePage';
 import DonationStatusPage from '@/pages/public/DonationStatusPage';
+import DonationReturnPage from '@/pages/public/DonationReturnPage';
+import DonationCancelPage from '@/pages/public/DonationCancelPage';
 import FundraisingCampaignListPage from '@/pages/public/FundraisingCampaignListPage';
 import CoordinatorVolunteerRequestPage from '@/pages/coordinator/VolunteerRequestManagement';
 import CoordinatorDashboardPage from '@/pages/coordinator/DashboardPage';
@@ -17,6 +19,9 @@ import CoordinatorVolunteerAllocationPage from '@/pages/coordinator/VolunteerAll
 import CoordinatorDataManagementPage from '@/pages/coordinator/DataManagementPage';
 import ReliefStationPage from '@/pages/coordinator/ReliefStationPage';
 import MissionTrackingPage from '@/pages/coordinator/MissionTrackingPage';
+import DispatchPage from '@/pages/coordinator/DispatchPage';
+import ReliefDistributionPage from '@/pages/coordinator/ReliefDistributionPage';
+import CoordinatorVehicleManagementPage from '@/pages/coordinator/CoordinatorVehicleManagementPage';
 import SettingsPage from '@/pages/user/settings';
 
 // Manager pages
@@ -25,6 +30,7 @@ import ManagerDashboardPage from '@/pages/manager/ManagerDashboardPage';
 import ManagerVehicleManagementPage from '@/pages/manager/ManagerVehicleManagementPage';
 import ManagerInventoryCoordinationPage from '@/pages/manager/ManagerInventoryCoordinationPage';
 import ManagerCampaignPage from '@/pages/manager/ManagerCampaignPage';
+import ManagerReliefDistributionPage from '@/pages/manager/ManagerReliefDistributionPage';
 
 import type { AppRoute } from '@/types/routes';
 import RoleBasedRoute from './protectedRoute';
@@ -40,6 +46,8 @@ export const routes: AppRoute[] = [
   { path: '/fundraising', element: <FundraisingCampaignListPage />, isProtected: false },
   { path: '/donate/:campaignId', element: <PublicDonatePage />, isProtected: false },
   { path: '/donate/status/:donationId', element: <DonationStatusPage />, isProtected: false },
+  { path: '/donate/return', element: <DonationReturnPage />, isProtected: false },
+  { path: '/donate/cancel', element: <DonationCancelPage />, isProtected: false },
   //Admin routes
   {
     path: '/portal/admin/dashboard',
@@ -129,6 +137,24 @@ export const routes: AppRoute[] = [
     roles: [UserRole.Coordinator],
     isProtected: true,
   },
+  {
+    path: '/portal/coordinator/dispatch',
+    element: <DispatchPage />,
+    roles: [UserRole.Coordinator],
+    isProtected: true,
+  },
+  {
+    path: '/portal/coordinator/relief-distribution',
+    element: <ReliefDistributionPage />,
+    roles: [UserRole.Coordinator],
+    isProtected: true,
+  },
+  {
+    path: '/portal/coordinator/vehicles',
+    element: <CoordinatorVehicleManagementPage />,
+    roles: [UserRole.Coordinator],
+    isProtected: true,
+  },
 
   // Manager routes
   {
@@ -158,6 +184,12 @@ export const routes: AppRoute[] = [
   {
     path: '/portal/manager/campaigns',
     element: <ManagerCampaignPage />,
+    roles: [UserRole.Manager],
+    isProtected: true,
+  },
+  {
+    path: '/portal/manager/relief-distribution',
+    element: <ManagerReliefDistributionPage />,
     roles: [UserRole.Manager],
     isProtected: true,
   },

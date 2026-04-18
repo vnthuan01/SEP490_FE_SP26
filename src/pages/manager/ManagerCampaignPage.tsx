@@ -80,7 +80,7 @@ import type {
 } from '@/services/campaignService';
 import { campaignService } from '@/services/campaignService';
 import { toast } from 'sonner';
-import { managerNavItems, managerProjects } from './components/sidebarConfig';
+import { managerNavGroups } from './components/sidebarConfig';
 import { formatNumberInputVN, formatNumberVN, normalizeNumberInput } from '@/lib/utils';
 import {
   CampaignCompletionRule,
@@ -106,17 +106,28 @@ const parseIsoToDate = (value?: string | null): Date | undefined => {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 };
 
-const toUtcNoonIso = (date: Date): string => {
-  return new Date(
-    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0),
-  ).toISOString();
-};
-
 const formatDateVN = (isoString?: string): string => {
   if (!isoString) return '';
   const d = parseIsoToDate(isoString);
   if (!d) return '';
   return d.toLocaleDateString('vi-VN');
+};
+
+const formatTimeValue = (isoString?: string): string => {
+  const d = parseIsoToDate(isoString);
+  if (!d) return '08:00';
+  return d.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+};
+
+const mergeDateAndTimeToIso = (baseIso: string | undefined, timeValue: string): string => {
+  const baseDate = parseIsoToDate(baseIso) ?? new Date();
+  const [hours, minutes] = timeValue.split(':').map(Number);
+  baseDate.setHours(hours || 0, minutes || 0, 0, 0);
+  return baseDate.toISOString();
 };
 
 const normalizeLocationText = (value?: string | null) => {
@@ -267,6 +278,8 @@ export default function ManagerCampaignPage() {
   // Calendar open state for start/end date pickers
   const [openStartCalendar, setOpenStartCalendar] = useState(false);
   const [openEndCalendar, setOpenEndCalendar] = useState(false);
+  const [openEditStartCalendar, setOpenEditStartCalendar] = useState(false);
+  const [openEditEndCalendar, setOpenEditEndCalendar] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -380,6 +393,7 @@ export default function ManagerCampaignPage() {
 
   // Auto-save draft 400ms after any field change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/incompatible-library
     const subscription = form.watch((values) => {
       if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
       draftTimerRef.current = setTimeout(() => {
@@ -652,7 +666,7 @@ export default function ManagerCampaignPage() {
   );
 
   return (
-    <DashboardLayout projects={managerProjects} navItems={managerNavItems}>
+    <DashboardLayout navGroups={managerNavGroups}>
       <div className="flex flex-col gap-6 w-full max-w-full relative">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -1197,9 +1211,18 @@ export default function ManagerCampaignPage() {
                             {openStartCalendar && (
                               <div className="absolute z-50 mt-2 rounded-xl border border-border bg-white shadow-lg p-3 w-fit">
                                 <CustomCalendar
+                                  disabledDays={{ before: new Date() }}
                                   value={parseIsoToDate(field.value)}
                                   onChange={(date) => {
-                                    field.onChange(date ? toUtcNoonIso(date) : '');
+                                    if (!date) {
+                                      field.onChange('');
+                                      setOpenStartCalendar(false);
+                                      return;
+                                    }
+
+                                    const current = parseIsoToDate(field.value) ?? new Date();
+                                    date.setHours(current.getHours(), current.getMinutes(), 0, 0);
+                                    field.onChange(date.toISOString());
                                     setOpenStartCalendar(false);
                                   }}
                                 />
@@ -1227,6 +1250,17 @@ export default function ManagerCampaignPage() {
                                 </div>
                               </div>
                             )}
+
+                            <Input
+                              className="mt-3"
+                              type="time"
+                              value={formatTimeValue(field.value)}
+                              onChange={(event) =>
+                                field.onChange(
+                                  mergeDateAndTimeToIso(field.value, event.target.value),
+                                )
+                              }
+                            />
                           </div>
 
                           <FormMessage />
@@ -1272,7 +1306,15 @@ export default function ManagerCampaignPage() {
                                 <CustomCalendar
                                   value={parseIsoToDate(field.value)}
                                   onChange={(date) => {
-                                    field.onChange(date ? toUtcNoonIso(date) : '');
+                                    if (!date) {
+                                      field.onChange('');
+                                      setOpenEndCalendar(false);
+                                      return;
+                                    }
+
+                                    const current = parseIsoToDate(field.value) ?? new Date();
+                                    date.setHours(current.getHours(), current.getMinutes(), 0, 0);
+                                    field.onChange(date.toISOString());
                                     setOpenEndCalendar(false);
                                   }}
                                 />
@@ -1300,6 +1342,17 @@ export default function ManagerCampaignPage() {
                                 </div>
                               </div>
                             )}
+
+                            <Input
+                              className="mt-3"
+                              type="time"
+                              value={formatTimeValue(field.value)}
+                              onChange={(event) =>
+                                field.onChange(
+                                  mergeDateAndTimeToIso(field.value, event.target.value),
+                                )
+                              }
+                            />
                           </div>
 
                           <FormMessage />
@@ -1832,19 +1885,67 @@ export default function ManagerCampaignPage() {
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Ngày bắt đầu</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="datetime-local"
-                                      value={field.value ? field.value.slice(0, 16) : ''}
-                                      onChange={(event) =>
-                                        field.onChange(
-                                          event.target.value
-                                            ? new Date(event.target.value).toISOString()
-                                            : '',
-                                        )
-                                      }
-                                    />
-                                  </FormControl>
+                                  <div className="relative space-y-3">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      className="w-full justify-start gap-2 font-normal"
+                                      onClick={() => {
+                                        setOpenEditStartCalendar((prev) => !prev);
+                                        setOpenEditEndCalendar(false);
+                                      }}
+                                    >
+                                      <span className="material-symbols-outlined text-[16px]">
+                                        calendar_month
+                                      </span>
+                                      {field.value ? formatDateVN(field.value) : 'Chọn ngày'}
+                                    </Button>
+                                    {openEditStartCalendar && (
+                                      <div className="absolute left-0 z-50 mt-2 rounded-xl border border-border bg-background p-3 shadow-lg">
+                                        <CustomCalendar
+                                          value={parseIsoToDate(field.value)}
+                                          onChange={(date) => {
+                                            if (!date) {
+                                              field.onChange('');
+                                              setOpenEditStartCalendar(false);
+                                              return;
+                                            }
+                                            const current =
+                                              parseIsoToDate(field.value) ?? new Date();
+                                            date.setHours(
+                                              current.getHours(),
+                                              current.getMinutes(),
+                                              0,
+                                              0,
+                                            );
+                                            field.onChange(date.toISOString());
+                                            setOpenEditStartCalendar(false);
+                                          }}
+                                        />
+                                        <div className="mt-2 flex justify-end">
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setOpenEditStartCalendar(false)}
+                                          >
+                                            Thu gọn
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )}
+                                    <FormControl>
+                                      <Input
+                                        type="time"
+                                        value={formatTimeValue(field.value)}
+                                        onChange={(event) =>
+                                          field.onChange(
+                                            mergeDateAndTimeToIso(field.value, event.target.value),
+                                          )
+                                        }
+                                      />
+                                    </FormControl>
+                                  </div>
                                   <FormMessage />
                                 </FormItem>
                               )}
@@ -1856,19 +1957,67 @@ export default function ManagerCampaignPage() {
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Ngày kết thúc</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="datetime-local"
-                                      value={field.value ? field.value.slice(0, 16) : ''}
-                                      onChange={(event) =>
-                                        field.onChange(
-                                          event.target.value
-                                            ? new Date(event.target.value).toISOString()
-                                            : '',
-                                        )
-                                      }
-                                    />
-                                  </FormControl>
+                                  <div className="relative space-y-3">
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      className="w-full justify-start gap-2 font-normal"
+                                      onClick={() => {
+                                        setOpenEditEndCalendar((prev) => !prev);
+                                        setOpenEditStartCalendar(false);
+                                      }}
+                                    >
+                                      <span className="material-symbols-outlined text-[16px]">
+                                        calendar_month
+                                      </span>
+                                      {field.value ? formatDateVN(field.value) : 'Chọn ngày'}
+                                    </Button>
+                                    {openEditEndCalendar && (
+                                      <div className="absolute left-0 z-50 mt-2 rounded-xl border border-border bg-background p-3 shadow-lg">
+                                        <CustomCalendar
+                                          value={parseIsoToDate(field.value)}
+                                          onChange={(date) => {
+                                            if (!date) {
+                                              field.onChange('');
+                                              setOpenEditEndCalendar(false);
+                                              return;
+                                            }
+                                            const current =
+                                              parseIsoToDate(field.value) ?? new Date();
+                                            date.setHours(
+                                              current.getHours(),
+                                              current.getMinutes(),
+                                              0,
+                                              0,
+                                            );
+                                            field.onChange(date.toISOString());
+                                            setOpenEditEndCalendar(false);
+                                          }}
+                                        />
+                                        <div className="mt-2 flex justify-end">
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setOpenEditEndCalendar(false)}
+                                          >
+                                            Thu gọn
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )}
+                                    <FormControl>
+                                      <Input
+                                        type="time"
+                                        value={formatTimeValue(field.value)}
+                                        onChange={(event) =>
+                                          field.onChange(
+                                            mergeDateAndTimeToIso(field.value, event.target.value),
+                                          )
+                                        }
+                                      />
+                                    </FormControl>
+                                  </div>
                                   <FormMessage />
                                 </FormItem>
                               )}

@@ -1,11 +1,11 @@
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { coordinatorNavItems, coordinatorProjects } from './components/sidebarConfig';
+import { coordinatorNavGroups } from './components/sidebarConfig';
 
 export default function CoordinatorDashboardPage() {
   return (
-    <DashboardLayout projects={coordinatorProjects} navItems={coordinatorNavItems}>
+    <DashboardLayout navGroups={coordinatorNavGroups}>
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
         <div className="flex flex-col gap-2">

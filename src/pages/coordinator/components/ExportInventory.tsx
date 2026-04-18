@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { formatNumberInputVN, parseFormattedNumber } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ExportInventoryDialogProps, ExportItem } from '@/types/exportInventory';
 import { Textarea } from '@/components/ui/textarea';
@@ -208,10 +209,7 @@ export function ExportInventoryDialog({
                             {editingId === item.id ? (
                               <input
                                 autoFocus
-                                type="number"
-                                min={1}
-                                max={item.current}
-                                defaultValue={item.quantity ?? 1}
+                                defaultValue={formatNumberInputVN(item.quantity ?? 1)}
                                 className="
               absolute inset-0
               rounded-md border border-border bg-background
@@ -219,12 +217,15 @@ export function ExportInventoryDialog({
               focus:outline-none focus:ring-2 focus:ring-primary
             "
                                 onBlur={(e) => {
-                                  setQty(item.id, Number(e.target.value));
+                                  setQty(item.id, parseFormattedNumber(e.target.value));
                                   setEditingId(null);
                                 }}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') {
-                                    setQty(item.id, Number((e.target as HTMLInputElement).value));
+                                    setQty(
+                                      item.id,
+                                      parseFormattedNumber((e.target as HTMLInputElement).value),
+                                    );
                                     setEditingId(null);
                                   }
                                   if (e.key === 'Escape') {
@@ -240,7 +241,7 @@ export function ExportInventoryDialog({
               transition-colors
             "
                               >
-                                {item.quantity ?? 0}
+                                {formatNumberInputVN(item.quantity ?? 0)}
                               </span>
                             )}
                           </div>

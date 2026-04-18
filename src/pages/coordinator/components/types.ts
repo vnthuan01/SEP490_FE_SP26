@@ -43,6 +43,7 @@ export interface TeamMember {
 export interface Team {
   id: string;
   name: string;
+  teamType?: number;
   currentLocation: { lat: number; lng: number };
   vehicle: 'truck' | 'boat' | 'motorcycle' | 'helicopter';
   capacity: { people: number; cargo: number };
@@ -54,6 +55,7 @@ export interface Team {
   status: 'available' | 'moving' | 'rescuing' | 'lost-contact';
   currentAssignment?: string;
   area?: string; // e.g., 'Lệ Thủy, Quảng Bình'
+  disabledReason?: string;
 }
 
 export interface Headquarters {

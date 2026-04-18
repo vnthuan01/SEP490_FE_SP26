@@ -17,9 +17,10 @@ interface DashboardLayoutProps {
   children: ReactNode;
   projects?: Array<{ label: string; path: string; icon: string }>;
   navItems?: Array<{ label: string; path: string; icon: string }>;
+  navGroups?: Array<{ title: string; items: { label: string; path: string; icon: string }[] }>;
 }
 
-export function DashboardLayout({ children, projects, navItems }: DashboardLayoutProps) {
+export function DashboardLayout({ children, projects, navItems, navGroups }: DashboardLayoutProps) {
   const location = useLocation();
   const mainRef = useRef<HTMLDivElement>(null);
 
@@ -67,6 +68,7 @@ export function DashboardLayout({ children, projects, navItems }: DashboardLayou
       <DashboardSidebar
         projects={projects}
         navItems={navItems}
+        navGroups={navGroups}
         isCollapsed={isSidebarCollapsed}
         isMobileOpen={isMobileSidebarOpen}
         onMobileClose={() => setIsMobileSidebarOpen(false)}

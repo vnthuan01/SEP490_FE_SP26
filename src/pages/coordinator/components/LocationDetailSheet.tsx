@@ -18,6 +18,7 @@ interface LocationDetailSheetProps {
   isOpen: boolean;
   onClose: () => void;
   availableTeams: Team[];
+  allTeams?: Team[];
   assignedTeam?: Team;
   onAssignTeam: (_locationId: string, _teamId: string) => void;
 }
@@ -66,6 +67,7 @@ export function LocationDetailSheet({
   isOpen,
   onClose,
   availableTeams,
+  allTeams,
   assignedTeam,
   onAssignTeam,
 }: LocationDetailSheetProps) {
@@ -95,7 +97,7 @@ export function LocationDetailSheet({
     <Sheet open={isOpen} onOpenChange={onClose} modal={false}>
       <SheetContent
         side="left"
-        className="w-[450px] sm:w-[540px] p-0 shadow-2xl border-r-0"
+        className="w-[500px] sm:w-[560px] max-w-[calc(100vw-1rem)] border-r-0 p-0 shadow-2xl"
         overlay={false}
       >
         <ScrollArea className="h-full">
@@ -386,44 +388,64 @@ export function LocationDetailSheet({
               )}
 
               {/* Assignment Form Card */}
-              {location.status === 'unassigned' && availableTeams.length > 0 && (
-                <div className="bg-card text-card-foreground p-4 rounded-xl border border-border border-l-4 border-l-primary shadow-sm flex flex-col gap-3">
-                  <div className="font-semibold text-[15px]">Phân công đội cứu trợ</div>
-                  <div className="flex flex-col gap-3">
-                    <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
-                      <SelectTrigger className="w-full bg-background relative h-10">
-                        <SelectValue placeholder="-- Chọn đội cứu trợ --" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableTeams.map((team) => (
-                          <SelectItem key={team.id} value={team.id}>
-                            <div
-                              className="flex items-center gap-2 border-l-2 pl-2"
-                              style={{ borderLeftColor: 'currentColor' }}
+              {location.status === 'unassigned' &&
+                (allTeams?.length || availableTeams.length > 0) && (
+                  <div className="bg-card text-card-foreground p-4 rounded-xl border border-border border-l-4 border-l-primary shadow-sm flex flex-col gap-3">
+                    <div className="font-semibold text-[15px]">Phân công đội cứu trợ</div>
+                    <div className="flex flex-col gap-3">
+                      <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
+                        <SelectTrigger className="w-full bg-background relative h-10">
+                          <SelectValue placeholder="-- Chọn đội cứu trợ --" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(allTeams || availableTeams).map((team) => (
+                            <SelectItem
+                              key={team.id}
+                              value={team.id}
+                              disabled={Boolean(team.disabledReason)}
                             >
-                              <span className="font-medium">{team.name}</span>
-                              <span className="text-xs text-muted-foreground">
-                                ({team.members} người)
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                              <div
+                                className="flex w-full items-center justify-between gap-3 border-l-2 pl-2"
+                                style={{ borderLeftColor: 'currentColor' }}
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium truncate">{team.name}</span>
+                                    <span className="text-xs text-muted-foreground shrink-0">
+                                      ({team.members} người)
+                                    </span>
+                                  </div>
+                                  {team.disabledReason ? (
+                                    <p className="text-[11px] text-amber-700 mt-0.5 truncate">
+                                      {team.disabledReason}
+                                    </p>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
 
-                    <Button
-                      onClick={handleAssign}
-                      disabled={!selectedTeamId}
-                      className="w-full h-10 shadow-sm transition-all"
-                    >
-                      <span className="material-symbols-outlined text-[1rem] mr-2">
-                        check_circle
-                      </span>
-                      Xác nhận phân công
-                    </Button>
+                      {availableTeams.length === 0 ? (
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                          Hiện không có team khả dụng để phân công.
+                        </p>
+                      ) : null}
+
+                      <Button
+                        onClick={handleAssign}
+                        disabled={!selectedTeamId}
+                        className="w-full h-10 shadow-sm transition-all"
+                      >
+                        <span className="material-symbols-outlined text-[1rem] mr-2">
+                          check_circle
+                        </span>
+                        Xác nhận phân công
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
             </SheetBody>
           </div>
         </ScrollArea>

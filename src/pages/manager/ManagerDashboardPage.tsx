@@ -37,7 +37,7 @@ import { useVehicles } from '@/hooks/useVehicles';
 import { useAnalyzeDisasterRisks } from '@/hooks/useDisasterAnalysis';
 import type { AnalyzeDisasterRiskResponse } from '@/services/disasterAnalysisService';
 import { reverseGeocodeV2 } from '@/services/goongService';
-import { managerNavItems, managerProjects } from './components/sidebarConfig';
+import { managerNavGroups } from './components/sidebarConfig';
 import {
   DisasterType,
   EntityStatus,
@@ -155,9 +155,8 @@ type StationAnalysisPoint = GeoPoint & {
   context: string;
 };
 
- 
 type OnSelectStation = (stationId: string | null) => void;
- 
+
 type OnSelectAnalysis = (analysis: AnalyzeDisasterRiskResponse | null) => void;
 
 const GOONG_API_KEY =
@@ -653,7 +652,7 @@ export default function ManagerDashboardPage() {
   };
 
   return (
-    <DashboardLayout projects={managerProjects} navItems={managerNavItems}>
+    <DashboardLayout navGroups={managerNavGroups}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
