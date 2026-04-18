@@ -188,10 +188,10 @@ export default function CoordinatorTeamManagementPage() {
 
   // Không auto-select khi load — chờ user tự click vào nhóm
   useEffect(() => {
-    if (!teams.length) {
+    if (!teams.length && selectedTeamId !== undefined) {
       setSelectedTeamId(undefined);
     }
-  }, [teams]);
+  }, [selectedTeamId, teams.length]);
 
   const selectedTeam = useMemo(
     () => teams.find((t) => t.id === selectedTeamId),
@@ -253,16 +253,21 @@ export default function CoordinatorTeamManagementPage() {
   const totalListPages = Math.max(1, Math.ceil(filteredTeams.length / TEAM_PAGE_SIZE));
 
   useEffect(() => {
-    setListPage(1);
-  }, [searchTerm, teamStatusFilter]);
+    if (listPage !== 1) {
+      setListPage(1);
+    }
+  }, [listPage, searchTerm, teamStatusFilter]);
 
   useEffect(() => {
     if (listPage > totalListPages) setListPage(totalListPages);
   }, [listPage, totalListPages]);
 
   useEffect(() => {
-    setPageInput(String(listPage));
-  }, [listPage]);
+    const nextPageInput = String(listPage);
+    if (pageInput !== nextPageInput) {
+      setPageInput(nextPageInput);
+    }
+  }, [listPage, pageInput]);
 
   const paginatedTeams = useMemo(() => {
     const start = (listPage - 1) * TEAM_PAGE_SIZE;
@@ -325,7 +330,9 @@ export default function CoordinatorTeamManagementPage() {
         Number(selectedTeam?.teamType ?? 1) !== 1 ||
         reliefCampaigns.length === 0
       ) {
-        if (active) setAssignedReliefCampaigns([]);
+        if (active) {
+          setAssignedReliefCampaigns((prev) => (prev.length > 0 ? [] : prev));
+        }
         return;
       }
 
@@ -351,15 +358,31 @@ export default function CoordinatorTeamManagementPage() {
       );
 
       if (active) {
-        setAssignedReliefCampaigns(
-          results.filter(Boolean) as Array<{
-            campaignId: string;
-            campaignName: string;
-            status: number;
-            campaignTeamId: string;
-            memberCount: number;
-          }>,
-        );
+        const nextAssignments = results.filter(Boolean) as Array<{
+          campaignId: string;
+          campaignName: string;
+          status: number;
+          campaignTeamId: string;
+          memberCount: number;
+        }>;
+
+        setAssignedReliefCampaigns((prev) => {
+          const hasSameAssignments =
+            prev.length === nextAssignments.length &&
+            prev.every((item, index) => {
+              const nextItem = nextAssignments[index];
+              return (
+                nextItem &&
+                item.campaignId === nextItem.campaignId &&
+                item.campaignTeamId === nextItem.campaignTeamId &&
+                item.status === nextItem.status &&
+                item.memberCount === nextItem.memberCount &&
+                item.campaignName === nextItem.campaignName
+              );
+            });
+
+          return hasSameAssignments ? prev : nextAssignments;
+        });
       }
     };
 
@@ -535,22 +558,20 @@ export default function CoordinatorTeamManagementPage() {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <span>
-                  <Button
-                    variant="primary"
-                    className="gap-2 text-base px-6 h-12"
-                    onClick={() => {
-                      if (!reliefStationId) {
-                        toast.error('Bạn chưa được phân vào trạm nào. Không thể tạo đội ngũ.');
-                        return;
-                      }
-                      setIsCreateOpen(true);
-                    }}
-                    disabled={isLoadingStation}
-                  >
-                    <span className="material-symbols-outlined">group_add</span>
-                  </Button>
-                </span>
+                <Button
+                  variant="primary"
+                  className="gap-2 text-base px-6 h-12"
+                  onClick={() => {
+                    if (!reliefStationId) {
+                      toast.error('Bạn chưa được phân vào trạm nào. Không thể tạo đội ngũ.');
+                      return;
+                    }
+                    setIsCreateOpen(true);
+                  }}
+                  disabled={isLoadingStation}
+                >
+                  <span className="material-symbols-outlined">group_add</span>
+                </Button>
               </TooltipTrigger>
               <TooltipContent>
                 <p className="text-white dark:text-black">

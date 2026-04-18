@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -73,6 +74,7 @@ import { useAuthContext } from '@/components/provider/auth/AuthProvider';
 import {
   attachSignatureToPdf,
   buildTransferPdf,
+  updateTransferPdfApprovalData,
   type TransferPdfFillData,
 } from '@/lib/pdfTransferUtils';
 import {
@@ -671,6 +673,84 @@ export default function CoordinatorInventoryPage() {
     ];
   }, [selectedTransfer]);
 
+  const selectedTransferSummaryCompact = useMemo(() => {
+    if (!selectedTransfer) return [] as Array<{ label: string; value: string }>;
+
+    return [
+      {
+        label: 'Mã phiếu',
+        value: selectedTransfer.transferCode || selectedTransfer.id.slice(0, 8),
+      },
+      {
+        label: 'Kho nguồn',
+        value: selectedTransfer.sourceStationName || selectedTransfer.sourceStationId || '—',
+      },
+      {
+        label: 'Kho đích',
+        value:
+          selectedTransfer.destinationStationName || selectedTransfer.destinationStationId || '—',
+      },
+      {
+        label: 'Số dòng vật phẩm',
+        value: formatNumberVN(
+          selectedTransfer.totalRequestedItems || selectedTransfer.items?.length || 0,
+        ),
+      },
+      {
+        label: 'Tổng số lượng',
+        value: formatNumberVN(selectedTransfer.totalRequestedQuantity || 0),
+      },
+    ];
+  }, [selectedTransfer]);
+
+  const selectedTransferMetaRows = useMemo(() => {
+    if (!selectedTransfer) {
+      return [] as Array<{ icon: string; label: string; value: string; tone: string }>;
+    }
+
+    return [
+      {
+        icon: 'barcode',
+        label: 'Mã phiếu',
+        value: selectedTransfer.transferCode || selectedTransfer.id,
+        tone: 'bg-sky-500/10 text-sky-600',
+      },
+      {
+        icon: 'warehouse',
+        label: 'Kho / trạm nguồn',
+        value: selectedTransfer.sourceStationName || selectedTransfer.sourceStationId || '—',
+        tone: 'bg-indigo-500/10 text-indigo-600',
+      },
+      {
+        icon: 'south_east',
+        label: 'Kho đích',
+        value:
+          selectedTransfer.destinationStationName || selectedTransfer.destinationStationId || '—',
+        tone: 'bg-emerald-500/10 text-emerald-600',
+      },
+      {
+        icon: 'person',
+        label: 'Người yêu cầu',
+        value: selectedTransfer.requestedByName || 'Chưa rõ',
+        tone: 'bg-amber-500/10 text-amber-600',
+      },
+      {
+        icon: 'deployed_code_history',
+        label: 'Tổng dòng vật phẩm',
+        value: formatNumberVN(
+          selectedTransfer.totalRequestedItems || selectedTransfer.items?.length || 0,
+        ),
+        tone: 'bg-violet-500/10 text-violet-600',
+      },
+      {
+        icon: 'inventory_2',
+        label: 'Tổng số lượng',
+        value: formatNumberVN(selectedTransfer.totalRequestedQuantity || 0),
+        tone: 'bg-rose-500/10 text-rose-600',
+      },
+    ];
+  }, [selectedTransfer]);
+
   const isLoading =
     isLoadingStation || isLoadingInventories || isLoadingStocks || isLoadingSupplyItems;
 
@@ -729,6 +809,7 @@ export default function CoordinatorInventoryPage() {
     return {
       transferCode: selectedTransfer.transferCode || selectedTransfer.id,
       creatorName: selectedTransfer.requestedByName || 'Người lập phiếu',
+      creatorEmail: undefined,
       sourceName: selectedTransfer.sourceStationName || selectedTransfer.sourceStationId || '—',
       sourceInventoryName:
         selectedTransfer.sourceStationName || selectedTransfer.sourceStationId || '—',
@@ -743,6 +824,7 @@ export default function CoordinatorInventoryPage() {
       reason: selectedTransfer.reason || parsedNotes.reason,
       notes: parsedNotes.note || parsedNotes.raw || selectedTransfer.notes || '',
       signedDateLabel: new Date().toLocaleDateString('vi-VN'),
+      signedDateTimeLabel: new Date().toLocaleString('vi-VN'),
       referenceAmount,
       referenceAmountText: convertNumberToVietnameseWords(referenceAmount),
       items: (selectedTransfer.items || []).map((item, index) => {
@@ -2629,7 +2711,7 @@ export default function CoordinatorInventoryPage() {
           if (!open) setSelectedTransferId(null);
         }}
       >
-        <DialogContent className="!max-w-none w-[96vw] max-w-7xl h-[92vh] overflow-hidden p-0 flex flex-col">
+        <DialogContent className="!max-w-none w-[96vw] max-w-5xl h-[92vh] overflow-hidden p-0 flex flex-col">
           <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle>Phê duyệt phiếu điều phối</DialogTitle>
             <DialogDescription>
@@ -2639,100 +2721,151 @@ export default function CoordinatorInventoryPage() {
           </DialogHeader>
 
           {selectedTransfer ? (
-            <div className="flex-1 min-h-0 overflow-y-auto p-6 grid grid-cols-1 xl:grid-cols-[minmax(0,1.1fr)_420px] gap-6">
-              <div className="space-y-6 min-w-0">
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <Card className="border-sky-500/20 bg-sky-500/5">
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Mã phiếu</p>
-                      <p className="text-lg font-semibold text-foreground break-all">
-                        {selectedTransfer.transferCode || selectedTransfer.id}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Kho nguồn</p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {selectedTransfer.sourceStationName ||
-                          selectedTransfer.sourceStationId ||
-                          '—'}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Kho đích</p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {selectedTransfer.destinationStationName ||
-                          selectedTransfer.destinationStationId ||
-                          '—'}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Người yêu cầu</p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {selectedTransfer.requestedByName || 'Chưa rõ'}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Card className="shadow-sm">
-                  <CardContent className="p-5 space-y-4">
-                    <div>
-                      <p className="text-base font-semibold text-foreground">
-                        Danh sách vật phẩm cần xử lý
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Điền số lượng thực tế trước khi phê duyệt để lưu đúng nội dung PDF và dữ
-                        liệu phiếu.
-                      </p>
+            <div className="flex-1 min-h-0 overflow-y-auto p-6">
+              <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+                <section className="rounded-3xl border border-sky-500/20 bg-gradient-to-br from-sky-500/10 via-background to-background p-5 shadow-sm">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          appearance="outline"
+                          className={`border ${TRANSFER_STATUS_CLASS[selectedTransfer.status] || 'bg-gray-500/10 text-gray-600 border-gray-500/20'}`}
+                        >
+                          {selectedTransfer.statusName ||
+                            TRANSFER_STATUS_LABEL[selectedTransfer.status] ||
+                            'Không rõ'}
+                        </Badge>
+                        <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                          Hồ sơ phê duyệt
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-foreground break-all">
+                          {selectedTransfer.transferCode || selectedTransfer.id}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Kiểm tra số lượng thực tế, thông tin phê duyệt và PDF trước khi xác nhận.
+                        </p>
+                      </div>
                     </div>
-                    <div className="space-y-3">
-                      {(selectedTransfer.items || []).map((item, index) => {
-                        const matchedSupply = supplyMap.get(item.supplyItemId);
-                        const fieldKey = `${item.supplyItemId}-${index}`;
-                        return (
+                    <div className="grid gap-3 sm:grid-cols-2 md:min-w-[320px]">
+                      {selectedTransferMetaRows.slice(4).map((meta) => (
+                        <div
+                          key={meta.label}
+                          className="rounded-2xl border border-border bg-background/80 p-3"
+                        >
+                          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                            {meta.label}
+                          </p>
+                          <p className="mt-1 text-lg font-semibold text-foreground">{meta.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {selectedTransferMetaRows.slice(0, 4).map((meta) => (
+                      <div
+                        key={meta.label}
+                        className="rounded-2xl border border-border bg-background/80 p-4"
+                      >
+                        <div className="flex items-start gap-3">
                           <div
-                            key={fieldKey}
-                            className="rounded-xl border border-border bg-muted/10 p-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]"
+                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${meta.tone}`}
                           >
-                            <div className="space-y-2 min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="font-semibold text-foreground">
-                                  {item.supplyItemName || matchedSupply?.name || item.supplyItemId}
-                                </p>
-                                {matchedSupply && (
-                                  <Badge
-                                    variant="outline"
-                                    appearance="outline"
-                                    size="xs"
-                                    className={`gap-1 border ${getSupplyCategoryClass(matchedSupply.category)}`}
-                                  >
-                                    <span className="material-symbols-outlined text-[14px]">
-                                      {getSupplyCategoryIcon(matchedSupply.category)}
+                            <span className="material-symbols-outlined text-[20px]">
+                              {meta.icon}
+                            </span>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                              {meta.label}
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-foreground break-words">
+                              {meta.value}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                  <div className="mb-4">
+                    <p className="text-base font-semibold text-foreground">
+                      Danh sách vật phẩm cần xử lý
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Điền số lượng thực tế để nội dung phê duyệt và PDF phản ánh đúng lô hàng sẽ
+                      được duyệt.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {(selectedTransfer.items || []).map((item, index) => {
+                      const matchedSupply = supplyMap.get(item.supplyItemId);
+                      const fieldKey = `${item.supplyItemId}-${index}`;
+                      return (
+                        <div
+                          key={fieldKey}
+                          className="rounded-2xl border border-border bg-muted/10 p-4"
+                        >
+                          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-start">
+                            <div className="min-w-0 space-y-3">
+                              <div className="flex items-start gap-3">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-border bg-background text-primary">
+                                  <span className="material-symbols-outlined text-[20px]">
+                                    {matchedSupply
+                                      ? getSupplyCategoryIcon(matchedSupply.category)
+                                      : 'inventory_2'}
+                                  </span>
+                                </div>
+                                <div className="min-w-0 flex-1 space-y-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-base font-semibold text-foreground break-words">
+                                      {item.supplyItemName ||
+                                        matchedSupply?.name ||
+                                        item.supplyItemId}
+                                    </p>
+                                    {matchedSupply && (
+                                      <Badge
+                                        variant="outline"
+                                        appearance="outline"
+                                        size="xs"
+                                        className={`gap-1 border ${getSupplyCategoryClass(matchedSupply.category)}`}
+                                      >
+                                        <span className="material-symbols-outlined text-[14px]">
+                                          {getSupplyCategoryIcon(matchedSupply.category)}
+                                        </span>
+                                        {getSupplyCategoryLabel(matchedSupply.category)}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                                    <span>
+                                      Yêu cầu:{' '}
+                                      <span className="font-semibold text-foreground">
+                                        {formatNumberVN(
+                                          item.requestedQuantity ?? item.quantity ?? 0,
+                                        )}{' '}
+                                        {matchedSupply?.unit || ''}
+                                      </span>
                                     </span>
-                                    {getSupplyCategoryLabel(matchedSupply.category)}
-                                  </Badge>
-                                )}
+                                    <span>Mã: {item.supplyItemId}</span>
+                                  </div>
+                                  {item.notes && (
+                                    <p className="text-sm leading-6 text-muted-foreground">
+                                      <span className="font-medium text-foreground">Ghi chú:</span>{' '}
+                                      {item.notes}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
-                              <p className="text-sm text-muted-foreground">
-                                SL yêu cầu:{' '}
-                                <span className="font-semibold text-foreground">
-                                  {formatNumberVN(item.requestedQuantity ?? item.quantity ?? 0)}{' '}
-                                  {matchedSupply?.unit || ''}
-                                </span>
-                              </p>
-                              {item.notes && (
-                                <p className="text-sm text-muted-foreground">
-                                  Ghi chú: {item.notes}
-                                </p>
-                              )}
                             </div>
-                            <div className="space-y-2">
+
+                            <div className="space-y-2 rounded-2xl border border-border bg-background/80 p-3">
                               <label className="text-sm font-medium text-foreground">
                                 SL thực tế
                               </label>
@@ -2759,126 +2892,192 @@ export default function CoordinatorInventoryPage() {
                               </p>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
 
-                <Card className="shadow-sm">
-                  <CardContent className="p-5 space-y-4">
-                    <div>
-                      <p className="text-base font-semibold text-foreground">Thông tin phê duyệt</p>
-                      <p className="text-sm text-muted-foreground">
-                        Các dữ liệu này sẽ được điền vào PDF và lưu vào evidenceUrls.
-                      </p>
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-foreground">
-                          Người phê duyệt
-                        </label>
-                        <Input
-                          value={approveTransferForm.approverName}
-                          onChange={(e) =>
-                            setApproveTransferForm((prev) => ({
-                              ...prev,
-                              approverName: e.target.value,
-                            }))
-                          }
-                          placeholder="Nhập tên người phê duyệt"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-foreground">
-                          Số tiền tham chiếu
-                        </label>
-                        <Input
-                          value={approveTransferForm.referenceAmount}
-                          onChange={(e) =>
-                            setApproveTransferForm((prev) => ({
-                              ...prev,
-                              referenceAmount: formatNumberInputVN(
-                                parseFormattedNumber(e.target.value),
-                              ),
-                            }))
-                          }
-                          placeholder="Ví dụ: 12.500.000"
-                        />
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-border bg-muted/10 p-4 text-sm text-muted-foreground">
-                      <p className="font-medium text-foreground">Số tiền bằng chữ</p>
-                      <p className="mt-1">
-                        {convertNumberToVietnameseWords(
-                          parseFormattedNumber(approveTransferForm.referenceAmount || '0'),
-                        ) || 'Chưa có dữ liệu'}
-                      </p>
-                    </div>
-                    <div className="space-y-3">
-                      <p className="text-sm font-medium text-foreground">Chữ ký người phê duyệt</p>
-                      <PdfSignaturePad
-                        onSave={(dataUrl) =>
+                <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                  <div className="mb-4">
+                    <p className="text-base font-semibold text-foreground">Thông tin phê duyệt</p>
+                    <p className="text-sm text-muted-foreground">
+                      Dữ liệu bên dưới sẽ được dùng để tạo nội dung PDF lưu cùng hồ sơ phiếu.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Người phê duyệt</label>
+                      <Input
+                        value={approveTransferForm.approverName}
+                        onChange={(e) =>
                           setApproveTransferForm((prev) => ({
                             ...prev,
-                            approverSignatureDataUrl: dataUrl,
+                            approverName: e.target.value,
                           }))
                         }
+                        placeholder="Nhập tên người phê duyệt"
                       />
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="space-y-6 min-w-0">
-                <PdfPreviewCard
-                  pdfBytes={approveTransferForm.pdfBytes}
-                  title="Xem trước PDF phê duyệt"
-                  className="h-[520px]"
-                />
-
-                <Card className="shadow-sm">
-                  <CardContent className="p-5 space-y-4">
-                    <div>
-                      <p className="text-base font-semibold text-foreground">
-                        Bằng chứng PDF hiện có
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Các file PDF đã lưu trong hồ sơ phiếu sẽ hiển thị ở đây để kiểm tra nhanh.
-                      </p>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">
+                        Số tiền tham chiếu
+                      </label>
+                      <Input
+                        value={approveTransferForm.referenceAmount}
+                        onChange={(e) =>
+                          setApproveTransferForm((prev) => ({
+                            ...prev,
+                            referenceAmount: formatNumberInputVN(
+                              parseFormattedNumber(e.target.value),
+                            ),
+                          }))
+                        }
+                        placeholder="Ví dụ: 12.500.000"
+                      />
                     </div>
-                    {(selectedTransfer.evidenceUrls || []).length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-border bg-muted/10 p-4 text-sm text-muted-foreground">
-                        Chưa có PDF/bằng chứng nào được lưu.
-                      </div>
-                    ) : (
-                      <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
-                        {(selectedTransfer.evidenceUrls || []).map((url, index) => (
-                          <div
-                            key={`${url}-${index}`}
-                            className="rounded-xl border border-border bg-card p-4 space-y-3"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-sm font-medium text-foreground break-all">
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground">Số tiền bằng chữ</p>
+                    <p className="mt-1 leading-6">
+                      {convertNumberToVietnameseWords(
+                        parseFormattedNumber(approveTransferForm.referenceAmount || '0'),
+                      ) || 'Chưa có dữ liệu'}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    <p className="text-sm font-medium text-foreground">Chữ ký người phê duyệt</p>
+                    <PdfSignaturePad
+                      height={240}
+                      helperText="Ký trong khung lớn để nét chữ rõ hơn khi nhúng vào PDF. Sau khi ký, bấm “Lưu chữ ký”."
+                      onSave={(dataUrl) =>
+                        setApproveTransferForm((prev) => ({
+                          ...prev,
+                          approverSignatureDataUrl: dataUrl,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2 rounded-2xl border border-border bg-muted/10 p-4">
+                    <Button
+                      variant="primary"
+                      className="gap-2"
+                      onClick={async () => {
+                        if (!selectedTransferPdfData) return;
+                        const builtPdf = await buildTransferPdf(selectedTransferPdfData);
+                        setApproveTransferForm((prev) => ({ ...prev, pdfBytes: builtPdf }));
+                      }}
+                    >
+                      <span className="material-symbols-outlined text-lg">picture_as_pdf</span>
+                      Tạo / làm mới PDF phê duyệt
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="gap-2"
+                      onClick={async () => {
+                        if (
+                          !selectedTransferPdfData ||
+                          !approveTransferForm.approverSignatureDataUrl
+                        ) {
+                          toast.error('Hãy tạo PDF và lưu chữ ký người phê duyệt trước.');
+                          return;
+                        }
+
+                        const existingPdfUrl = (selectedTransfer.evidenceUrls || []).find((url) =>
+                          url.toLowerCase().includes('.pdf'),
+                        );
+
+                        const basePdfBytes = existingPdfUrl
+                          ? await updateTransferPdfApprovalData(
+                              new Uint8Array(await (await fetch(existingPdfUrl)).arrayBuffer()),
+                              selectedTransferPdfData,
+                            )
+                          : await buildTransferPdf(selectedTransferPdfData);
+
+                        const signedPdf = await attachSignatureToPdf(
+                          basePdfBytes,
+                          approveTransferForm.approverSignatureDataUrl,
+                          {
+                            signerName:
+                              approveTransferForm.approverName.trim() || 'Người phê duyệt',
+                            box: 'approver',
+                          },
+                        );
+
+                        setApproveTransferForm((prev) => ({ ...prev, pdfBytes: signedPdf }));
+                        toast.success(
+                          'Đã cập nhật thông tin mới và nhúng chữ ký vào PDF để xem trước.',
+                        );
+                      }}
+                    >
+                      <span className="material-symbols-outlined text-lg">draw</span>
+                      Cập nhật thông tin & nhúng chữ ký vào PDF
+                    </Button>
+                    <p className="basis-full text-xs text-muted-foreground">
+                      Hệ thống luôn dựng lại PDF từ dữ liệu phiếu mới nhất, nên số tiền tham chiếu,
+                      bằng chữ và số lượng thực tế sẽ được cập nhật đúng trước khi nhúng chữ ký.
+                    </p>
+                  </div>
+                </section>
+
+                <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                  <PdfPreviewCard
+                    pdfBytes={approveTransferForm.pdfBytes}
+                    title="Xem trước PDF phê duyệt"
+                    className="min-h-[760px] w-full overflow-hidden"
+                  />
+                </section>
+
+                <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                  <div className="mb-4">
+                    <p className="text-base font-semibold text-foreground">
+                      Bằng chứng PDF hiện có
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Kiểm tra nhanh các file PDF đã lưu trong hồ sơ phiếu.
+                    </p>
+                  </div>
+
+                  {(selectedTransfer.evidenceUrls || []).length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+                      Chưa có PDF/bằng chứng nào được lưu.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {(selectedTransfer.evidenceUrls || []).map((url, index) => (
+                        <div
+                          key={`${url}-${index}`}
+                          className="overflow-hidden rounded-2xl border border-border bg-muted/10"
+                        >
+                          <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground">
                                 PDF #{index + 1}
                               </p>
-                              <Button variant="outline" size="sm" asChild>
-                                <a href={url} target="_blank" rel="noreferrer">
-                                  Mở link
-                                </a>
-                              </Button>
+                              <p className="text-xs text-muted-foreground break-all">{url}</p>
                             </div>
+                            <Button variant="outline" size="sm" asChild>
+                              <a href={url} target="_blank" rel="noreferrer">
+                                Mở link
+                              </a>
+                            </Button>
+                          </div>
+                          <div className="p-4">
                             <iframe
                               title={`pdf-evidence-${index}`}
                               src={url}
-                              className="h-64 w-full rounded-xl border border-border bg-background"
+                              className="h-[420px] w-full rounded-xl border border-border bg-background"
                             />
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
               </div>
             </div>
           ) : (
@@ -2915,39 +3114,126 @@ export default function CoordinatorInventoryPage() {
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog
+      <Dialog
         open={openShipTransfer}
         onOpenChange={(open) => {
           setOpenShipTransfer(open);
           if (!open) setSelectedTransferId(null);
         }}
-        title="Đánh dấu đang giao"
-        description={`${selectedTransferSummary.join(' • ')}. Phiếu sẽ chuyển sang trạng thái đang vận chuyển.`}
-        confirmText={
-          shipTransferStatus === 'pending' ? 'Đang cập nhật...' : 'Chuyển sang đang giao'
-        }
-        cancelText="Đóng"
-        variant="info"
-        onConfirm={() => {
-          void handleShipTransfer();
-        }}
-      />
+      >
+        <DialogContent className="max-w-2xl overflow-hidden p-0">
+          <DialogHeader className="border-b border-border bg-gradient-to-r from-sky-500/10 via-background to-background px-6 py-5">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-600">
+                <span className="material-symbols-outlined text-[24px]">local_shipping</span>
+              </div>
+              <div className="space-y-1">
+                <DialogTitle>Chuyển phiếu sang “Đang vận chuyển”</DialogTitle>
+                <DialogDescription>
+                  Xác nhận khi hàng đã rời kho nguồn hoặc đơn vị vận chuyển đã tiếp nhận lô hàng.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
 
-      <ConfirmDialog
+          <div className="space-y-5 px-6 py-5">
+            <div className="grid gap-3 rounded-2xl border border-border bg-muted/10 p-4 sm:grid-cols-2">
+              {selectedTransferSummaryCompact.map((item) => (
+                <div key={item.label} className="space-y-1 rounded-xl bg-background/80 p-3">
+                  <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    {item.label}
+                  </p>
+                  <p className="text-sm font-semibold text-foreground break-words">{item.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-muted-foreground">
+              Sau bước này, phiếu sẽ được đánh dấu là{' '}
+              <span className="font-semibold text-sky-700">Đang vận chuyển</span> để đội nhận hàng
+              theo dõi tiến độ. Chưa phát sinh nhập kho đích ở bước này.
+            </div>
+          </div>
+
+          <DialogFooter className="border-t border-border bg-muted/30 px-6 py-4">
+            <DialogClose asChild>
+              <Button variant="outline">Đóng</Button>
+            </DialogClose>
+            <Button
+              variant="primary"
+              className="gap-2"
+              disabled={shipTransferStatus === 'pending'}
+              onClick={() => {
+                void handleShipTransfer();
+              }}
+            >
+              <span className="material-symbols-outlined text-lg">local_shipping</span>
+              {shipTransferStatus === 'pending' ? 'Đang cập nhật...' : 'Xác nhận đang vận chuyển'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={openReceiveTransfer}
         onOpenChange={(open) => {
           setOpenReceiveTransfer(open);
           if (!open) setSelectedTransferId(null);
         }}
-        title="Xác nhận nhận hàng"
-        description={`${selectedTransferSummary.join(' • ')}. Hệ thống sẽ tạo giao dịch nhập kho theo số lượng thực nhận.`}
-        confirmText={receiveTransferStatus === 'pending' ? 'Đang xác nhận...' : 'Xác nhận đã nhận'}
-        cancelText="Đóng"
-        variant="success"
-        onConfirm={() => {
-          void handleReceiveTransfer();
-        }}
-      />
+      >
+        <DialogContent className="max-w-2xl overflow-hidden p-0">
+          <DialogHeader className="border-b border-border bg-gradient-to-r from-emerald-500/10 via-background to-background px-6 py-5">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-600">
+                <span className="material-symbols-outlined text-[24px]">inventory_2</span>
+              </div>
+              <div className="space-y-1">
+                <DialogTitle>Xác nhận “Đã nhận hàng”</DialogTitle>
+                <DialogDescription>
+                  Dùng khi kho đích đã tiếp nhận hàng và sẵn sàng ghi nhận nhập kho theo số lượng
+                  thực nhận.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-5 px-6 py-5">
+            <div className="grid gap-3 rounded-2xl border border-border bg-muted/10 p-4 sm:grid-cols-2">
+              {selectedTransferSummaryCompact.map((item) => (
+                <div key={item.label} className="space-y-1 rounded-xl bg-background/80 p-3">
+                  <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    {item.label}
+                  </p>
+                  <p className="text-sm font-semibold text-foreground break-words">{item.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-muted-foreground">
+              Khi xác nhận, hệ thống sẽ tạo giao dịch{' '}
+              <span className="font-semibold text-emerald-700">nhập kho đích</span> theo số lượng
+              thực nhận của từng vật phẩm trong phiếu.
+            </div>
+          </div>
+
+          <DialogFooter className="border-t border-border bg-muted/30 px-6 py-4">
+            <DialogClose asChild>
+              <Button variant="outline">Đóng</Button>
+            </DialogClose>
+            <Button
+              variant="primary"
+              className="gap-2"
+              disabled={receiveTransferStatus === 'pending'}
+              onClick={() => {
+                void handleReceiveTransfer();
+              }}
+            >
+              <span className="material-symbols-outlined text-lg">check_circle</span>
+              {receiveTransferStatus === 'pending' ? 'Đang xác nhận...' : 'Xác nhận đã nhận hàng'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={openCancelTransfer}
@@ -2966,7 +3252,7 @@ export default function CoordinatorInventoryPage() {
       />
 
       <Dialog open={openTransferDetail} onOpenChange={setOpenTransferDetail}>
-        <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
+        <DialogContent className="!max-w-none w-[95vw] max-w-5xl h-[90vh] p-0 overflow-hidden flex flex-col">
           <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle>Chi tiết phiếu điều phối</DialogTitle>
             <DialogDescription>
@@ -2977,178 +3263,205 @@ export default function CoordinatorInventoryPage() {
           </DialogHeader>
 
           {selectedTransfer ? (
-            <div className="flex-1 min-h-0 overflow-y-auto p-6 grid grid-cols-1 xl:grid-cols-[minmax(0,1.05fr)_380px] gap-6">
-              <div className="space-y-5 min-w-0">
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <Card className="border-sky-500/20 bg-sky-500/5">
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Mã phiếu</p>
-                      <p className="text-base font-semibold text-foreground break-all">
-                        {selectedTransfer.transferCode || selectedTransfer.id}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Nguồn</p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {selectedTransfer.sourceStationName || selectedTransfer.sourceStationId}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Đích</p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {selectedTransfer.destinationStationName ||
-                          selectedTransfer.destinationStationId}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Người yêu cầu</p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {selectedTransfer.requestedByName || 'Chưa rõ'}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-5 space-y-3 text-sm shadow-sm">
-                  <p>
-                    <span className="text-muted-foreground font-medium">Mã phiếu:</span>{' '}
-                    <span className="font-semibold text-foreground text-base">
-                      {selectedTransfer.transferCode || selectedTransfer.id}
-                    </span>
-                  </p>
-                  <p>
-                    <span className="text-muted-foreground font-medium">Kho/trạm nguồn:</span>{' '}
-                    <span className="font-medium text-foreground">
-                      {selectedTransfer.sourceStationName || selectedTransfer.sourceStationId}
-                    </span>
-                  </p>
-                  <p>
-                    <span className="text-muted-foreground font-medium">→ Kho đích:</span>{' '}
-                    <span className="font-medium text-foreground">
-                      {selectedTransfer.destinationStationName ||
-                        selectedTransfer.destinationStationId}
-                    </span>
-                  </p>
-                  <p>
-                    <span className="text-muted-foreground font-medium">Người yêu cầu:</span>{' '}
-                    <span className="font-medium text-foreground">
-                      {selectedTransfer.requestedByName || 'Chưa rõ'}
-                    </span>
-                  </p>
-                  <p>
-                    <span className="text-muted-foreground font-medium">Tổng dòng:</span>{' '}
-                    {formatNumberVN(
-                      selectedTransfer.totalRequestedItems || selectedTransfer.items?.length || 0,
-                    )}
-                    {' • '}
-                    <span className="text-muted-foreground font-medium">Tổng số lượng:</span>{' '}
-                    {formatNumberVN(selectedTransfer.totalRequestedQuantity || 0)}
-                  </p>
-                  {(() => {
-                    const parsedNotes = parseTransferNotes(selectedTransfer.notes);
-                    return (
-                      <div className="space-y-2">
-                        {(selectedTransfer.reason || parsedNotes.reason) && (
-                          <p>
-                            <span className="text-muted-foreground font-medium">Lý do:</span>{' '}
-                            {selectedTransfer.reason || parsedNotes.reason}
-                          </p>
-                        )}
-                        <p>
-                          <span className="text-muted-foreground font-medium">Ghi chú:</span>{' '}
-                          {parsedNotes.note || parsedNotes.raw || 'Không có ghi chú'}
-                        </p>
-                        {(parsedNotes.approvalAmount ||
-                          parsedNotes.approvalAmountInWords ||
-                          parsedNotes.approver) && (
-                          <div className="rounded-xl border border-border bg-background/80 p-3 space-y-1 text-sm">
-                            {parsedNotes.approvalAmount && (
-                              <p>
-                                <span className="text-muted-foreground font-medium">Số tiền:</span>{' '}
-                                <span className="font-medium text-foreground">
-                                  {parsedNotes.approvalAmount}
-                                </span>
-                              </p>
-                            )}
-                            {parsedNotes.approvalAmountInWords && (
-                              <p>
-                                <span className="text-muted-foreground font-medium">Bằng chữ:</span>{' '}
-                                <span className="font-medium text-foreground">
-                                  {parsedNotes.approvalAmountInWords}
-                                </span>
-                              </p>
-                            )}
-                            {parsedNotes.approver && (
-                              <p>
-                                <span className="text-muted-foreground font-medium">
-                                  Người phê duyệt:
-                                </span>{' '}
-                                <span className="font-medium text-foreground">
-                                  {parsedNotes.approver}
-                                </span>
-                              </p>
-                            )}
-                          </div>
-                        )}
-                        {(parsedNotes.approvalAmount ||
-                          parsedNotes.approvalAmountInWords ||
-                          parsedNotes.approver) && (
-                          <div className="rounded-xl border border-border bg-background/80 p-3 space-y-1 text-sm">
-                            {parsedNotes.approvalAmount && (
-                              <p>
-                                <span className="text-muted-foreground font-medium">Số tiền:</span>{' '}
-                                <span className="font-medium text-foreground">
-                                  {parsedNotes.approvalAmount}
-                                </span>
-                              </p>
-                            )}
-                            {parsedNotes.approvalAmountInWords && (
-                              <p>
-                                <span className="text-muted-foreground font-medium">Bằng chữ:</span>{' '}
-                                <span className="font-medium text-foreground">
-                                  {parsedNotes.approvalAmountInWords}
-                                </span>
-                              </p>
-                            )}
-                            {parsedNotes.approver && (
-                              <p>
-                                <span className="text-muted-foreground font-medium">
-                                  Người phê duyệt:
-                                </span>{' '}
-                                <span className="font-medium text-foreground">
-                                  {parsedNotes.approver}
-                                </span>
-                              </p>
-                            )}
-                          </div>
-                        )}
+            <div className="flex-1 min-h-0 overflow-y-auto p-6">
+              <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+                <section className="rounded-3xl border border-sky-500/20 bg-gradient-to-br from-sky-500/10 via-background to-background p-5 shadow-sm">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          appearance="outline"
+                          className={`border ${TRANSFER_STATUS_CLASS[selectedTransfer.status] || 'bg-gray-500/10 text-gray-600 border-gray-500/20'}`}
+                        >
+                          {selectedTransfer.statusName ||
+                            TRANSFER_STATUS_LABEL[selectedTransfer.status] ||
+                            'Không rõ'}
+                        </Badge>
+                        <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                          Transfer detail
+                        </span>
                       </div>
-                    );
-                  })()}
-                </div>
+                      <div>
+                        <p className="text-2xl font-bold text-foreground break-all">
+                          {selectedTransfer.transferCode || selectedTransfer.id}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Thông tin tổng quan của phiếu được gom theo từng nhóm để dễ đọc và rà soát
+                          nhanh.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 md:min-w-[320px]">
+                      <div className="rounded-2xl border border-border bg-background/80 p-3">
+                        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                          Tổng dòng vật phẩm
+                        </p>
+                        <p className="mt-1 text-lg font-semibold text-foreground">
+                          {formatNumberVN(
+                            selectedTransfer.totalRequestedItems ||
+                              selectedTransfer.items?.length ||
+                              0,
+                          )}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-border bg-background/80 p-3">
+                        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                          Tổng số lượng
+                        </p>
+                        <p className="mt-1 text-lg font-semibold text-foreground">
+                          {formatNumberVN(selectedTransfer.totalRequestedQuantity || 0)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
 
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
-                  <p className="mb-3 text-sm font-semibold text-foreground">Danh sách vật phẩm</p>
-                  <div className="space-y-2 text-sm text-muted-foreground">
+                {(() => {
+                  const parsedNotes = parseTransferNotes(selectedTransfer.notes);
+                  return (
+                    <section className="grid gap-4 md:grid-cols-2">
+                      <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                        <p className="mb-4 text-base font-semibold text-foreground">
+                          Thông tin điều phối
+                        </p>
+                        <div className="space-y-4">
+                          {[
+                            {
+                              icon: 'warehouse',
+                              tone: 'bg-sky-500/10 text-sky-600',
+                              label: 'Kho / trạm nguồn',
+                              value:
+                                selectedTransfer.sourceStationName ||
+                                selectedTransfer.sourceStationId ||
+                                '—',
+                            },
+                            {
+                              icon: 'south_east',
+                              tone: 'bg-emerald-500/10 text-emerald-600',
+                              label: 'Kho đích',
+                              value:
+                                selectedTransfer.destinationStationName ||
+                                selectedTransfer.destinationStationId ||
+                                '—',
+                            },
+                            {
+                              icon: 'person',
+                              tone: 'bg-amber-500/10 text-amber-600',
+                              label: 'Người yêu cầu',
+                              value: selectedTransfer.requestedByName || 'Chưa rõ',
+                            },
+                            {
+                              icon: 'schedule',
+                              tone: 'bg-violet-500/10 text-violet-600',
+                              label: 'Ngày tạo',
+                              value: selectedTransfer.createdAt
+                                ? new Date(selectedTransfer.createdAt).toLocaleString('vi-VN')
+                                : 'Chưa có dữ liệu',
+                            },
+                          ].map((meta) => (
+                            <div key={meta.label} className="flex items-start gap-3">
+                              <div
+                                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${meta.tone}`}
+                              >
+                                <span className="material-symbols-outlined text-[20px]">
+                                  {meta.icon}
+                                </span>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                                  {meta.label}
+                                </p>
+                                <p className="mt-1 text-sm font-medium text-foreground break-words">
+                                  {meta.value}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                        <p className="mb-4 text-base font-semibold text-foreground">
+                          Lý do & ghi chú
+                        </p>
+                        <div className="space-y-4 text-sm">
+                          <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                            <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                              Lý do điều phối
+                            </p>
+                            <p className="mt-2 leading-6 text-foreground">
+                              {selectedTransfer.reason || parsedNotes.reason || 'Không có lý do'}
+                            </p>
+                          </div>
+                          <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                            <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                              Ghi chú chung
+                            </p>
+                            <p className="mt-2 leading-6 text-foreground">
+                              {parsedNotes.note || parsedNotes.raw || 'Không có ghi chú'}
+                            </p>
+                          </div>
+                          {(parsedNotes.approvalAmount ||
+                            parsedNotes.approvalAmountInWords ||
+                            parsedNotes.approver) && (
+                            <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                                Thông tin phê duyệt
+                              </p>
+                              <div className="mt-2 space-y-2 text-foreground">
+                                {parsedNotes.approvalAmount && (
+                                  <p>
+                                    <span className="font-medium">Số tiền:</span>{' '}
+                                    {parsedNotes.approvalAmount}
+                                  </p>
+                                )}
+                                {parsedNotes.approvalAmountInWords && (
+                                  <p>
+                                    <span className="font-medium">Bằng chữ:</span>{' '}
+                                    {parsedNotes.approvalAmountInWords}
+                                  </p>
+                                )}
+                                {parsedNotes.approver && (
+                                  <p>
+                                    <span className="font-medium">Người phê duyệt:</span>{' '}
+                                    {parsedNotes.approver}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </section>
+                  );
+                })()}
+
+                <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                  <div className="mb-4">
+                    <p className="text-base font-semibold text-foreground">Danh sách vật phẩm</p>
+                    <p className="text-sm text-muted-foreground">
+                      Mỗi dòng hiển thị rõ vật phẩm, danh mục, số lượng yêu cầu và số lượng thực tế
+                      nếu đã có.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
                     {(selectedTransfer.items || []).length === 0 ? (
-                      <p>Phiếu này chưa có dữ liệu vật phẩm chi tiết.</p>
+                      <div className="rounded-2xl border border-dashed border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+                        Phiếu này chưa có dữ liệu vật phẩm chi tiết.
+                      </div>
                     ) : (
                       selectedTransfer.items.map((item, index) => {
                         const matchedSupply = supplyMap.get(item.supplyItemId);
                         return (
                           <div
                             key={`${selectedTransfer.id}-${item.supplyItemId}-${index}`}
-                            className="rounded-xl border border-border bg-background p-4 shadow-sm"
+                            className="rounded-2xl border border-border bg-muted/10 p-4"
                           >
                             <div className="flex items-start gap-3">
-                              <div className="size-11 rounded-xl border border-border bg-muted/40 flex items-center justify-center shrink-0">
-                                <span className="material-symbols-outlined text-primary">
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-border bg-background text-primary">
+                                <span className="material-symbols-outlined text-[20px]">
                                   {matchedSupply
                                     ? getSupplyCategoryIcon(matchedSupply.category)
                                     : 'inventory_2'}
@@ -3156,7 +3469,7 @@ export default function CoordinatorInventoryPage() {
                               </div>
                               <div className="min-w-0 flex-1 space-y-2">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <p className="font-semibold text-foreground text-base">
+                                  <p className="text-base font-semibold text-foreground break-words">
                                     {item.supplyItemName ||
                                       matchedSupply?.name ||
                                       item.supplyItemId}
@@ -3175,25 +3488,29 @@ export default function CoordinatorInventoryPage() {
                                     </Badge>
                                   )}
                                 </div>
-                                <p className="text-xs text-muted-foreground">
-                                  Mã vật phẩm: {item.supplyItemId.slice(0, 8)}...
-                                </p>
-                                <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-1">
-                                  <p className="text-sm font-semibold text-foreground">
-                                    SL yêu cầu:{' '}
-                                    {formatNumberVN(item.requestedQuantity ?? item.quantity ?? 0)}
-                                    {matchedSupply?.unit ? ` ${matchedSupply.unit}` : ''}
-                                  </p>
-                                  {typeof item.actualQuantity === 'number' && (
-                                    <p className="text-xs text-muted-foreground">
-                                      SL thực tế: {formatNumberVN(item.actualQuantity)}
+                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                                  <span>
+                                    Yêu cầu:{' '}
+                                    <span className="font-semibold text-foreground">
+                                      {formatNumberVN(item.requestedQuantity ?? item.quantity ?? 0)}
                                       {matchedSupply?.unit ? ` ${matchedSupply.unit}` : ''}
-                                    </p>
+                                    </span>
+                                  </span>
+                                  {typeof item.actualQuantity === 'number' && (
+                                    <span>
+                                      Thực tế:{' '}
+                                      <span className="font-semibold text-foreground">
+                                        {formatNumberVN(item.actualQuantity)}
+                                        {matchedSupply?.unit ? ` ${matchedSupply.unit}` : ''}
+                                      </span>
+                                    </span>
                                   )}
+                                  <span>Mã: {item.supplyItemId}</span>
                                 </div>
                                 {item.notes && (
-                                  <p className="text-xs text-muted-foreground">
-                                    Ghi chú: {item.notes}
+                                  <p className="text-sm leading-6 text-muted-foreground">
+                                    <span className="font-medium text-foreground">Ghi chú:</span>{' '}
+                                    {item.notes}
                                   </p>
                                 )}
                               </div>
@@ -3203,53 +3520,51 @@ export default function CoordinatorInventoryPage() {
                       })
                     )}
                   </div>
-                </div>
-              </div>
+                </section>
 
-              <div className="space-y-5 min-w-0">
-                <Card className="shadow-sm">
-                  <CardContent className="p-5 space-y-4">
-                    <div>
-                      <p className="text-base font-semibold text-foreground">
-                        PDF / evidence đã lưu
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Xem nhanh file PDF liên quan tới phiếu ngay trong màn hình chi tiết.
-                      </p>
+                <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                  <div className="mb-4">
+                    <p className="text-base font-semibold text-foreground">PDF / evidence đã lưu</p>
+                    <p className="text-sm text-muted-foreground">
+                      Khu vực xem file được đặt bên dưới để tránh chật ngang và hạn chế tràn khung
+                      preview.
+                    </p>
+                  </div>
+
+                  {(selectedTransfer.evidenceUrls || []).length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+                      Chưa có evidence URL nào.
                     </div>
-                    {(selectedTransfer.evidenceUrls || []).length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-border bg-muted/10 p-4 text-sm text-muted-foreground">
-                        Chưa có evidence URL nào.
-                      </div>
-                    ) : (
-                      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-                        {(selectedTransfer.evidenceUrls || []).map((url, index) => (
-                          <div
-                            key={`${url}-${index}`}
-                            className="rounded-xl border border-border bg-card p-4 space-y-3"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="font-medium text-foreground">PDF #{index + 1}</p>
-                                <p className="text-xs text-muted-foreground break-all">{url}</p>
-                              </div>
-                              <Button variant="outline" size="sm" asChild>
-                                <a href={url} target="_blank" rel="noreferrer">
-                                  Mở file
-                                </a>
-                              </Button>
+                  ) : (
+                    <div className="space-y-4">
+                      {(selectedTransfer.evidenceUrls || []).map((url, index) => (
+                        <div
+                          key={`${url}-${index}`}
+                          className="overflow-hidden rounded-2xl border border-border bg-muted/10"
+                        >
+                          <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground">PDF #{index + 1}</p>
+                              <p className="text-xs text-muted-foreground break-all">{url}</p>
                             </div>
+                            <Button variant="outline" size="sm" asChild>
+                              <a href={url} target="_blank" rel="noreferrer">
+                                Mở file
+                              </a>
+                            </Button>
+                          </div>
+                          <div className="p-4">
                             <iframe
                               title={`transfer-detail-pdf-${index}`}
                               src={url}
                               className="h-[420px] w-full rounded-xl border border-border bg-background"
                             />
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
               </div>
             </div>
           ) : (

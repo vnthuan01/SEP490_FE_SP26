@@ -26,9 +26,12 @@ function Tooltip({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Root
   );
 }
 
-function TooltipTrigger({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
-}
+const TooltipTrigger = React.forwardRef<
+  React.ElementRef<typeof TooltipPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger>
+>(({ ...props }, ref) => {
+  return <TooltipPrimitive.Trigger ref={ref} data-slot="tooltip-trigger" {...props} />;
+});
 
 const tooltipVariants = cva(
   'z-50 overflow-hidden rounded-md px-3 py-1.5 text-xs animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
@@ -45,20 +48,23 @@ const tooltipVariants = cva(
   },
 );
 
-function TooltipContent({
-  className,
-  sideOffset = 4,
-  variant,
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Content> & VariantProps<typeof tooltipVariants>) {
+const TooltipContent = React.forwardRef<
+  React.ElementRef<typeof TooltipPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content> &
+    VariantProps<typeof tooltipVariants>
+>(({ className, sideOffset = 4, variant, ...props }, ref) => {
   return (
     <TooltipPrimitive.Content
+      ref={ref}
       data-slot="tooltip-content"
       sideOffset={sideOffset}
       className={cn(tooltipVariants({ variant }), className)}
       {...props}
     />
   );
-}
+});
+
+TooltipTrigger.displayName = TooltipPrimitive.Trigger.displayName;
+TooltipContent.displayName = TooltipPrimitive.Content.displayName;
 
 export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger };

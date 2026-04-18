@@ -161,31 +161,49 @@ export function TransferPdfWorkflowDialog({
                   <span className="font-medium text-foreground">Khung “Người lập phiếu”</span>
                 </p>
               </div>
-              <PdfSignaturePad onSave={setSignatureDataUrl} />
+              <PdfSignaturePad
+                onSave={setSignatureDataUrl}
+                height={240}
+                helperText="Kéo rộng theo chiều ngang để chữ ký thoáng hơn, sau đó bấm “Lưu chữ ký” trước khi nhúng vào PDF."
+              />
             </div>
 
             <div className="rounded-xl border border-border bg-card p-4 space-y-3">
               <p className="font-semibold text-foreground">
                 Bước 5: Nhúng chữ ký và lưu PDF để phê duyệt sau
               </p>
+              <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground">
+                <span className="font-semibold">Nút chính:</span> Nhúng chữ ký vào PDF để cập nhật
+                trực tiếp file đang xem trước, rồi thêm vào phiếu.
+              </div>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  variant="outline"
+                  variant="primary"
+                  className="gap-2"
                   onClick={handleEmbedSignature}
                   disabled={!pdfBytes || !signatureDataUrl}
                 >
+                  <span className="material-symbols-outlined text-lg">draw</span>
                   Nhúng chữ ký vào PDF
                 </Button>
                 <Button
                   variant="outline"
+                  className="gap-2"
                   onClick={() =>
                     pdfBytes && downloadPdf(pdfBytes, `bien-ban-chuyen-kho-${Date.now()}.pdf`)
                   }
                   disabled={!pdfBytes}
                 >
+                  <span className="material-symbols-outlined text-lg">download</span>
                   Tải PDF
                 </Button>
-                <Button variant="primary" onClick={handleAttachPdf} disabled={!pdfBytes}>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={handleAttachPdf}
+                  disabled={!pdfBytes}
+                >
+                  <span className="material-symbols-outlined text-lg">attach_file_add</span>
                   Thêm PDF vào phiếu
                 </Button>
               </div>
