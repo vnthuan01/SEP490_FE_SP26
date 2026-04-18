@@ -30,11 +30,17 @@ export default function PublicDonatePage() {
 
   const handleDonate = async () => {
     if (!campaignId) return;
+
+    const encodedCampaignId = encodeURIComponent(campaignId);
+    const baseUrl = window.location.origin;
+
     const response = await createCheckout({
       campaignId,
       amount,
       donorName: donorName.trim(),
       message: message.trim() || undefined,
+      returnUrl: `${baseUrl}/donate/return?campaignId=${encodedCampaignId}`,
+      cancelUrl: `${baseUrl}/donate/cancel?campaignId=${encodedCampaignId}`,
     });
 
     if (response.checkoutUrl) {

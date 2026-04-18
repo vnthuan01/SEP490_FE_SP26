@@ -6,6 +6,8 @@ import DonationManagementPage from '@/pages/admin/DonationManagementPage';
 import AdminUserManagementPage from '@/pages/admin/UserManagementPage';
 import PublicDonatePage from '@/pages/public/PublicDonatePage';
 import DonationStatusPage from '@/pages/public/DonationStatusPage';
+import DonationReturnPage from '@/pages/public/DonationReturnPage';
+import DonationCancelPage from '@/pages/public/DonationCancelPage';
 import FundraisingCampaignListPage from '@/pages/public/FundraisingCampaignListPage';
 import CoordinatorVolunteerRequestPage from '@/pages/coordinator/VolunteerRequestManagement';
 import CoordinatorDashboardPage from '@/pages/coordinator/DashboardPage';
@@ -44,6 +46,8 @@ export const routes: AppRoute[] = [
   { path: '/fundraising', element: <FundraisingCampaignListPage />, isProtected: false },
   { path: '/donate/:campaignId', element: <PublicDonatePage />, isProtected: false },
   { path: '/donate/status/:donationId', element: <DonationStatusPage />, isProtected: false },
+  { path: '/donate/return', element: <DonationReturnPage />, isProtected: false },
+  { path: '/donate/cancel', element: <DonationCancelPage />, isProtected: false },
   //Admin routes
   {
     path: '/portal/admin/dashboard',
