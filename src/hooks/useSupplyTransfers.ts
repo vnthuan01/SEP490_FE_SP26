@@ -1,7 +1,6 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   supplyTransferService,
-  type CreateSupplyTransferDocumentPayload,
   type AppendSupplyTransferEvidencesPayload,
   type CreateSupplyTransferPayload,
   type ReplaceSupplyTransferEvidenceUrlsPayload,
@@ -172,22 +171,6 @@ export function useAppendSupplyTransferEvidences() {
     },
     onError: (error: any) => {
       handleHookError(error, 'Không thể thêm bằng chứng');
-    },
-  });
-}
-
-export function useAddSupplyTransferDocument() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: CreateSupplyTransferDocumentPayload }) =>
-      supplyTransferService.addDocument(id, data),
-    onSuccess: (_, variables) => {
-      toast.success('Đã thêm tài liệu phiếu chuyển');
-      queryClient.invalidateQueries({ queryKey: SUPPLY_TRANSFER_KEYS.all });
-      queryClient.invalidateQueries({ queryKey: SUPPLY_TRANSFER_KEYS.detail(variables.id) });
-    },
-    onError: (error: any) => {
-      handleHookError(error, 'Không thể thêm tài liệu phiếu chuyển');
     },
   });
 }

@@ -2428,7 +2428,18 @@ export default function ManagerInventoryCoordinationPage() {
           isLoadingTransferHistoryDetails
         }
         onApprove={(id) => approveSupplyTransfer({ id, data: {} })}
-        onShip={(id) => shipSupplyTransfer({ id, data: {} })}
+        onShip={(id) => {
+          const transfer = transferHistory.find((item: any) => item.id === id);
+          if (!transfer?.vehicleId)
+            return Promise.reject(new Error('Missing vehicleId for transfer'));
+
+          return shipSupplyTransfer({
+            id,
+            data: {
+              vehicleId: transfer.vehicleId,
+            },
+          });
+        }}
         onReceive={(id) =>
           receiveSupplyTransfer({
             id,

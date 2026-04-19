@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { FileUploadCard } from '@/components/ui/file-upload-card';
 import {
   Dialog,
   DialogClose,
@@ -14,7 +15,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Select,
   SelectContent,
@@ -45,9 +45,9 @@ import { useProvincialStations } from '@/hooks/useReliefStations';
 import { useSupplyItems } from '@/hooks/useSupplies';
 import { useCreateSupplyAllocation } from '@/hooks/useSupplies';
 import { useCloudinaryUpload } from '@/hooks/useCloudinaryUpload';
+import { useVehicles } from '@/hooks/useVehicles';
 import {
   useAppendSupplyTransferEvidences,
-  useAddSupplyTransferDocument,
   useCreateSupplyTransfer,
   useReplaceSupplyTransferEvidenceUrls,
   useSupplyTransferDetails,
@@ -73,6 +73,7 @@ import {
   TransactionReason,
   TransactionType,
   SupplyTransferStatus,
+  VehicleStatus,
   parseEnumValue,
 } from '@/enums/beEnums';
 import { toast } from 'sonner';
@@ -278,12 +279,26 @@ export default function CoordinatorInventoryPage() {
   });
   const [shipTransferForm, setShipTransferForm] = useState<{
     vehicleId: string;
-    driverUserId: string;
     notes: string;
+    evidenceFiles: File[];
   }>({
     vehicleId: '',
-    driverUserId: '',
     notes: '',
+    evidenceFiles: [],
+  });
+  const [receiveTransferForm, setReceiveTransferForm] = useState<{
+    notes: string;
+    evidenceFiles: File[];
+  }>({
+    notes: '',
+    evidenceFiles: [],
+  });
+  const [cancelTransferForm, setCancelTransferForm] = useState<{
+    notes: string;
+    evidenceFiles: File[];
+  }>({
+    notes: '',
+    evidenceFiles: [],
   });
   const [openOutgoingTransferSection, setOpenOutgoingTransferSection] = useState(true);
   const [openActionableTransferSection, setOpenActionableTransferSection] = useState(true);
@@ -377,6 +392,15 @@ export default function CoordinatorInventoryPage() {
     pageIndex: 1,
     pageSize: 300,
   });
+  const { vehicles: stationVehicles, vehiclesByStatus: freeVehicles } = useVehicles(
+    undefined,
+    VehicleStatus.Free,
+    {
+      reliefStationId: station?.reliefStationId,
+      pageIndex: 1,
+      pageSize: 200,
+    },
+  );
 
   // Campaigns for this station's province/location
   const { campaigns: allCampaigns } = useCampaigns(
@@ -403,7 +427,6 @@ export default function CoordinatorInventoryPage() {
     useCreateSupplyTransfer();
   const { mutateAsync: replaceTransferEvidenceUrls } = useReplaceSupplyTransferEvidenceUrls();
   const { mutateAsync: appendTransferEvidences } = useAppendSupplyTransferEvidences();
-  const { mutateAsync: addSupplyTransferDocument } = useAddSupplyTransferDocument();
   const { uploadFile, isUploading: isUploadingTransferEvidence } = useCloudinaryUpload();
   const { mutateAsync: createSupplyAllocation } = useCreateSupplyAllocation();
   const { mutateAsync: approveTransfer, status: approveTransferStatus } =
@@ -766,6 +789,10 @@ export default function CoordinatorInventoryPage() {
     [relatedTransfersDetailed, selectedTransferId],
   );
 
+  const { vehicle: selectedTransferVehicle } = useVehicles(
+    selectedTransfer?.vehicleId || undefined,
+  );
+
   const selectedTransferSummary = useMemo(() => {
     if (!selectedTransfer) return [] as string[];
 
@@ -856,35 +883,105 @@ export default function CoordinatorInventoryPage() {
     ];
   }, [selectedTransfer]);
 
-  const selectedTransferTimelineRows = useMemo(() => {
-    if (!selectedTransfer) return [] as Array<{ label: string; value: string }>;
+  const selectedTransferTimelineStepper = useMemo(() => {
+    type TransferTimelineStep = {
+      key: string;
+      label: string;
+      value?: string;
+      state: 'completed' | 'current' | 'upcoming' | 'cancelled';
+      nodeClass: string;
+      lineClass: string;
+    };
 
-    return [
+    if (!selectedTransfer) return [] as Array<TransferTimelineStep>;
+
+    const isCancelled = selectedTransfer.status === SupplyTransferStatus.Cancelled;
+    const hasApproved = Boolean(selectedTransfer.approvedAt);
+    const hasShipped = Boolean(selectedTransfer.shippedAt);
+    const hasReceived = Boolean(selectedTransfer.receivedAt);
+    const cancelledAt =
+      (selectedTransfer as { cancelledAt?: string | null }).cancelledAt ||
+      (selectedTransfer as { canceledAt?: string | null }).canceledAt ||
+      null;
+
+    const cancelledAfterIndex = hasShipped ? 2 : hasApproved ? 1 : 0;
+
+    const baseSteps: TransferTimelineStep[] = [
       {
-        label: 'Yêu cầu lúc',
+        key: 'requested',
+        label: 'Yêu cầu',
         value: selectedTransfer.requestedAt
           ? new Date(selectedTransfer.requestedAt).toLocaleString('vi-VN')
-          : 'Chưa có dữ liệu',
+          : undefined,
+        reached: true,
       },
       {
-        label: 'Duyệt lúc',
+        key: 'approved',
+        label: 'Duyệt',
         value: selectedTransfer.approvedAt
           ? new Date(selectedTransfer.approvedAt).toLocaleString('vi-VN')
-          : 'Chưa cập nhật',
+          : undefined,
+        reached: hasApproved,
       },
       {
-        label: 'Giao lúc',
+        key: 'shipping',
+        label: 'Vận chuyển',
         value: selectedTransfer.shippedAt
           ? new Date(selectedTransfer.shippedAt).toLocaleString('vi-VN')
-          : 'Chưa cập nhật',
+          : undefined,
+        reached: hasShipped,
       },
       {
-        label: 'Nhận lúc',
+        key: 'received',
+        label: 'Đã nhận',
         value: selectedTransfer.receivedAt
           ? new Date(selectedTransfer.receivedAt).toLocaleString('vi-VN')
-          : 'Chưa cập nhật',
+          : undefined,
+        reached: hasReceived,
       },
-    ];
+    ].map((step, index, array) => {
+      const isMutedByCancel = isCancelled && index > cancelledAfterIndex;
+      const state: 'completed' | 'current' | 'upcoming' = isMutedByCancel
+        ? 'upcoming'
+        : step.reached
+          ? 'completed'
+          : index === Math.min(cancelledAfterIndex + (isCancelled ? 0 : 1), array.length - 1) &&
+              !hasReceived
+            ? 'current'
+            : 'upcoming';
+
+      return {
+        key: step.key,
+        label: step.label,
+        value: step.value,
+        state,
+        nodeClass:
+          state === 'completed'
+            ? 'border-primary bg-primary text-primary-foreground'
+            : state === 'current'
+              ? 'border-primary bg-primary/10 text-primary ring-4 ring-primary/10'
+              : 'border-border bg-background text-muted-foreground',
+        lineClass:
+          state === 'completed' &&
+          index < array.length - 1 &&
+          !(isCancelled && index >= cancelledAfterIndex)
+            ? 'bg-primary/70'
+            : 'bg-border',
+      };
+    });
+
+    if (isCancelled) {
+      baseSteps.push({
+        key: 'cancelled',
+        label: 'Đã hủy',
+        value: cancelledAt ? new Date(cancelledAt).toLocaleString('vi-VN') : undefined,
+        state: 'cancelled' as const,
+        nodeClass: 'border-red-500 bg-red-500 text-white ring-4 ring-red-500/10',
+        lineClass: 'bg-border',
+      });
+    }
+
+    return baseSteps;
   }, [selectedTransfer]);
 
   const selectedTransferDocumentGroups = useMemo(() => {
@@ -908,6 +1005,89 @@ export default function CoordinatorInventoryPage() {
         null,
     };
   }, [selectedTransfer]);
+
+  const availableStationVehicles = useMemo(() => {
+    const freeVehicleIds = new Set((freeVehicles || []).map((vehicle) => vehicle.vehicleId));
+
+    return (stationVehicles || []).filter(
+      (vehicle) =>
+        vehicle.reliefStationId === station?.reliefStationId &&
+        freeVehicleIds.has(vehicle.vehicleId),
+    );
+  }, [freeVehicles, station?.reliefStationId, stationVehicles]);
+
+  const selectedTransferPreviewUrls = useMemo(() => {
+    if (!selectedTransfer) return [] as string[];
+
+    const urls = [
+      selectedTransfer.currentRequestPdfUrl,
+      selectedTransfer.currentConfirmedPdfUrl,
+      ...(selectedTransfer.documents || []).map((document) => document.fileUrl),
+      ...(selectedTransfer.evidenceUrls || []),
+    ].filter((url): url is string => !!url);
+
+    return Array.from(new Set(urls));
+  }, [selectedTransfer]);
+
+  const vehicleMap = useMemo(() => {
+    const allKnownVehicles = [...(stationVehicles || []), ...(freeVehicles || [])];
+    return new Map(allKnownVehicles.map((vehicle) => [vehicle.vehicleId, vehicle]));
+  }, [freeVehicles, stationVehicles]);
+
+  const getVehicleDisplayLabel = (vehicleId?: string | null) => {
+    if (!vehicleId) return 'Chưa cập nhật';
+
+    const matchedVehicle =
+      selectedTransferVehicle?.vehicleId === vehicleId
+        ? selectedTransferVehicle
+        : vehicleMap.get(vehicleId);
+    if (!matchedVehicle) return `PT • ${vehicleId.slice(0, 6)}`;
+
+    const vehicleName = matchedVehicle.vehicleTypeName || 'Phương tiện';
+    const licensePlate =
+      matchedVehicle.licensePlate || `PT-${matchedVehicle.vehicleId.slice(0, 6)}`;
+
+    return `${vehicleName} • ${licensePlate}`;
+  };
+
+  const selectedTransferVehicleLabel = useMemo(
+    () => getVehicleDisplayLabel(selectedTransfer?.vehicleId),
+    [selectedTransfer?.vehicleId, vehicleMap],
+  );
+
+  const shipTransferVehicleLabel = useMemo(
+    () => getVehicleDisplayLabel(shipTransferForm.vehicleId),
+    [shipTransferForm.vehicleId, vehicleMap],
+  );
+
+  const selectedTransferPreviewFiles = useMemo(() => {
+    return selectedTransferPreviewUrls.map((url, index) => {
+      const normalizedUrl = url.toLowerCase();
+      const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/.test(normalizedUrl);
+      const isPdf = /\.pdf(\?|$)/.test(normalizedUrl);
+
+      return {
+        id: `${index}-${url}`,
+        index,
+        url,
+        isImage,
+        isPdf,
+        shortLabel: url.split('/').pop()?.slice(0, 6) || `file-${index + 1}`,
+      };
+    });
+  }, [selectedTransferPreviewUrls]);
+
+  const hasSystemTransferDocuments = useMemo(() => {
+    if (!selectedTransfer) return false;
+
+    return Boolean(
+      selectedTransfer.currentRequestPdfUrl ||
+      selectedTransfer.currentConfirmedPdfUrl ||
+      selectedTransferDocumentGroups.requestPdf?.fileUrl ||
+      selectedTransferDocumentGroups.confirmedPdf?.fileUrl ||
+      selectedTransfer.documents?.length,
+    );
+  }, [selectedTransfer, selectedTransferDocumentGroups]);
 
   const { data: importHistoryBySupplyItem = [], isLoading: isLoadingImportHistory } =
     useImportHistoryBySupplyItem(
@@ -1351,17 +1531,7 @@ export default function CoordinatorInventoryPage() {
             generatedPdfIndex >= 0 ? uploadedEvidenceUrls[generatedPdfIndex] : undefined;
 
           if (generatedPdfUrl) {
-            await addSupplyTransferDocument({
-              id: createdTransferId,
-              data: {
-                documentType: 1,
-                fileUrl: generatedPdfUrl,
-                fileName: generatedPdfEvidence.file.name,
-                contentType: generatedPdfEvidence.file.type,
-                fileSizeBytes: generatedPdfEvidence.file.size,
-                notes: 'PDF yêu cầu điều phối được tạo từ giao diện điều phối viên',
-              },
-            });
+            void generatedPdfUrl;
           }
         }
       }
@@ -1502,18 +1672,6 @@ export default function CoordinatorInventoryPage() {
           resourceType: 'raw',
         });
         evidenceUrls = [...evidenceUrls, uploaded.secureUrl];
-
-        await addSupplyTransferDocument({
-          id: selectedTransfer.id,
-          data: {
-            documentType: 2,
-            fileUrl: uploaded.secureUrl,
-            fileName: pdfFile.name,
-            contentType: pdfFile.type,
-            fileSizeBytes: pdfFile.size,
-            notes: 'PDF phê duyệt có chữ ký được tạo từ giao diện điều phối viên',
-          },
-        });
       }
 
       if (evidenceUrls.length > 0) {
@@ -1556,29 +1714,58 @@ export default function CoordinatorInventoryPage() {
 
   const handleShipTransfer = async () => {
     if (!selectedTransfer) return;
-    if (selectedTransfer.evidenceUrls?.length) {
-      await appendTransferEvidences({
-        id: selectedTransfer.id,
-        data: { evidenceUrls: selectedTransfer.evidenceUrls },
-      });
+
+    if (!shipTransferForm.vehicleId.trim()) {
+      toast.error('Vui lòng chọn phương tiện của trạm đang ở trạng thái sẵn sàng.');
+      return;
     }
+
+    const uploadedEvidenceUrls = await Promise.all(
+      shipTransferForm.evidenceFiles.map(async (file) => {
+        const uploaded = await uploadFile({
+          file,
+          folder: 'reliefhub/supply-transfer-evidence',
+          resourceType: 'raw',
+        });
+        return uploaded.secureUrl;
+      }),
+    );
+
+    const evidenceUrls = [
+      ...new Set([...(selectedTransfer.evidenceUrls || []), ...uploadedEvidenceUrls]),
+    ];
 
     await shipTransfer({
       id: selectedTransfer.id,
       data: {
-        vehicleId: shipTransferForm.vehicleId.trim() || undefined,
-        driverUserId: shipTransferForm.driverUserId.trim() || undefined,
+        vehicleId: shipTransferForm.vehicleId.trim(),
         notes: shipTransferForm.notes.trim() || undefined,
+        evidenceUrls,
       },
     });
     await Promise.all([refetchSourceTransfers(), refetchDestinationTransfers()]);
-    setShipTransferForm({ vehicleId: '', driverUserId: '', notes: '' });
+    setShipTransferForm({ vehicleId: '', notes: '', evidenceFiles: [] });
     setOpenShipTransfer(false);
     setSelectedTransferId(null);
   };
 
   const handleReceiveTransfer = async () => {
     if (!selectedTransfer) return;
+
+    const uploadedEvidenceUrls = await Promise.all(
+      receiveTransferForm.evidenceFiles.map(async (file) => {
+        const uploaded = await uploadFile({
+          file,
+          folder: 'reliefhub/supply-transfer-evidence',
+          resourceType: 'raw',
+        });
+        return uploaded.secureUrl;
+      }),
+    );
+
+    const evidenceUrls = [
+      ...new Set([...(selectedTransfer.evidenceUrls || []), ...uploadedEvidenceUrls]),
+    ];
 
     await receiveTransfer({
       id: selectedTransfer.id,
@@ -1588,6 +1775,8 @@ export default function CoordinatorInventoryPage() {
           actualQuantity: item.requestedQuantity ?? item.quantity ?? 0,
           notes: item.notes,
         })),
+        notes: receiveTransferForm.notes.trim() || undefined,
+        evidenceUrls,
       },
     });
 
@@ -1597,21 +1786,43 @@ export default function CoordinatorInventoryPage() {
       refetchSourceTransfers(),
       refetchDestinationTransfers(),
     ]);
+    setReceiveTransferForm({ notes: '', evidenceFiles: [] });
     setOpenReceiveTransfer(false);
     setSelectedTransferId(null);
   };
 
   const handleCancelTransfer = async () => {
     if (!selectedTransfer) return;
-    if (selectedTransfer.evidenceUrls?.length) {
-      await appendTransferEvidences({
-        id: selectedTransfer.id,
-        data: { evidenceUrls: selectedTransfer.evidenceUrls },
-      });
+
+    if (!cancelTransferForm.notes.trim()) {
+      toast.error('Vui lòng nhập ghi chú hủy phiếu.');
+      return;
     }
 
-    await cancelTransfer({ id: selectedTransfer.id, data: {} });
+    const uploadedEvidenceUrls = await Promise.all(
+      cancelTransferForm.evidenceFiles.map(async (file) => {
+        const uploaded = await uploadFile({
+          file,
+          folder: 'reliefhub/supply-transfer-evidence',
+          resourceType: 'raw',
+        });
+        return uploaded.secureUrl;
+      }),
+    );
+
+    const evidenceUrls = [
+      ...new Set([...(selectedTransfer.evidenceUrls || []), ...uploadedEvidenceUrls]),
+    ];
+
+    await cancelTransfer({
+      id: selectedTransfer.id,
+      data: {
+        notes: cancelTransferForm.notes.trim(),
+        evidenceUrls,
+      },
+    });
     await Promise.all([refetchSourceTransfers(), refetchDestinationTransfers()]);
+    setCancelTransferForm({ notes: '', evidenceFiles: [] });
     setOpenCancelTransfer(false);
     setSelectedTransferId(null);
   };
@@ -1644,19 +1855,21 @@ export default function CoordinatorInventoryPage() {
     const transfer = relatedTransfersDetailed.find((item) => item.id === transferId) ?? null;
     setShipTransferForm({
       vehicleId: transfer?.vehicleId || '',
-      driverUserId: transfer?.driverUserId || '',
       notes: transfer?.notes || '',
+      evidenceFiles: [],
     });
     setOpenShipTransfer(true);
   };
 
   const openReceiveTransferDialog = (transferId: string) => {
     setSelectedTransferId(transferId);
+    setReceiveTransferForm({ notes: '', evidenceFiles: [] });
     setOpenReceiveTransfer(true);
   };
 
   const openCancelTransferDialog = (transferId: string) => {
     setSelectedTransferId(transferId);
+    setCancelTransferForm({ notes: '', evidenceFiles: [] });
     setOpenCancelTransfer(true);
   };
 
@@ -2852,22 +3065,20 @@ export default function CoordinatorInventoryPage() {
                       Tạo PDF mẫu
                     </Button>
 
-                    <label className="inline-flex">
-                      <input
-                        type="file"
+                    <div className="min-w-[240px] max-w-sm">
+                      <FileUploadCard
+                        title="Tải PDF lên"
+                        description="Chọn một hoặc nhiều tệp PDF đính kèm cho phiếu điều phối."
                         accept="application/pdf"
                         multiple
-                        className="hidden"
-                        onChange={(e) => {
-                          handleAddTransferEvidenceFiles(e.target.files, 'manual');
-                          e.target.value = '';
+                        selectedFiles={transferEvidenceFiles.map((evidence) => evidence.file)}
+                        onRemoveFile={(index) => {
+                          const target = transferEvidenceFiles[index];
+                          if (target) handleRemoveTransferEvidenceFile(target.id);
                         }}
+                        onFilesSelected={(files) => handleAddTransferEvidenceFiles(files, 'manual')}
                       />
-                      <span className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground">
-                        <span className="material-symbols-outlined text-lg">upload_file</span>
-                        Tải PDF lên
-                      </span>
-                    </label>
+                    </div>
                   </div>
                 </div>
 
@@ -3384,8 +3595,8 @@ export default function CoordinatorInventoryPage() {
           if (!open) setSelectedTransferId(null);
         }}
       >
-        <DialogContent className="max-w-2xl overflow-hidden p-0">
-          <DialogHeader className="border-b border-border bg-gradient-to-r from-sky-500/10 via-background to-background px-6 py-5">
+        <DialogContent className="!max-w-none h-[88vh] w-[96vw] max-w-5xl overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="border-b border-border bg-gradient-to-r from-sky-500/10 via-background to-background px-6 py-5 lg:px-8 lg:py-6">
             <div className="flex items-start gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-600">
                 <span className="material-symbols-outlined text-[24px]">local_shipping</span>
@@ -3399,61 +3610,110 @@ export default function CoordinatorInventoryPage() {
             </div>
           </DialogHeader>
 
-          <div className="space-y-5 px-6 py-5">
-            <div className="grid gap-3 rounded-2xl border border-border bg-muted/10 p-4 sm:grid-cols-2">
-              {selectedTransferSummaryCompact.map((item) => (
-                <div key={item.label} className="space-y-1 rounded-xl bg-background/80 p-3">
-                  <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                    {item.label}
-                  </p>
-                  <p className="text-sm font-semibold text-foreground break-words">{item.value}</p>
+          <div className="flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
+            <div className="grid h-full gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+              <div className="space-y-4 overflow-y-auto pr-1">
+                <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                  <p className="mb-3 text-sm font-semibold text-foreground">Thông tin phiếu</p>
+                  <div className="space-y-3">
+                    {selectedTransferSummaryCompact.map((item) => (
+                      <div key={item.label} className="rounded-xl bg-background/80 p-3">
+                        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                          {item.label}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-foreground break-words line-clamp-2">
+                          {item.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
 
-            <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-muted-foreground">
-              Sau bước này, phiếu sẽ được đánh dấu là{' '}
-              <span className="font-semibold text-sky-700">Đang vận chuyển</span> để đội nhận hàng
-              theo dõi tiến độ. Chưa phát sinh nhập kho đích ở bước này.
-            </div>
+                <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-muted-foreground">
+                  Sau khi xác nhận, phiếu chuyển sang{' '}
+                  <span className="font-semibold text-sky-700">Đang vận chuyển</span>. Chưa tạo nhập
+                  kho đích ở bước này.
+                </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Mã phương tiện</label>
-                <Input
-                  value={shipTransferForm.vehicleId}
-                  onChange={(event) =>
-                    setShipTransferForm((prev) => ({ ...prev, vehicleId: event.target.value }))
-                  }
-                  placeholder="Nhập vehicleId nếu có"
-                />
+                <div className="space-y-2 rounded-2xl border border-border bg-muted/10 p-4">
+                  <label className="text-sm font-medium text-foreground">
+                    Phương tiện giao hàng
+                  </label>
+                  <Select
+                    value={shipTransferForm.vehicleId}
+                    onValueChange={(value) =>
+                      setShipTransferForm((prev) => ({ ...prev, vehicleId: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn phương tiện đang sẵn sàng của trạm">
+                        {shipTransferForm.vehicleId ? shipTransferVehicleLabel : undefined}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableStationVehicles.map((vehicle) => (
+                        <SelectItem key={vehicle.vehicleId} value={vehicle.vehicleId}>
+                          {getVehicleDisplayLabel(vehicle.vehicleId)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {availableStationVehicles.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Hiện không có phương tiện nào của trạm ở trạng thái sẵn sàng.
+                    </p>
+                  )}
+                </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Người giao / tài xế</label>
-                <Input
-                  value={shipTransferForm.driverUserId}
-                  onChange={(event) =>
-                    setShipTransferForm((prev) => ({ ...prev, driverUserId: event.target.value }))
-                  }
-                  placeholder="Nhập driverUserId nếu có"
-                />
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Ghi chú giao hàng</label>
-              <Textarea
-                rows={3}
-                value={shipTransferForm.notes}
-                onChange={(event) =>
-                  setShipTransferForm((prev) => ({ ...prev, notes: event.target.value }))
-                }
-                placeholder="Ví dụ: xe rời kho lúc 09:30, giao cho đội tiếp nhận tại kho phụ"
-              />
+              <div className="min-w-0 space-y-4 overflow-y-auto pr-1">
+                <div className="space-y-2 rounded-2xl border border-border bg-muted/10 p-4">
+                  <label className="text-sm font-medium text-foreground">
+                    Minh chứng giao hàng
+                  </label>
+                  <FileUploadCard
+                    title="Tải minh chứng giao hàng"
+                    description="Chọn tệp PDF hoặc ảnh để xác nhận hàng đã rời kho hoặc đang được vận chuyển."
+                    accept="application/pdf,image/*"
+                    multiple
+                    className="w-full"
+                    containerClassName="min-h-[320px] lg:min-h-[380px]"
+                    previewListClassName="grid grid-cols-1 gap-3 md:grid-cols-2 max-h-[420px] overflow-y-auto pr-1"
+                    previewMediaClassName="h-52 lg:h-60"
+                    selectedFiles={shipTransferForm.evidenceFiles}
+                    onRemoveFile={(index) =>
+                      setShipTransferForm((prev) => ({
+                        ...prev,
+                        evidenceFiles: prev.evidenceFiles.filter(
+                          (_, fileIndex) => fileIndex !== index,
+                        ),
+                      }))
+                    }
+                    onFilesSelected={(files) =>
+                      setShipTransferForm((prev) => ({
+                        ...prev,
+                        evidenceFiles: Array.from(files || []),
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="space-y-2 rounded-2xl border border-border bg-muted/10 p-4">
+                  <label className="text-sm font-medium text-foreground">Ghi chú giao hàng</label>
+                  <Textarea
+                    rows={4}
+                    value={shipTransferForm.notes}
+                    onChange={(event) =>
+                      setShipTransferForm((prev) => ({ ...prev, notes: event.target.value }))
+                    }
+                    placeholder="Ví dụ: xe rời kho lúc 09:30, giao cho đội tiếp nhận tại kho phụ"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
-          <DialogFooter className="border-t border-border bg-muted/30 px-6 py-4">
+          <DialogFooter className="border-t border-border bg-muted/30 px-4 py-4 sm:px-6 lg:px-8">
             <DialogClose asChild>
               <Button variant="outline">Đóng</Button>
             </DialogClose>
@@ -3479,8 +3739,8 @@ export default function CoordinatorInventoryPage() {
           if (!open) setSelectedTransferId(null);
         }}
       >
-        <DialogContent className="max-w-2xl overflow-hidden p-0">
-          <DialogHeader className="border-b border-border bg-gradient-to-r from-emerald-500/10 via-background to-background px-6 py-5">
+        <DialogContent className="!max-w-none h-[88vh] w-[96vw] max-w-5xl overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="border-b border-border bg-gradient-to-r from-emerald-500/10 via-background to-background px-6 py-5 lg:px-8 lg:py-6">
             <div className="flex items-start gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-600">
                 <span className="material-symbols-outlined text-[24px]">inventory_2</span>
@@ -3495,58 +3755,112 @@ export default function CoordinatorInventoryPage() {
             </div>
           </DialogHeader>
 
-          <div className="space-y-5 px-6 py-5">
-            <div className="grid gap-3 rounded-2xl border border-border bg-muted/10 p-4 sm:grid-cols-2">
-              {selectedTransferSummaryCompact.map((item) => (
-                <div key={item.label} className="space-y-1 rounded-xl bg-background/80 p-3">
-                  <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                    {item.label}
-                  </p>
-                  <p className="text-sm font-semibold text-foreground break-words">{item.value}</p>
+          <div className="flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
+            <div className="grid h-full gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+              <div className="space-y-4 overflow-y-auto pr-1">
+                <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                  <p className="mb-3 text-sm font-semibold text-foreground">Thông tin phiếu</p>
+                  <div className="space-y-3">
+                    {selectedTransferSummaryCompact.map((item) => (
+                      <div key={item.label} className="rounded-xl bg-background/80 p-3">
+                        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                          {item.label}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-foreground break-words line-clamp-2">
+                          {item.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
 
-            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-muted-foreground">
-              Khi xác nhận, hệ thống sẽ tạo giao dịch{' '}
-              <span className="font-semibold text-emerald-700">nhập kho đích</span> theo số lượng
-              thực nhận của từng vật phẩm trong phiếu.
-            </div>
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-muted-foreground">
+                  Khi xác nhận, hệ thống sẽ tạo giao dịch{' '}
+                  <span className="font-semibold text-emerald-700">nhập kho đích</span> theo số
+                  lượng thực nhận của từng vật phẩm trong phiếu.
+                </div>
 
-            <div className="grid gap-3 rounded-2xl border border-border bg-muted/10 p-4 sm:grid-cols-2">
-              <div className="space-y-1 rounded-xl bg-background/80 p-3">
-                <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                  Phương tiện
-                </p>
-                <p className="text-sm font-semibold text-foreground break-words">
-                  {selectedTransfer?.vehicleId || 'Chưa cập nhật'}
-                </p>
+                <div className="grid gap-3 rounded-2xl border border-border bg-muted/10 p-4 sm:grid-cols-2 xl:grid-cols-1">
+                  <div className="space-y-1 rounded-xl bg-background/80 p-3">
+                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                      Phương tiện
+                    </p>
+                    <p className="text-sm font-semibold text-foreground break-words">
+                      {selectedTransferVehicleLabel}
+                    </p>
+                  </div>
+                  <div className="space-y-1 rounded-xl bg-background/80 p-3">
+                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                      Người giao / tài xế
+                    </p>
+                    <p className="text-sm font-semibold text-foreground break-words">
+                      {selectedTransfer?.driverUserId || 'Chưa cập nhật'}
+                    </p>
+                  </div>
+                </div>
+
+                {!!selectedTransfer?.inventoryTransactionIds?.length && (
+                  <div className="rounded-2xl border border-border bg-muted/10 p-4 text-sm">
+                    <p className="font-medium text-foreground">Mã giao dịch kho</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedTransfer.inventoryTransactionIds.map((transactionId) => (
+                        <Badge key={transactionId} variant="outline" appearance="outline">
+                          {transactionId}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="space-y-1 rounded-xl bg-background/80 p-3">
-                <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                  Người giao / tài xế
-                </p>
-                <p className="text-sm font-semibold text-foreground break-words">
-                  {selectedTransfer?.driverUserId || 'Chưa cập nhật'}
-                </p>
-              </div>
-            </div>
 
-            {!!selectedTransfer?.inventoryTransactionIds?.length && (
-              <div className="rounded-2xl border border-border bg-muted/10 p-4 text-sm">
-                <p className="font-medium text-foreground">Giao dịch kho liên kết</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {selectedTransfer.inventoryTransactionIds.map((transactionId) => (
-                    <Badge key={transactionId} variant="outline" appearance="outline">
-                      {transactionId}
-                    </Badge>
-                  ))}
+              <div className="min-w-0 space-y-4 overflow-y-auto pr-1">
+                <div className="space-y-2 rounded-2xl border border-border bg-muted/10 p-4">
+                  <label className="text-sm font-medium text-foreground">Ghi chú nhận hàng</label>
+                  <Textarea
+                    rows={4}
+                    value={receiveTransferForm.notes}
+                    onChange={(event) =>
+                      setReceiveTransferForm((prev) => ({ ...prev, notes: event.target.value }))
+                    }
+                    placeholder="Nhập ghi chú khi nhận hàng nếu có"
+                  />
+                </div>
+
+                <div className="space-y-2 rounded-2xl border border-border bg-muted/10 p-4">
+                  <label className="text-sm font-medium text-foreground">
+                    Minh chứng nhận hàng
+                  </label>
+                  <FileUploadCard
+                    title="Tải minh chứng nhận hàng"
+                    description="Chọn tệp PDF hoặc ảnh để xác nhận kho đích đã tiếp nhận hàng hóa."
+                    accept="application/pdf,image/*"
+                    multiple
+                    className="w-full"
+                    containerClassName="min-h-[320px] lg:min-h-[380px]"
+                    previewListClassName="grid grid-cols-1 gap-3 md:grid-cols-2 max-h-[420px] overflow-y-auto pr-1"
+                    previewMediaClassName="h-52 lg:h-60"
+                    selectedFiles={receiveTransferForm.evidenceFiles}
+                    onRemoveFile={(index) =>
+                      setReceiveTransferForm((prev) => ({
+                        ...prev,
+                        evidenceFiles: prev.evidenceFiles.filter(
+                          (_, fileIndex) => fileIndex !== index,
+                        ),
+                      }))
+                    }
+                    onFilesSelected={(files) =>
+                      setReceiveTransferForm((prev) => ({
+                        ...prev,
+                        evidenceFiles: Array.from(files || []),
+                      }))
+                    }
+                  />
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
-          <DialogFooter className="border-t border-border bg-muted/30 px-6 py-4">
+          <DialogFooter className="border-t border-border bg-muted/30 px-4 py-4 sm:px-6 lg:px-8">
             <DialogClose asChild>
               <Button variant="outline">Đóng</Button>
             </DialogClose>
@@ -3565,24 +3879,82 @@ export default function CoordinatorInventoryPage() {
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog
+      <Dialog
         open={openCancelTransfer}
         onOpenChange={(open) => {
           setOpenCancelTransfer(open);
           if (!open) setSelectedTransferId(null);
         }}
-        title="Hủy phiếu điều phối"
-        description={`${selectedTransferSummary.join(' • ')}. Thao tác này sẽ chuyển phiếu sang trạng thái đã hủy.`}
-        confirmText={cancelTransferStatus === 'pending' ? 'Đang hủy...' : 'Hủy phiếu'}
-        cancelText="Đóng"
-        variant="destructive"
-        onConfirm={() => {
-          void handleCancelTransfer();
-        }}
-      />
+      >
+        <DialogContent className="w-[92vw] max-w-3xl max-h-[88vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="border-b border-border bg-gradient-to-r from-red-500/10 via-background to-background px-6 py-5">
+            <DialogTitle>Hủy phiếu điều phối</DialogTitle>
+            <DialogDescription>
+              {`${selectedTransferSummary.join(' • ')}. Cần nhập ghi chú hủy theo yêu cầu endpoint.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-5 px-6 py-5">
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-muted-foreground">
+              Phiếu sẽ chuyển sang trạng thái{' '}
+              <span className="font-semibold text-red-700">Đã hủy</span>.
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Lý do / ghi chú hủy *</label>
+              <Textarea
+                rows={4}
+                value={cancelTransferForm.notes}
+                onChange={(event) =>
+                  setCancelTransferForm((prev) => ({ ...prev, notes: event.target.value }))
+                }
+                placeholder="Nhập lý do hủy phiếu điều phối"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Minh chứng hủy phiếu</label>
+              <FileUploadCard
+                title="Tải minh chứng hủy phiếu"
+                description="Chọn tệp PDF hoặc ảnh để lưu cùng lý do hủy phiếu điều phối."
+                accept="application/pdf,image/*"
+                multiple
+                selectedFiles={cancelTransferForm.evidenceFiles}
+                onRemoveFile={(index) =>
+                  setCancelTransferForm((prev) => ({
+                    ...prev,
+                    evidenceFiles: prev.evidenceFiles.filter((_, fileIndex) => fileIndex !== index),
+                  }))
+                }
+                onFilesSelected={(files) =>
+                  setCancelTransferForm((prev) => ({
+                    ...prev,
+                    evidenceFiles: Array.from(files || []),
+                  }))
+                }
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="border-t border-border bg-muted/30 px-6 py-4">
+            <DialogClose asChild>
+              <Button variant="outline">Đóng</Button>
+            </DialogClose>
+            <Button
+              variant="destructive"
+              disabled={cancelTransferStatus === 'pending'}
+              onClick={() => {
+                void handleCancelTransfer();
+              }}
+            >
+              {cancelTransferStatus === 'pending' ? 'Đang hủy...' : 'Xác nhận hủy phiếu'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={openTransferDetail} onOpenChange={setOpenTransferDetail}>
-        <DialogContent className="!max-w-none w-[95vw] max-w-5xl h-[90vh] p-0 overflow-hidden flex flex-col">
+        <DialogContent className="!w-[98vw] !max-w-[1400px] h-[92vh] p-0 overflow-hidden flex flex-col">
           <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle>Chi tiết phiếu điều phối</DialogTitle>
             <DialogDescription>
@@ -3593,10 +3965,10 @@ export default function CoordinatorInventoryPage() {
           </DialogHeader>
 
           {selectedTransfer ? (
-            <div className="flex-1 min-h-0 overflow-y-auto p-6">
-              <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 md:px-8 md:py-6">
+              <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 xl:max-w-none">
                 <section className="rounded-3xl border border-sky-500/20 bg-gradient-to-br from-sky-500/10 via-background to-background p-5 shadow-sm">
-                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge
@@ -3608,26 +3980,18 @@ export default function CoordinatorInventoryPage() {
                             TRANSFER_STATUS_LABEL[selectedTransfer.status] ||
                             'Không rõ'}
                         </Badge>
-                        <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                          Transfer detail
-                        </span>
+                        <span className="text-xs text-muted-foreground">Mã phiếu điều phối</span>
                       </div>
                       <div>
-                        <p className="text-2xl font-bold text-foreground break-all">
+                        <p className="max-w-full text-xl font-bold text-foreground break-all leading-snug">
                           {selectedTransfer.transferCode || selectedTransfer.id}
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Thông tin tổng quan của phiếu được gom theo từng nhóm để dễ đọc và rà soát
-                          nhanh.
                         </p>
                       </div>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2 md:min-w-[320px]">
-                      <div className="rounded-2xl border border-border bg-background/80 p-3">
-                        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                          Tổng dòng vật phẩm
-                        </p>
-                        <p className="mt-1 text-lg font-semibold text-foreground">
+                    <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[320px] lg:max-w-[360px]">
+                      <div className="rounded-xl border border-border bg-background p-3">
+                        <p className="text-xs text-muted-foreground">Số dòng vật phẩm</p>
+                        <p className="mt-1 text-base font-semibold text-foreground">
                           {formatNumberVN(
                             selectedTransfer.totalRequestedItems ||
                               selectedTransfer.items?.length ||
@@ -3635,11 +3999,9 @@ export default function CoordinatorInventoryPage() {
                           )}
                         </p>
                       </div>
-                      <div className="rounded-2xl border border-border bg-background/80 p-3">
-                        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                          Tổng số lượng
-                        </p>
-                        <p className="mt-1 text-lg font-semibold text-foreground">
+                      <div className="rounded-xl border border-border bg-background p-3">
+                        <p className="text-xs text-muted-foreground">Tổng số lượng</p>
+                        <p className="mt-1 text-base font-semibold text-foreground">
                           {formatNumberVN(selectedTransfer.totalRequestedQuantity || 0)}
                         </p>
                       </div>
@@ -3650,8 +4012,8 @@ export default function CoordinatorInventoryPage() {
                 {(() => {
                   const parsedNotes = parseTransferNotes(selectedTransfer.notes);
                   return (
-                    <section className="grid gap-4 md:grid-cols-2">
-                      <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                    <section className="grid gap-5 xl:grid-cols-2">
+                      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
                         <p className="mb-4 text-base font-semibold text-foreground">
                           Thông tin điều phối
                         </p>
@@ -3711,7 +4073,7 @@ export default function CoordinatorInventoryPage() {
                                 <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
                                   {meta.label}
                                 </p>
-                                <p className="mt-1 text-sm font-medium text-foreground break-words">
+                                <p className="mt-1 min-w-0 text-sm font-medium text-foreground break-all leading-6">
                                   {meta.value}
                                 </p>
                               </div>
@@ -3720,7 +4082,7 @@ export default function CoordinatorInventoryPage() {
                         </div>
                       </div>
 
-                      <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
                         <p className="mb-4 text-base font-semibold text-foreground">
                           Lý do & ghi chú
                         </p>
@@ -3776,23 +4138,53 @@ export default function CoordinatorInventoryPage() {
                   );
                 })()}
 
-                <section className="grid gap-4 md:grid-cols-2">
+                <section className="grid gap-5 xl:grid-cols-2">
                   <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
                     <p className="mb-4 text-base font-semibold text-foreground">
-                      Dòng thời gian xử lý
+                      Tiến trình xử lý phiếu
                     </p>
-                    <div className="space-y-3">
-                      {selectedTransferTimelineRows.map((row) => (
-                        <div
-                          key={row.label}
-                          className="rounded-2xl border border-border bg-muted/10 p-4"
-                        >
-                          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                            {row.label}
-                          </p>
-                          <p className="mt-2 text-sm font-medium text-foreground">{row.value}</p>
-                        </div>
-                      ))}
+                    <div className="overflow-x-auto pb-1">
+                      <div className="grid min-w-[320px] grid-cols-1 gap-3 sm:flex sm:min-w-[720px] sm:items-start sm:gap-2">
+                        {selectedTransferTimelineStepper.map((step, index) => (
+                          <div
+                            key={step.key}
+                            className="flex min-w-0 flex-1 items-start gap-2 sm:flex-row sm:items-start"
+                          >
+                            <div className="flex min-w-0 flex-1 flex-row items-center gap-3 rounded-2xl border border-border bg-muted/10 p-3 sm:flex-col sm:items-center sm:border-0 sm:bg-transparent sm:p-0 sm:text-center">
+                              <div
+                                className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold ${step.nodeClass}`}
+                              >
+                                {step.state === 'completed' ? (
+                                  <span className="material-symbols-outlined text-[16px]">
+                                    check
+                                  </span>
+                                ) : step.state === 'cancelled' ? (
+                                  <span className="material-symbols-outlined text-[16px]">
+                                    close
+                                  </span>
+                                ) : (
+                                  index + 1
+                                )}
+                              </div>
+                              <div className="min-w-0 sm:mt-3">
+                                <p className="text-[11px] font-medium text-foreground">
+                                  {step.label}
+                                </p>
+                                {step.value && (
+                                  <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                                    {step.value}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            {index < selectedTransferTimelineStepper.length - 1 && (
+                              <div
+                                className={`hidden sm:block mt-4 h-[2px] flex-1 rounded-full ${step.lineClass}`}
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
@@ -3805,136 +4197,142 @@ export default function CoordinatorInventoryPage() {
                         <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
                           Phương tiện
                         </p>
-                        <p className="mt-2 text-foreground break-all">
-                          {selectedTransfer.vehicleId || 'Chưa cập nhật'}
+                        <p className="mt-2 min-w-0 text-foreground break-all leading-6">
+                          {selectedTransferVehicleLabel}
                         </p>
                       </div>
                       <div className="rounded-2xl border border-border bg-muted/10 p-4">
                         <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
                           Người giao / tài xế
                         </p>
-                        <p className="mt-2 text-foreground break-all">
+                        <p className="mt-2 min-w-0 text-foreground break-all leading-6">
                           {selectedTransfer.driverUserId || 'Chưa cập nhật'}
                         </p>
                       </div>
                       <div className="rounded-2xl border border-border bg-muted/10 p-4">
                         <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                          Inventory transaction IDs
+                          Mã giao dịch kho
                         </p>
                         {selectedTransfer.inventoryTransactionIds?.length ? (
                           <div className="mt-2 flex flex-wrap gap-2">
                             {selectedTransfer.inventoryTransactionIds.map((transactionId) => (
-                              <Badge key={transactionId} variant="outline" appearance="outline">
+                              <Badge
+                                key={transactionId}
+                                variant="outline"
+                                appearance="outline"
+                                className="max-w-full break-all whitespace-normal text-left leading-5"
+                              >
                                 {transactionId}
                               </Badge>
                             ))}
                           </div>
                         ) : (
-                          <p className="mt-2 text-foreground">Chưa có giao dịch liên kết.</p>
+                          <p className="mt-2 text-foreground">Chưa có mã giao dịch kho.</p>
                         )}
                       </div>
                     </div>
                   </div>
                 </section>
 
-                <section className="rounded-3xl border border-border bg-card p-5 shadow-sm space-y-4">
-                  <div>
-                    <p className="text-base font-semibold text-foreground">Tài liệu & PDF</p>
-                    <p className="text-sm text-muted-foreground">
-                      Ưu tiên hiển thị tài liệu chính thức từ backend, sau đó mới đến evidence URL.
-                    </p>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {[
-                      {
-                        label: 'PDF yêu cầu hiện hành',
-                        url:
-                          selectedTransfer.currentRequestPdfUrl ||
-                          selectedTransferDocumentGroups.requestPdf?.fileUrl ||
-                          null,
-                      },
-                      {
-                        label: 'PDF xác nhận hiện hành',
-                        url:
-                          selectedTransfer.currentConfirmedPdfUrl ||
-                          selectedTransferDocumentGroups.confirmedPdf?.fileUrl ||
-                          null,
-                      },
-                    ].map((document) => (
-                      <div
-                        key={document.label}
-                        className="rounded-2xl border border-border bg-muted/10 p-4"
-                      >
-                        <p className="text-sm font-medium text-foreground">{document.label}</p>
-                        {document.url ? (
-                          <div className="mt-3 space-y-3">
-                            <Button variant="outline" size="sm" asChild>
-                              <a href={document.url} target="_blank" rel="noreferrer">
-                                Mở tài liệu
-                              </a>
-                            </Button>
-                            <iframe
-                              title={document.label}
-                              src={document.url}
-                              className="h-[320px] w-full rounded-xl border border-border bg-background"
-                            />
-                          </div>
-                        ) : (
-                          <p className="mt-2 text-sm text-muted-foreground">Chưa có tài liệu.</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  {!!selectedTransfer.documents?.length && (
-                    <div className="rounded-2xl border border-border bg-muted/10 p-4">
-                      <p className="text-sm font-medium text-foreground">
-                        Danh sách tài liệu backend
+                {hasSystemTransferDocuments && (
+                  <section className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-4">
+                    <div>
+                      <p className="text-base font-semibold text-foreground">Tài liệu & PDF</p>
+                      <p className="text-sm text-muted-foreground">
+                        Ưu tiên hiển thị tài liệu chính thức từ hệ thống trước phần minh chứng bên
+                        dưới.
                       </p>
-                      <div className="mt-3 space-y-3">
-                        {selectedTransfer.documents.map((document) => (
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {[
+                        {
+                          label: 'PDF yêu cầu hiện hành',
+                          url:
+                            selectedTransfer.currentRequestPdfUrl ||
+                            selectedTransferDocumentGroups.requestPdf?.fileUrl ||
+                            null,
+                        },
+                        {
+                          label: 'PDF xác nhận hiện hành',
+                          url:
+                            selectedTransfer.currentConfirmedPdfUrl ||
+                            selectedTransferDocumentGroups.confirmedPdf?.fileUrl ||
+                            null,
+                        },
+                      ]
+                        .filter((document) => document.url)
+                        .map((document) => (
                           <div
-                            key={document.supplyTransferDocumentId}
-                            className="rounded-xl border border-border bg-background/80 p-3"
+                            key={document.label}
+                            className="rounded-2xl border border-border bg-muted/10 p-4"
                           >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge variant="outline" appearance="outline">
-                                {document.documentType === 1
-                                  ? 'Request PDF'
-                                  : document.documentType === 2
-                                    ? 'Confirmed PDF'
-                                    : `Document type ${document.documentType}`}
-                              </Badge>
-                              <Badge variant={document.isCurrent ? 'success' : 'outline'} size="sm">
-                                {document.isCurrent ? 'Bản hiện hành' : `v${document.version}`}
-                              </Badge>
-                            </div>
-                            <p className="mt-2 text-sm font-medium text-foreground break-all">
-                              {document.fileName || document.fileUrl}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              Tạo lúc:{' '}
-                              {document.createdAt
-                                ? new Date(document.createdAt).toLocaleString('vi-VN')
-                                : 'Chưa có dữ liệu'}
-                            </p>
-                            {document.notes && (
-                              <p className="mt-1 text-xs text-muted-foreground">{document.notes}</p>
-                            )}
-                            <div className="mt-2">
+                            <p className="text-sm font-medium text-foreground">{document.label}</p>
+                            <div className="mt-3 space-y-3">
                               <Button variant="outline" size="sm" asChild>
-                                <a href={document.fileUrl} target="_blank" rel="noreferrer">
-                                  Mở file
+                                <a href={document.url!} target="_blank" rel="noreferrer">
+                                  Mở tài liệu
                                 </a>
                               </Button>
                             </div>
                           </div>
                         ))}
-                      </div>
                     </div>
-                  )}
-                </section>
+
+                    {!!selectedTransfer.documents?.length && (
+                      <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                        <p className="text-sm font-medium text-foreground">
+                          Danh sách tài liệu hệ thống
+                        </p>
+                        <div className="mt-3 space-y-3">
+                          {selectedTransfer.documents.map((document) => (
+                            <div
+                              key={document.supplyTransferDocumentId}
+                              className="rounded-xl border border-border bg-background/80 p-3"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant="outline" appearance="outline">
+                                  {document.documentType === 1
+                                    ? 'PDF yêu cầu'
+                                    : document.documentType === 2
+                                      ? 'PDF xác nhận'
+                                      : `Loại tài liệu ${document.documentType}`}
+                                </Badge>
+                                <Badge
+                                  variant={document.isCurrent ? 'success' : 'outline'}
+                                  size="sm"
+                                >
+                                  {document.isCurrent ? 'Bản hiện hành' : `v${document.version}`}
+                                </Badge>
+                              </div>
+                              <p className="mt-2 text-sm font-medium text-foreground break-all">
+                                {document.fileName || document.fileUrl}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Tạo lúc:{' '}
+                                {document.createdAt
+                                  ? new Date(document.createdAt).toLocaleString('vi-VN')
+                                  : 'Chưa có dữ liệu'}
+                              </p>
+                              {document.notes && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {document.notes}
+                                </p>
+                              )}
+                              <div className="mt-2">
+                                <Button variant="outline" size="sm" asChild>
+                                  <a href={document.fileUrl} target="_blank" rel="noreferrer">
+                                    Mở file
+                                  </a>
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                )}
 
                 <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
                   <div className="mb-4">
@@ -3958,7 +4356,7 @@ export default function CoordinatorInventoryPage() {
                             key={`${selectedTransfer.id}-${item.supplyItemId}-${index}`}
                             className="rounded-2xl border border-border bg-muted/10 p-4"
                           >
-                            <div className="flex items-start gap-3">
+                            <div className="flex min-w-0 items-start gap-3">
                               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-border bg-background text-primary">
                                 <span className="material-symbols-outlined text-[20px]">
                                   {matchedSupply
@@ -3987,7 +4385,7 @@ export default function CoordinatorInventoryPage() {
                                     </Badge>
                                   )}
                                 </div>
-                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                                <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
                                   <span>
                                     Yêu cầu:{' '}
                                     <span className="font-semibold text-foreground">
@@ -4004,7 +4402,7 @@ export default function CoordinatorInventoryPage() {
                                       </span>
                                     </span>
                                   )}
-                                  <span>Mã: {item.supplyItemId}</span>
+                                  <span className="break-all">Mã: {item.supplyItemId}</span>
                                 </div>
                                 {item.notes && (
                                   <p className="text-sm leading-6 text-muted-foreground">
@@ -4030,34 +4428,69 @@ export default function CoordinatorInventoryPage() {
                     </p>
                   </div>
 
-                  {(selectedTransfer.evidenceUrls || []).length === 0 ? (
+                  {selectedTransferPreviewFiles.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-border bg-muted/10 p-4 text-sm text-muted-foreground">
-                      Chưa có evidence URL nào.
+                      Chưa có đường dẫn minh chứng nào.
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      {(selectedTransfer.evidenceUrls || []).map((url, index) => (
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      {selectedTransferPreviewFiles.map((file) => (
                         <div
-                          key={`${url}-${index}`}
+                          key={file.id}
                           className="overflow-hidden rounded-2xl border border-border bg-muted/10"
                         >
-                          <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="min-w-0">
-                              <p className="font-medium text-foreground">PDF #{index + 1}</p>
-                              <p className="text-xs text-muted-foreground break-all">{url}</p>
+                          {file.isImage ? (
+                            <div className="aspect-[4/3] w-full overflow-hidden bg-background/60">
+                              <img
+                                src={file.url}
+                                alt={`Tệp minh chứng ${file.index + 1}`}
+                                className="h-full w-full object-cover"
+                              />
                             </div>
-                            <Button variant="outline" size="sm" asChild>
-                              <a href={url} target="_blank" rel="noreferrer">
+                          ) : file.isPdf ? (
+                            <div className="h-[420px] w-full overflow-hidden bg-background/60">
+                              <iframe
+                                src={file.url}
+                                title={`PDF minh chứng ${file.index + 1}`}
+                                className="h-full w-full border-0"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-3 border-b border-border px-4 py-4">
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                                <span className="material-symbols-outlined text-[20px]">
+                                  description
+                                </span>
+                              </div>
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <p className="text-sm font-medium text-foreground break-words">
+                                  Tệp #{file.index + 1}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Không hỗ trợ xem trước trực tiếp.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium text-foreground">
+                                {file.isImage
+                                  ? `Ảnh #${file.index + 1}`
+                                  : file.isPdf
+                                    ? `PDF #${file.index + 1}`
+                                    : `Tệp #${file.index + 1}`}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground leading-5">
+                                {file.shortLabel}
+                              </p>
+                            </div>
+                            <Button variant="outline" size="sm" asChild className="shrink-0">
+                              <a href={file.url} target="_blank" rel="noreferrer">
                                 Mở file
                               </a>
                             </Button>
-                          </div>
-                          <div className="p-4">
-                            <iframe
-                              title={`transfer-detail-pdf-${index}`}
-                              src={url}
-                              className="h-[420px] w-full rounded-xl border border-border bg-background"
-                            />
                           </div>
                         </div>
                       ))}
@@ -4105,7 +4538,7 @@ export default function CoordinatorInventoryPage() {
 
           <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Ngưỡng tối thiểu (Min)</label>
+              <label className="text-sm font-medium text-foreground">Ngưỡng tối thiểu</label>
               <Input
                 value={formatNumberInputVN(editStockDialog.minValue)}
                 className={editStockErrors['minValue'] ? 'border-red-500 focus:ring-red-500' : ''}
@@ -4129,7 +4562,7 @@ export default function CoordinatorInventoryPage() {
               )}
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Ngưỡng tối đa (Max)</label>
+              <label className="text-sm font-medium text-foreground">Ngưỡng tối đa</label>
               <Input
                 value={formatNumberInputVN(editStockDialog.maxValue)}
                 className={editStockErrors['maxValue'] ? 'border-red-500 focus:ring-red-500' : ''}

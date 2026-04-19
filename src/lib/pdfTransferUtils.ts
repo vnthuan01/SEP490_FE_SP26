@@ -5,7 +5,7 @@ const regularFontUrl = '/fonts/BeVietnamPro-Regular.ttf';
 const boldFontUrl = '/fonts/BeVietnamPro-Bold.ttf';
 
 const PAGE_WIDTH = 595;
-const PAGE_HEIGHT = 842;
+const PAGE_HEIGHT = 845;
 const PAGE_MARGIN_X = 42;
 const TABLE_WIDTH = PAGE_WIDTH - PAGE_MARGIN_X * 2;
 const SIGN_BOX = {
@@ -20,6 +20,12 @@ const APPROVER_BOX = {
   width: 205,
   height: 92,
 };
+
+const SIGN_INFO_LABEL_OFFSET = 24;
+const SIGN_INFO_NAME_OFFSET = 38;
+const SIGN_INFO_DATE_OFFSET = 52;
+const SIGN_INFO_CLEAR_TOP_OFFSET = 56;
+const SIGN_INFO_CLEAR_HEIGHT = 40;
 
 export interface TransferPdfFillData {
   transferCode: string;
@@ -588,14 +594,14 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
   });
   page.drawText('Họ và tên:', {
     x: SIGN_BOX.x,
-    y: SIGN_BOX.y - 14,
+    y: SIGN_BOX.y - SIGN_INFO_LABEL_OFFSET,
     size: 9,
     font: bold,
     color: rgb(0.28, 0.31, 0.38),
   });
   page.drawText(sanitizePdfText(data.creatorName) || '................................', {
     x: SIGN_BOX.x,
-    y: SIGN_BOX.y - 28,
+    y: SIGN_BOX.y - SIGN_INFO_NAME_OFFSET,
     size: 9,
     font,
     color: rgb(0.12, 0.16, 0.24),
@@ -609,14 +615,14 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
   });
   page.drawText('Họ và tên:', {
     x: APPROVER_BOX.x,
-    y: APPROVER_BOX.y - 14,
+    y: APPROVER_BOX.y - SIGN_INFO_LABEL_OFFSET,
     size: 9,
     font: bold,
     color: rgb(0.28, 0.31, 0.38),
   });
   page.drawText(sanitizePdfText(data.approverName) || '................................', {
     x: APPROVER_BOX.x,
-    y: APPROVER_BOX.y - 28,
+    y: APPROVER_BOX.y - SIGN_INFO_NAME_OFFSET,
     size: 9,
     font,
     color: rgb(0.12, 0.16, 0.24),
@@ -776,21 +782,21 @@ export async function updateTransferPdfApprovalData(
 
   page.drawRectangle({
     x: APPROVER_BOX.x - 2,
-    y: APPROVER_BOX.y - 34,
+    y: APPROVER_BOX.y - SIGN_INFO_CLEAR_TOP_OFFSET,
     width: 195,
-    height: 40,
+    height: SIGN_INFO_CLEAR_HEIGHT,
     color: rgb(1, 1, 1),
   });
   page.drawText('Họ và tên:', {
     x: APPROVER_BOX.x,
-    y: APPROVER_BOX.y - 14,
+    y: APPROVER_BOX.y - SIGN_INFO_LABEL_OFFSET,
     size: 9,
     font: bold,
     color: rgb(0.28, 0.31, 0.38),
   });
   page.drawText(sanitizePdfText(data.approverName) || '................................', {
     x: APPROVER_BOX.x,
-    y: APPROVER_BOX.y - 28,
+    y: APPROVER_BOX.y - SIGN_INFO_NAME_OFFSET,
     size: 9,
     font,
     color: rgb(0.12, 0.16, 0.24),
@@ -799,7 +805,7 @@ export async function updateTransferPdfApprovalData(
     `Ngày ký: ${sanitizePdfText(data.signedDateTimeLabel || data.signedDateLabel || '................................')}`,
     {
       x: APPROVER_BOX.x,
-      y: APPROVER_BOX.y - 40,
+      y: APPROVER_BOX.y - SIGN_INFO_DATE_OFFSET,
       size: 8,
       font,
       color: rgb(0.32, 0.35, 0.42),
@@ -842,28 +848,28 @@ export async function attachSignatureToPdf(
   if (options?.signerName) {
     lastPage.drawRectangle({
       x: targetBox.x,
-      y: targetBox.y - 34,
+      y: targetBox.y - SIGN_INFO_CLEAR_TOP_OFFSET,
       width: 195,
-      height: 40,
+      height: SIGN_INFO_CLEAR_HEIGHT,
       color: rgb(1, 1, 1),
     });
     lastPage.drawText('Họ và tên:', {
       x: targetBox.x,
-      y: targetBox.y - 14,
+      y: targetBox.y - SIGN_INFO_LABEL_OFFSET,
       size: 9,
       font,
       color: rgb(0.28, 0.31, 0.38),
     });
     lastPage.drawText(sanitizePdfText(options.signerName), {
       x: targetBox.x,
-      y: targetBox.y - 28,
+      y: targetBox.y - SIGN_INFO_NAME_OFFSET,
       size: 9,
       font,
       color: rgb(0.12, 0.16, 0.24),
     });
     lastPage.drawText(`Ngày ký: ${sanitizePdfText(new Date().toLocaleString('vi-VN'))}`, {
       x: targetBox.x,
-      y: targetBox.y - 40,
+      y: targetBox.y - SIGN_INFO_DATE_OFFSET,
       size: 8,
       font,
       color: rgb(0.32, 0.35, 0.42),
