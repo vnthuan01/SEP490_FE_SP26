@@ -26,6 +26,8 @@ export const TRANSACTION_KEYS = {
   byInventory: (inventoryId: string, params?: any) =>
     [...TRANSACTION_KEYS.all, 'by-inventory', inventoryId, params] as const,
   byType: (params?: any) => [...TRANSACTION_KEYS.all, 'by-type', params] as const,
+  importHistory: (inventoryId: string, supplyItemId: string) =>
+    [...TRANSACTION_KEYS.all, 'import-history', inventoryId, supplyItemId] as const,
 };
 
 // --- Inventory Hooks ---
@@ -94,6 +96,20 @@ export function useTransactionsByType(params?: SearchTransactionByTypeParams) {
       const response = await inventoryTransactionService.getByType(params);
       return response.data;
     },
+  });
+}
+
+export function useImportHistoryBySupplyItem(inventoryId: string, supplyItemId: string) {
+  return useQuery({
+    queryKey: TRANSACTION_KEYS.importHistory(inventoryId, supplyItemId),
+    queryFn: async () => {
+      const response = await inventoryTransactionService.getImportHistoryBySupplyItem(
+        inventoryId,
+        supplyItemId,
+      );
+      return response.data;
+    },
+    enabled: !!inventoryId && !!supplyItemId,
   });
 }
 

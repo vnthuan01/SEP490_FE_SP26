@@ -56,6 +56,7 @@ import { useQueries, useQueryClient } from '@tanstack/react-query';
 import {
   useAssignStationToCampaign,
   useCampaign,
+  useCampaignInventoryBalance,
   useCampaigns,
   useCreateCampaign,
   useRemoveStationFromCampaign,
@@ -303,6 +304,8 @@ export default function ManagerCampaignPage() {
     isLoading: isLoadingCampaignDetail,
     refetch: refetchCampaignDetail,
   } = useCampaign(selectedCampaignId);
+  const { inventoryBalance: selectedCampaignInventoryBalance } =
+    useCampaignInventoryBalance(selectedCampaignId);
   const campaignDetailQueries = useQueries({
     queries: campaigns.map((campaign) => ({
       queryKey: ['campaigns', 'detail', campaign.campaignId, 'manager-list-area'],
@@ -2401,6 +2404,103 @@ export default function ManagerCampaignPage() {
                           </div>
                         );
                       })
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border bg-card w-full">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary">warehouse</span>
+                      Cân đối tồn kho chiến dịch
+                    </CardTitle>
+                  </CardHeader>
+
+                  <CardContent className="space-y-4">
+                    {!selectedCampaignInventoryBalance ? (
+                      <p className="text-sm text-muted-foreground">
+                        Chưa có dữ liệu cân đối tồn kho cho chiến dịch này.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                          <div className="rounded-xl border border-border p-4">
+                            <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                              Ngân sách tổng
+                            </p>
+                            <p className="mt-2 text-lg font-semibold text-foreground">
+                              {formatNumberVN(selectedCampaignInventoryBalance.budgetTotal)}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-border p-4">
+                            <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                              Đã chi
+                            </p>
+                            <p className="mt-2 text-lg font-semibold text-foreground">
+                              {formatNumberVN(selectedCampaignInventoryBalance.budgetSpent)}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-border p-4">
+                            <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                              Còn lại
+                            </p>
+                            <p className="mt-2 text-lg font-semibold text-foreground">
+                              {formatNumberVN(selectedCampaignInventoryBalance.remainingBudget)}
+                            </p>
+                          </div>
+                        </div>
+
+                        {selectedCampaignInventoryBalance.stations.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            Chưa có trạm nào có số liệu tồn kho trong chiến dịch này.
+                          </p>
+                        ) : (
+                          <div className="space-y-3">
+                            {selectedCampaignInventoryBalance.stations.map((stationBalance) => (
+                              <div
+                                key={`${stationBalance.reliefStationId}-${stationBalance.inventoryId}`}
+                                className="rounded-xl border border-border p-4"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold text-foreground">
+                                      {stationBalance.reliefStationName}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground break-all mt-1">
+                                      Inventory ID: {stationBalance.inventoryId || '—'}
+                                    </p>
+                                  </div>
+                                  <Badge
+                                    variant={
+                                      stationBalance.hasActiveInventory ? 'success' : 'outline'
+                                    }
+                                    size="sm"
+                                  >
+                                    {stationBalance.hasActiveInventory
+                                      ? 'Kho đang hoạt động'
+                                      : 'Chưa có kho hoạt động'}
+                                  </Badge>
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                                  <span>
+                                    Danh mục có hàng:{' '}
+                                    <b className="text-foreground">
+                                      {formatNumberVN(stationBalance.distinctSupplyItemCount)}
+                                    </b>
+                                  </span>
+                                  <span>
+                                    Tổng số lượng:{' '}
+                                    <b className="text-foreground">
+                                      {formatNumberVN(stationBalance.totalQuantity)}
+                                    </b>
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
                     )}
                   </CardContent>
                 </Card>

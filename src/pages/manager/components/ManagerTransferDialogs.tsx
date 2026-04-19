@@ -351,6 +351,26 @@ export function ManagerTransferHistoryDialog({
     status: number;
     notes?: string;
     createdAt?: string;
+    requestedAt?: string;
+    approvedAt?: string | null;
+    shippedAt?: string | null;
+    receivedAt?: string | null;
+    approvedByName?: string | null;
+    vehicleId?: string | null;
+    driverUserId?: string | null;
+    currentRequestPdfUrl?: string | null;
+    currentConfirmedPdfUrl?: string | null;
+    inventoryTransactionIds?: string[];
+    documents?: Array<{
+      supplyTransferDocumentId: string;
+      documentType: number;
+      version: number;
+      fileUrl: string;
+      fileName?: string | null;
+      isCurrent: boolean;
+      createdAt: string;
+      notes?: string | null;
+    }>;
     items?: Array<{
       supplyItemId: string;
       supplyItemName?: string;
@@ -422,11 +442,30 @@ export function ManagerTransferHistoryDialog({
                               : 'Chưa có dữ liệu'}
                           </p>
                           <p className="text-sm text-muted-foreground">
+                            Duyệt:{' '}
+                            {transfer.approvedAt
+                              ? new Date(transfer.approvedAt).toLocaleString('vi-VN')
+                              : 'Chưa duyệt'}
+                            {' • '}Giao:{' '}
+                            {transfer.shippedAt
+                              ? new Date(transfer.shippedAt).toLocaleString('vi-VN')
+                              : 'Chưa giao'}
+                            {' • '}Nhận:{' '}
+                            {transfer.receivedAt
+                              ? new Date(transfer.receivedAt).toLocaleString('vi-VN')
+                              : 'Chưa nhận'}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
                             Người yêu cầu: {transfer.requestedByName || 'Chưa rõ'} • Tổng dòng:{' '}
                             {formatNumberVN(
                               transfer.totalRequestedItems || transfer.items?.length || 0,
                             )}{' '}
                             • Tổng số lượng: {formatNumberVN(transfer.totalRequestedQuantity || 0)}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            Người duyệt: {transfer.approvedByName || 'Chưa cập nhật'} • Phương tiện:{' '}
+                            {transfer.vehicleId || 'Chưa cập nhật'} • Người giao:{' '}
+                            {transfer.driverUserId || 'Chưa cập nhật'}
                           </p>
                           {transfer.reason && (
                             <p className="text-sm text-muted-foreground">
@@ -496,6 +535,78 @@ export function ManagerTransferHistoryDialog({
                           ))}
                         </div>
                       </div>
+
+                      {(transfer.currentRequestPdfUrl || transfer.currentConfirmedPdfUrl) && (
+                        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2 text-sm">
+                          <p className="font-medium text-foreground">Tài liệu chính</p>
+                          {transfer.currentRequestPdfUrl && (
+                            <p>
+                              PDF yêu cầu:{' '}
+                              <a
+                                href={transfer.currentRequestPdfUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-primary hover:underline break-all"
+                              >
+                                Mở file
+                              </a>
+                            </p>
+                          )}
+                          {transfer.currentConfirmedPdfUrl && (
+                            <p>
+                              PDF xác nhận:{' '}
+                              <a
+                                href={transfer.currentConfirmedPdfUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-primary hover:underline break-all"
+                              >
+                                Mở file
+                              </a>
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {!!transfer.documents?.length && (
+                        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2 text-sm">
+                          <p className="font-medium text-foreground">Danh sách tài liệu</p>
+                          {transfer.documents.map((document) => (
+                            <div key={document.supplyTransferDocumentId}>
+                              <span>
+                                {document.documentType === 1
+                                  ? 'Request PDF'
+                                  : document.documentType === 2
+                                    ? 'Confirmed PDF'
+                                    : `Document ${document.documentType}`}
+                                {document.isCurrent ? ' • hiện hành' : ` • v${document.version}`}
+                                {' — '}
+                              </span>
+                              <a
+                                href={document.fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-primary hover:underline break-all"
+                              >
+                                {document.fileName || document.fileUrl}
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {!!transfer.inventoryTransactionIds?.length && (
+                        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2 text-sm">
+                          <p className="font-medium text-foreground">Giao dịch kho liên kết</p>
+                          <div className="flex flex-wrap gap-2">
+                            {transfer.inventoryTransactionIds.map((id) => (
+                              <Badge key={id} variant="outline" appearance="outline" size="sm">
+                                {id}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 );
@@ -528,8 +639,19 @@ export function ManagerTransactionHistoryDialog({
     totalItems?: number;
     notes: string;
     createdAt: string;
+    reliefStationName?: string;
     createdByName?: string;
-    items: Array<{ supplyItemId: string; quantity: number; notes?: string }>;
+    importBatchCode?: string;
+    sourceReference?: string;
+    items: Array<{
+      supplyItemId: string;
+      supplyItemName?: string;
+      supplyItemUnit?: string;
+      quantity: number;
+      notes?: string;
+      unitCost?: number;
+      expiryDate?: string | null;
+    }>;
   }>;
   isLoading: boolean;
 }) {
@@ -571,6 +693,11 @@ export function ManagerTransactionHistoryDialog({
                             Người tạo: {transaction.createdByName || 'Chưa rõ'} • Lý do:{' '}
                             {transaction.reasonName || 'Chưa rõ'}
                           </p>
+                          <p className="text-xs text-muted-foreground">
+                            Trạm: {transaction.reliefStationName || inventoryName || 'Chưa rõ'} •
+                            Batch: {transaction.importBatchCode || '—'} • Nguồn tham chiếu:{' '}
+                            {transaction.sourceReference || '—'}
+                          </p>
                         </div>
                         <div
                           className={`inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm ${meta.className}`}
@@ -588,8 +715,14 @@ export function ManagerTransactionHistoryDialog({
                         <div className="mt-3 space-y-2 text-sm text-muted-foreground">
                           {transaction.items?.map((item, index) => (
                             <p key={`${transaction.transactionId}-${item.supplyItemId}-${index}`}>
-                              Vật phẩm: {item.supplyItemId} • Số lượng:{' '}
-                              {formatNumberVN(item.quantity)} • Ghi chú: {item.notes || 'Không có'}
+                              Vật phẩm: {item.supplyItemName || item.supplyItemId} • Số lượng:{' '}
+                              {formatNumberVN(item.quantity)} {item.supplyItemUnit || ''} • Unit
+                              cost: {item.unitCost != null ? formatNumberVN(item.unitCost) : '—'} •
+                              HSD:{' '}
+                              {item.expiryDate
+                                ? new Date(item.expiryDate).toLocaleDateString('vi-VN')
+                                : '—'}{' '}
+                              • Ghi chú: {item.notes || 'Không có'}
                             </p>
                           ))}
                         </div>

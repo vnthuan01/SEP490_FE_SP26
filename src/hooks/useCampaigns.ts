@@ -4,6 +4,7 @@ import type {
   Campaign,
   CampaignSummary,
   CampaignTeam,
+  CampaignInventoryBalance,
   PublicCampaignSummary,
   CreateCampaignPayload,
   UpdateCampaignPayload,
@@ -20,6 +21,7 @@ export const CAMPAIGN_QUERY_KEYS = {
   list: (params?: SearchCampaignParams) => ['campaigns', 'list', params] as const,
   detail: (id: string) => ['campaigns', 'detail', id] as const,
   summary: (id: string) => ['campaigns', 'summary', id] as const,
+  inventoryBalance: (id: string) => ['campaigns', 'inventory-balance', id] as const,
   teams: (id: string) => ['campaigns', 'teams', id] as const,
 };
 
@@ -82,6 +84,22 @@ export function useCampaignSummary(id: string) {
   return {
     ...query,
     summary: query.data,
+  };
+}
+
+export function useCampaignInventoryBalance(id: string) {
+  const query = useQuery({
+    queryKey: CAMPAIGN_QUERY_KEYS.inventoryBalance(id),
+    queryFn: async () => {
+      const response = await campaignService.getInventoryBalance(id);
+      return response.data as CampaignInventoryBalance;
+    },
+    enabled: !!id,
+  });
+
+  return {
+    ...query,
+    inventoryBalance: query.data,
   };
 }
 

@@ -9,6 +9,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import type { CampaignAllocationDialogProps, ExportItem } from '@/types/exportInventory';
 import { Textarea } from '@/components/ui/textarea';
 import { clearDialogDraft, readDialogDraft, writeDialogDraft } from '@/lib/dialogDraft';
+import { useCampaignInventoryBalance } from '@/hooks/useCampaigns';
+import { formatNumberVN } from '@/lib/utils';
+import { getCampaignStatusClass } from '@/enums/beEnums';
 
 /**
  * CampaignAllocationDialog
@@ -21,6 +24,7 @@ export function CampaignAllocationDialog({
   onOpenChange,
   items,
   campaigns,
+  selectedCampaignId,
   onSubmit,
 }: CampaignAllocationDialogProps) {
   const CAMPAIGN_ALLOCATION_DRAFT_KEY = 'coordinator-campaign-allocation-draft';
@@ -30,6 +34,9 @@ export function CampaignAllocationDialog({
   const [note, setNote] = React.useState('');
   const [campaignId, setCampaignId] = React.useState('');
   const [errors, setErrors] = React.useState<{ campaign?: string; items?: string }>({});
+  const effectiveCampaignId = campaignId || selectedCampaignId || '';
+  const { inventoryBalance, isLoading: isLoadingInventoryBalance } =
+    useCampaignInventoryBalance(effectiveCampaignId);
 
   React.useEffect(() => {
     if (!open) return;
@@ -53,10 +60,15 @@ export function CampaignAllocationDialog({
     setSelectedItems([]);
     setCheckedItemIds([]);
     setNote('');
-    setCampaignId('');
+    setCampaignId(selectedCampaignId || '');
     setEditingId(null);
     setErrors({});
-  }, [open]);
+  }, [open, selectedCampaignId]);
+
+  React.useEffect(() => {
+    if (!open || !selectedCampaignId) return;
+    setCampaignId((prev) => prev || selectedCampaignId);
+  }, [open, selectedCampaignId]);
 
   React.useEffect(() => {
     writeDialogDraft(CAMPAIGN_ALLOCATION_DRAFT_KEY, {
@@ -157,6 +169,7 @@ export function CampaignAllocationDialog({
   };
 
   const totalLines = selectedItems.length;
+  const editingItem = selectedItems.find((item) => item.id === editingId) || null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -247,7 +260,8 @@ export function CampaignAllocationDialog({
                         getStockBadgeClass(item.current, item.capacity),
                       )}
                     >
-                      Tồn: {item.current}/{item.capacity} {item.unit}
+                      Tồn: {formatNumberVN(item.current)}/{formatNumberVN(item.capacity)}{' '}
+                      {item.unit}
                     </Badge>
                   </div>
 
@@ -293,10 +307,35 @@ export function CampaignAllocationDialog({
                 <option value="">-- Chọn chiến dịch --</option>
                 {campaigns.map((campaign) => (
                   <option key={campaign.id} value={campaign.id}>
-                    {campaign.name}
+                    {campaign.name} - {campaign.statusLabel || 'Đủ điều kiện cấp phát'}
                   </option>
                 ))}
               </select>
+
+              {campaignId && (
+                <div className="mt-2">
+                  {(() => {
+                    const selectedCampaign = campaigns.find(
+                      (campaign) => campaign.id === campaignId,
+                    );
+                    if (!selectedCampaign || selectedCampaign.status == null) return null;
+
+                    return (
+                      <Badge
+                        variant="outline"
+                        appearance="outline"
+                        size="sm"
+                        className={`gap-1.5 border ${getCampaignStatusClass(Number(selectedCampaign.status))}`}
+                      >
+                        <span className="material-symbols-outlined text-[15px] shrink-0">
+                          campaign
+                        </span>
+                        <span>{selectedCampaign.statusLabel || 'Đủ điều kiện cấp phát'}</span>
+                      </Badge>
+                    );
+                  })()}
+                </div>
+              )}
               {errors.campaign && (
                 <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
                   <span className="material-symbols-outlined text-[14px]">error</span>
@@ -309,6 +348,48 @@ export function CampaignAllocationDialog({
                 </p>
               )}
             </div>
+
+            {effectiveCampaignId && (
+              <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-foreground">Ngân sách chiến dịch</p>
+                  {isLoadingInventoryBalance && (
+                    <span className="text-xs text-muted-foreground">Đang tải...</span>
+                  )}
+                </div>
+
+                {!isLoadingInventoryBalance && inventoryBalance ? (
+                  <>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <div className="rounded-lg border border-border bg-background/80 p-3">
+                        <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                          Ngân sách tổng
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-foreground">
+                          {formatNumberVN(inventoryBalance.budgetTotal)}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-border bg-background/80 p-3">
+                        <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                          Đã chi
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-foreground">
+                          {formatNumberVN(inventoryBalance.budgetSpent)}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-border bg-background/80 p-3">
+                        <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                          Còn lại
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-foreground">
+                          {formatNumberVN(inventoryBalance.remainingBudget)}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            )}
 
             {/* SCROLL AREA */}
             <div className="flex-1 min-h-0 overflow-y-auto space-y-4 text-sm">
@@ -323,7 +404,7 @@ export function CampaignAllocationDialog({
                   <div className="min-w-0">
                     <p className="font-medium truncate text-foreground">{item.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      Còn lại: {item.current - (item.quantity ?? 0)} {item.unit}
+                      Còn lại: {formatNumberVN(item.current - (item.quantity ?? 0))} {item.unit}
                     </p>
                   </div>
 
@@ -342,8 +423,14 @@ export function CampaignAllocationDialog({
                             {editingId === item.id ? (
                               <input
                                 autoFocus
-                                defaultValue={formatNumberInputVN(item.quantity ?? 1)}
+                                value={formatNumberInputVN(
+                                  editingItem?.quantity ?? item.quantity ?? 1,
+                                )}
                                 className="absolute inset-0 rounded-md border border-border bg-background text-center text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                                inputMode="numeric"
+                                onChange={(e) => {
+                                  setQty(item.id, parseFormattedNumber(e.target.value));
+                                }}
                                 onBlur={(e) => {
                                   setQty(item.id, parseFormattedNumber(e.target.value));
                                   setEditingId(null);

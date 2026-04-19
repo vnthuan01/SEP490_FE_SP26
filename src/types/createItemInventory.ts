@@ -8,6 +8,8 @@ export interface NewInventoryItem {
   quantity: number;
   capacity?: number;
   note?: string;
+  unitCost?: number;
+  sourceReference?: string;
   /** Expiration date for the new stock lot (ISO string or null). Only used for new (non-existing) stock rows. */
   expirationDate?: string | null;
 }

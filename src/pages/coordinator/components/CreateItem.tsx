@@ -65,6 +65,8 @@ export function CreateInventoryItemDialog({
           capacity: existingStock?.maximumStockLevel,
           expirationDate: null,
           note: draft?.note || '',
+          unitCost: draft?.unitCost,
+          sourceReference: draft?.sourceReference || '',
         };
       }
 
@@ -83,6 +85,8 @@ export function CreateInventoryItemDialog({
         capacity: existingStock?.maximumStockLevel,
         expirationDate: null,
         note: '',
+        unitCost: undefined,
+        sourceReference: '',
       };
     },
     [existingStock, initialSupplyItemId, supplyItems],
@@ -301,6 +305,104 @@ export function CreateInventoryItemDialog({
               }
             />
           </div>
+
+          {existingStock && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Đơn giá nhập (tùy chọn)</Label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="Ví dụ: 15.000"
+                  value={formatNumberInputVN(form.unitCost ?? '')}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    update(
+                      'unitCost',
+                      e.target.value ? parseFormattedNumber(e.target.value) : undefined,
+                    )
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Nguồn tham chiếu</Label>
+                <Input
+                  placeholder="Ví dụ: Nhà cung cấp A / Biên bản số 12"
+                  value={form.sourceReference || ''}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    update('sourceReference', e.target.value)
+                  }
+                />
+              </div>
+            </div>
+          )}
+
+          {existingStock && (
+            <div className="space-y-2">
+              <Label>Ngày hết hạn lô nhập (tùy chọn)</Label>
+              <div className="space-y-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => {
+                    if (openExpirationDateCalendarDialog) {
+                      closeExpirationDateCalendarDialogAction();
+                      return;
+                    }
+
+                    setOpenExpirationDateCalendarDialog(true);
+                  }}
+                >
+                  <span className="material-symbols-outlined text-[16px]">calendar</span>
+                  {form.expirationDate ? (
+                    parseLocalDateFromYmd(form.expirationDate)?.toLocaleDateString('vi-VN')
+                  ) : (
+                    <span className="text-muted-foreground text-xs">Chọn ngày hết hạn</span>
+                  )}
+                </Button>
+
+                {openExpirationDateCalendarDialog && (
+                  <div className="rounded-xl border border-border bg-muted/20 p-3 w-fit">
+                    <CustomCalendar
+                      disabledDays={{ before: new Date() }}
+                      value={parseLocalDateFromYmd(form.expirationDate)}
+                      onChange={(date) => {
+                        if (date) {
+                          update('expirationDate', toUtcIsoFromDate(date));
+                        } else {
+                          update('expirationDate', '');
+                        }
+
+                        closeExpirationDateCalendarDialogAction();
+                      }}
+                    />
+
+                    <div className="mt-3 flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          update('expirationDate', '');
+                          closeExpirationDateCalendarDialogAction();
+                        }}
+                      >
+                        Xóa ngày
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={closeExpirationDateCalendarDialogAction}
+                      >
+                        Đóng
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* EXPIRATION DATE – chỉ hiện khi tạo mới (chưa có stock) */}
           {!existingStock && (

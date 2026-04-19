@@ -150,6 +150,23 @@ export interface CampaignSummary {
   overallProgressPercent: number;
 }
 
+export interface CampaignInventoryBalanceStation {
+  reliefStationId: string;
+  reliefStationName: string;
+  inventoryId: string;
+  hasActiveInventory: boolean;
+  distinctSupplyItemCount: number;
+  totalQuantity: number;
+}
+
+export interface CampaignInventoryBalance {
+  campaignId: string;
+  budgetTotal: number;
+  budgetSpent: number;
+  remainingBudget: number;
+  stations: CampaignInventoryBalanceStation[];
+}
+
 export const campaignService = {
   // Create Campaign
   create: (data: CreateCampaignPayload) => apiClient.post<Campaign>('/campaigns', data),
@@ -167,6 +184,10 @@ export const campaignService = {
 
   // Get campaign summary
   getSummary: (id: string) => apiClient.get<PublicCampaignSummary>(`/campaigns/${id}/summary`),
+
+  // Get campaign inventory balance
+  getInventoryBalance: (id: string) =>
+    apiClient.get<CampaignInventoryBalance>(`/campaigns/${id}/inventory-balance`),
 
   // Update campaign status
   updateStatus: (id: string, data: UpdateStatusPayload) =>
