@@ -25,6 +25,7 @@ import {
   TeamRolePreference,
   TeamRolePreferenceLabel,
 } from '@/enums/beEnums';
+import { parseApiError } from '@/lib/apiErrors';
 
 type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
 
@@ -215,7 +216,7 @@ export default function CoordinatorVolunteerRequestPage() {
       await refetch();
       toast.success('Đã chấp nhận hồ sơ tình nguyện viên!');
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Không thể chấp nhận request.';
+      const msg = parseApiError(error, 'Không thể chấp nhận request.').message;
       setActionError(msg);
       toast.error(msg);
     }
@@ -236,7 +237,7 @@ export default function CoordinatorVolunteerRequestPage() {
       await refetch();
       toast.success('Đã từ chối hồ sơ tình nguyện viên!');
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Không thể từ chối hồ sơ tình nguyện viên!';
+      const msg = parseApiError(error, 'Không thể từ chối hồ sơ tình nguyện viên!').message;
       setActionError(msg);
       toast.error(msg);
     }

@@ -32,6 +32,7 @@ import type { RescueRequestItem } from '@/services/rescueRequestService';
 import { coordinatorNavGroups } from './components/sidebarConfig';
 import { RequestLocationMapCard } from './components/RequestLocationMapCard';
 import { toast } from 'sonner';
+import { parseApiError } from '@/lib/apiErrors';
 import {
   getDisasterTypeLabel,
   getRescueRequestTypeLabel,
@@ -455,7 +456,7 @@ export default function CoordinatorRequestManagementPage() {
       await refetch();
       toast.success('Đã xác minh yêu cầu cứu hộ thành công!');
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Không thể xác minh yêu cầu.';
+      const msg = parseApiError(error, 'Không thể xác minh yêu cầu.').message;
       setActionError(msg);
       toast.error(msg);
     }
@@ -480,9 +481,19 @@ export default function CoordinatorRequestManagementPage() {
       await refetch();
       toast.success('Đã từ chối yêu cầu cứu hộ.');
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Không thể từ chối yêu cầu.';
+      const msg = parseApiError(error, 'Không thể từ chối yêu cầu.').message;
       setActionError(msg);
       toast.error(msg);
+    }
+  };
+
+  const handleRejectDialogOpenChange = (open: boolean) => {
+    if (rejectStatus === 'pending') return;
+    setIsRejectOpen(open);
+    if (!open) {
+      setRejectReason('');
+      setRejectNote('');
+      setActionError('');
     }
   };
 
@@ -1315,7 +1326,7 @@ export default function CoordinatorRequestManagementPage() {
         </div>
       </div>
 
-      <Dialog open={isRejectOpen} onOpenChange={setIsRejectOpen}>
+      <Dialog open={isRejectOpen} onOpenChange={handleRejectDialogOpenChange}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Từ chối yêu cầu cứu hộ</DialogTitle>
@@ -1344,7 +1355,10 @@ export default function CoordinatorRequestManagementPage() {
               <label className="text-sm font-medium">Lý do từ chối *</label>
               <Textarea
                 value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
+                onChange={(e) => {
+                  setRejectReason(e.target.value);
+                  setActionError('');
+                }}
                 placeholder="Nhập lý do từ chối"
                 rows={3}
               />
@@ -1354,7 +1368,10 @@ export default function CoordinatorRequestManagementPage() {
               <label className="text-sm font-medium">Ghi chú</label>
               <Textarea
                 value={rejectNote}
-                onChange={(e) => setRejectNote(e.target.value)}
+                onChange={(e) => {
+                  setRejectNote(e.target.value);
+                  setActionError('');
+                }}
                 placeholder="Ghi chú thêm (không bắt buộc)"
                 rows={2}
               />

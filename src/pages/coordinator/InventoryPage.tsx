@@ -62,6 +62,7 @@ import { useCampaigns } from '@/hooks/useCampaigns';
 import { useUserProfile } from '@/hooks/useUsers';
 import { formatNumberInputVN, formatNumberVN, parseFormattedNumber } from '@/lib/utils';
 import { clearDialogDraft, readDialogDraft, writeDialogDraft } from '@/lib/dialogDraft';
+import { parseApiError } from '@/lib/apiErrors';
 import {
   CampaignStatus,
   CampaignType,
@@ -246,6 +247,8 @@ export default function CoordinatorInventoryPage() {
   const [selectedCampaignAllocationId, setSelectedCampaignAllocationId] = useState('');
   const [openTransferRequest, setOpenTransferRequest] = useState(false);
   const [transferErrors, setTransferErrors] = useState<Record<string, string>>({});
+  const [transferSubmitError, setTransferSubmitError] = useState('');
+  const [isSubmittingTransferRequest, setIsSubmittingTransferRequest] = useState(false);
   const [editStockErrors, setEditStockErrors] = useState<Record<string, string>>({});
   const [openApproveTransfer, setOpenApproveTransfer] = useState(false);
   const [openShipTransfer, setOpenShipTransfer] = useState(false);
@@ -1163,6 +1166,7 @@ export default function CoordinatorInventoryPage() {
 
   const handleOpenTransferRequest = () => {
     setTransferErrors({});
+    setTransferSubmitError('');
     setTransferForm((prev) => ({
       ...prev,
       sourceStationId: prev.sourceStationId || upstreamSourceStations[0]?.stationId || '',
@@ -1304,67 +1308,75 @@ export default function CoordinatorInventoryPage() {
     }
 
     setTransferErrors({});
+    setTransferSubmitError('');
+    setIsSubmittingTransferRequest(true);
 
-    const uploadedEvidenceUrls = await Promise.all(
-      transferEvidenceFiles.map(async (evidence) => {
-        const uploaded = await uploadFile({
-          file: evidence.file,
-          folder: 'reliefhub/supply-transfer-evidence',
-          resourceType: 'raw',
-        });
-        return uploaded.secureUrl;
-      }),
-    );
-
-    const createdTransferResponse = await createSupplyTransfer({
-      sourceStationId: transferForm.sourceStationId,
-      destinationStationId: station.reliefStationId,
-      reason: transferForm.reason.trim(),
-      notes: transferForm.notes.trim(),
-      items: validItems,
-    });
-
-    const createdTransferId = createdTransferResponse?.data?.id;
-    if (createdTransferId) {
-      if (uploadedEvidenceUrls.length > 0) {
-        await replaceTransferEvidenceUrls({
-          id: createdTransferId,
-          data: { evidenceUrls: uploadedEvidenceUrls },
-        });
-      }
-
-      const generatedPdfEvidence = transferEvidenceFiles.find(
-        (item) => item.source === 'generated',
+    try {
+      const uploadedEvidenceUrls = await Promise.all(
+        transferEvidenceFiles.map(async (evidence) => {
+          const uploaded = await uploadFile({
+            file: evidence.file,
+            folder: 'reliefhub/supply-transfer-evidence',
+            resourceType: 'raw',
+          });
+          return uploaded.secureUrl;
+        }),
       );
-      if (generatedPdfEvidence) {
-        const generatedPdfIndex = transferEvidenceFiles.findIndex(
-          (item) => item.id === generatedPdfEvidence.id,
-        );
-        const generatedPdfUrl =
-          generatedPdfIndex >= 0 ? uploadedEvidenceUrls[generatedPdfIndex] : undefined;
 
-        if (generatedPdfUrl) {
-          await addSupplyTransferDocument({
+      const createdTransferResponse = await createSupplyTransfer({
+        sourceStationId: transferForm.sourceStationId,
+        destinationStationId: station.reliefStationId,
+        reason: transferForm.reason.trim(),
+        notes: transferForm.notes.trim(),
+        items: validItems,
+      });
+
+      const createdTransferId = createdTransferResponse?.data?.id;
+      if (createdTransferId) {
+        if (uploadedEvidenceUrls.length > 0) {
+          await replaceTransferEvidenceUrls({
             id: createdTransferId,
-            data: {
-              documentType: 1,
-              fileUrl: generatedPdfUrl,
-              fileName: generatedPdfEvidence.file.name,
-              contentType: generatedPdfEvidence.file.type,
-              fileSizeBytes: generatedPdfEvidence.file.size,
-              notes: 'PDF yêu cầu điều phối được tạo từ giao diện điều phối viên',
-            },
+            data: { evidenceUrls: uploadedEvidenceUrls },
           });
         }
-      }
-    }
 
-    await Promise.all([refetchStocks(), refetchTransactions()]);
-    clearDialogDraft(TRANSFER_REQUEST_DRAFT_KEY);
-    setTransferForm({ sourceStationId: '', reason: '', notes: '', items: [] });
-    setTransferPdfDraftCode('');
-    setTransferEvidenceFiles([]);
-    setOpenTransferRequest(false);
+        const generatedPdfEvidence = transferEvidenceFiles.find(
+          (item) => item.source === 'generated',
+        );
+        if (generatedPdfEvidence) {
+          const generatedPdfIndex = transferEvidenceFiles.findIndex(
+            (item) => item.id === generatedPdfEvidence.id,
+          );
+          const generatedPdfUrl =
+            generatedPdfIndex >= 0 ? uploadedEvidenceUrls[generatedPdfIndex] : undefined;
+
+          if (generatedPdfUrl) {
+            await addSupplyTransferDocument({
+              id: createdTransferId,
+              data: {
+                documentType: 1,
+                fileUrl: generatedPdfUrl,
+                fileName: generatedPdfEvidence.file.name,
+                contentType: generatedPdfEvidence.file.type,
+                fileSizeBytes: generatedPdfEvidence.file.size,
+                notes: 'PDF yêu cầu điều phối được tạo từ giao diện điều phối viên',
+              },
+            });
+          }
+        }
+      }
+
+      await Promise.all([refetchStocks(), refetchTransactions()]);
+      clearDialogDraft(TRANSFER_REQUEST_DRAFT_KEY);
+      setTransferForm({ sourceStationId: '', reason: '', notes: '', items: [] });
+      setTransferPdfDraftCode('');
+      setTransferEvidenceFiles([]);
+      setOpenTransferRequest(false);
+    } catch (error) {
+      setTransferSubmitError(parseApiError(error, 'Không thể gửi phiếu điều phối.').message);
+    } finally {
+      setIsSubmittingTransferRequest(false);
+    }
   };
 
   /**
@@ -1377,15 +1389,15 @@ export default function CoordinatorInventoryPage() {
     items: ExportItem[],
     note: string,
     campaignId: string,
-  ) => {
+  ): Promise<boolean> => {
     if (!managedInventory?.inventoryId) {
       toast.error('Không tìm thấy kho đang quản lý để cấp phát.');
-      return;
+      return false;
     }
 
     if (!campaignId) {
       toast.error('Vui lòng chọn chiến dịch nhận vật tư.');
-      return;
+      return false;
     }
 
     const validItems = items
@@ -1406,34 +1418,37 @@ export default function CoordinatorInventoryPage() {
 
     if (validItems.length === 0) {
       toast.error('Không có vật phẩm hợp lệ để cấp phát.');
-      return;
+      return false;
     }
 
-    // 1) Create supply allocation record (links inventory → campaign)
-    await createSupplyAllocation({
-      campaignId,
-      sourceInventoryId: managedInventory.inventoryId,
-      items: validItems,
-    });
+    try {
+      await createSupplyAllocation({
+        campaignId,
+        sourceInventoryId: managedInventory.inventoryId,
+        items: validItems,
+      });
 
-    // 2) Create inventory export transaction to track stock reduction
-    await createTransaction({
-      inventoryId: managedInventory.inventoryId,
-      type: TransactionType.Export,
-      reason: TransactionReason.CampaignAllocation,
-      notes: note || `Cấp phát vật tư cho chiến dịch`,
-      items: validItems.map((item) => ({
-        supplyItemId: item.supplyItemId,
-        supplyItemName: item.supplyItemName,
-        supplyItemUnit: item.supplyItemUnit,
-        quantity: item.quantity,
-        notes: note || 'Cấp phát chiến dịch',
-      })),
-    });
+      await createTransaction({
+        inventoryId: managedInventory.inventoryId,
+        type: TransactionType.Export,
+        reason: TransactionReason.CampaignAllocation,
+        notes: note || `Cấp phát vật tư cho chiến dịch`,
+        items: validItems.map((item) => ({
+          supplyItemId: item.supplyItemId,
+          supplyItemName: item.supplyItemName,
+          supplyItemUnit: item.supplyItemUnit,
+          quantity: item.quantity,
+          notes: note || 'Cấp phát chiến dịch',
+        })),
+      });
 
-    await Promise.all([refetchStocks(), refetchTransactions()]);
-    toast.success('Đã cấp phát vật tư cho chiến dịch.');
-    setOpenCampaignAllocation(false);
+      await Promise.all([refetchStocks(), refetchTransactions()]);
+      toast.success('Đã cấp phát vật tư cho chiến dịch.');
+      setOpenCampaignAllocation(false);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   /**
@@ -2495,7 +2510,7 @@ export default function CoordinatorInventoryPage() {
         campaigns={stationCampaigns}
         selectedCampaignId={selectedCampaignAllocationId}
         onSubmit={(items, note, campaignId) => {
-          void handleCampaignAllocation(items, note, campaignId);
+          return handleCampaignAllocation(items, note, campaignId);
         }}
       />
 
@@ -2523,10 +2538,11 @@ export default function CoordinatorInventoryPage() {
         existingStock={selectedQuickImportSupplyItemId ? selectedQuickImportStock : null}
         onSubmit={async (item) => {
           const success = await handleImportItem(item);
-          if (!success) return;
+          if (!success) return false;
           setSelectedQuickImportSupplyItemId('');
           setSelectedQuickImportStock(null);
           setOpenCreate(false);
+          return true;
         }}
       />
 
@@ -2643,6 +2659,11 @@ export default function CoordinatorInventoryPage() {
                     <span className="material-symbols-outlined text-[14px]">error</span>
                     {transferErrors['items']}
                   </p>
+                )}
+                {transferSubmitError && (
+                  <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {transferSubmitError}
+                  </div>
                 )}
                 <div className="rounded-xl border border-border bg-yellow-500 p-3 text-sm text-white/80">
                   {isLoadingSelectedSourceStocks
@@ -2823,8 +2844,8 @@ export default function CoordinatorInventoryPage() {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
-                      variant="outline"
-                      className="gap-2"
+                      variant="primary"
+                      className="gap-2 h-10"
                       onClick={() => setOpenTransferPdfWorkflow(true)}
                     >
                       <span className="material-symbols-outlined text-lg">picture_as_pdf</span>
@@ -2902,22 +2923,36 @@ export default function CoordinatorInventoryPage() {
           </div>
 
           <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2 shrink-0">
-            <Button variant="outline" onClick={handleClearTransferDraft}>
+            <Button
+              variant="outline"
+              disabled={isSubmittingTransferRequest}
+              onClick={handleClearTransferDraft}
+            >
               <span className="material-symbols-outlined mr-1">remove_done</span>
               Xóa nháp
             </Button>
-            <Button variant="destructive" onClick={() => setOpenTransferRequest(false)}>
+            <Button
+              variant="destructive"
+              disabled={isSubmittingTransferRequest}
+              onClick={() => setOpenTransferRequest(false)}
+            >
               <span className="material-symbols-outlined mr-1">close</span>
               Hủy
             </Button>
             <Button
               variant="primary"
               className="gap-2"
-              disabled={createSupplyTransferStatus === 'pending' || isUploadingTransferEvidence}
+              disabled={
+                createSupplyTransferStatus === 'pending' ||
+                isUploadingTransferEvidence ||
+                isSubmittingTransferRequest
+              }
               onClick={() => void handleSubmitTransferRequest()}
             >
               <span className="material-symbols-outlined text-lg">send</span>
-              {createSupplyTransferStatus === 'pending' || isUploadingTransferEvidence
+              {createSupplyTransferStatus === 'pending' ||
+              isUploadingTransferEvidence ||
+              isSubmittingTransferRequest
                 ? 'Đang gửi...'
                 : 'Gửi phiếu điều phối'}
             </Button>

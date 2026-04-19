@@ -106,12 +106,14 @@ export function CreateInventoryItemDialog({
     React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [submitting, setSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState('');
 
   React.useEffect(() => {
     if (!open) return;
     const draft = readDialogDraft<NewInventoryItem | null>(CREATE_ITEM_DRAFT_KEY, null);
     setErrors({});
     setSubmitting(false);
+    setSubmitError('');
     setForm(buildInitialForm(draft));
     setOpenExpirationDateCalendarDialog(false);
   }, [open, buildInitialForm]);
@@ -127,6 +129,7 @@ export function CreateInventoryItemDialog({
       delete next[key as string];
       return next;
     });
+    setSubmitError('');
   };
 
   const handleSelectSupplyItem = (supplyItemId: string) => {
@@ -498,6 +501,12 @@ export function CreateInventoryItemDialog({
               )}
             </div>
           )}
+
+          {submitError && (
+            <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {submitError}
+            </div>
+          )}
         </div>
 
         {/* ACTIONS */}
@@ -526,10 +535,17 @@ export function CreateInventoryItemDialog({
                 setErrors(errs);
                 return;
               }
-              clearDialogDraft(CREATE_ITEM_DRAFT_KEY);
+              setSubmitError('');
               setSubmitting(true);
               try {
-                await onSubmit(form);
+                const success = await onSubmit(form);
+                if (success) {
+                  clearDialogDraft(CREATE_ITEM_DRAFT_KEY);
+                } else {
+                  setSubmitError('Không thể nhập kho. Vui lòng kiểm tra thông tin và thử lại.');
+                }
+              } catch {
+                setSubmitError('Không thể nhập kho. Vui lòng kiểm tra thông tin và thử lại.');
               } finally {
                 setSubmitting(false);
               }

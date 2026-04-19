@@ -57,11 +57,13 @@ import {
   useAssignStationToCampaign,
   useCampaign,
   useCampaignInventoryBalance,
+  useCampaignTeams,
   useCampaigns,
   useCreateCampaign,
   useRemoveStationFromCampaign,
   useUpdateCampaign,
   useUpdateCampaignStatus,
+  useUpdateCampaignTeamStatus,
 } from '@/hooks/useCampaigns';
 import { useSupplyAllocationsByCampaign } from '@/hooks/useSupplies';
 import { useProvinces } from '@/hooks/useLocations';
@@ -92,6 +94,7 @@ import {
   CampaignTypeLabel,
   CampaignResourceType,
   CampaignResourceTypeLabel,
+  CampaignTeamStatus,
   getCampaignStatusClass,
   getCampaignStatusLabel,
   getSupplyAllocationStatusClass,
@@ -194,6 +197,25 @@ const getCampaignTypeBadgeClass = (type: number) => {
   }
 };
 
+const getCampaignTeamRoleLabel = (role: number) => {
+  switch (role) {
+    case 0:
+      return 'Hậu cần';
+    case 1:
+      return 'Y tế';
+    case 2:
+      return 'Cứu trợ';
+    case 3:
+      return 'Tìm kiếm & cứu nạn';
+    case 4:
+      return 'Liên lạc';
+    case 5:
+      return 'Chỉ huy';
+    default:
+      return `Vai trò ${role}`;
+  }
+};
+
 // ─── Form types ───────────────────────────────────────────────────────────────
 
 interface CreateCampaignFormValues {
@@ -275,6 +297,12 @@ export default function ManagerCampaignPage() {
     stationName: string;
   } | null>(null);
   const [openAddStationModal, setOpenAddStationModal] = useState(false);
+  const [teamToUpdateStatus, setTeamToUpdateStatus] = useState<{
+    campaignId: string;
+    teamId: string;
+    teamName: string;
+    newStatus: number;
+  } | null>(null);
 
   // Calendar open state for start/end date pickers
   const [openStartCalendar, setOpenStartCalendar] = useState(false);
@@ -297,6 +325,7 @@ export default function ManagerCampaignPage() {
   const { mutateAsync: assignStation, status: assignStationStatus } = useAssignStationToCampaign();
   const { mutateAsync: removeStation, status: removeStationStatus } =
     useRemoveStationFromCampaign();
+  const { mutateAsync: updateTeamStatus } = useUpdateCampaignTeamStatus();
   const { data: allocationsByCampaign = [], isLoading: isLoadingAllocations } =
     useSupplyAllocationsByCampaign(selectedCampaignForAllocations?.id || '');
   const {
@@ -304,8 +333,13 @@ export default function ManagerCampaignPage() {
     isLoading: isLoadingCampaignDetail,
     refetch: refetchCampaignDetail,
   } = useCampaign(selectedCampaignId);
-  const { inventoryBalance: selectedCampaignInventoryBalance } =
-    useCampaignInventoryBalance(selectedCampaignId);
+  const { teams: selectedCampaignTeams = [], isLoading: isLoadingCampaignTeams } =
+    useCampaignTeams(selectedCampaignId);
+  const {
+    inventoryBalance: selectedCampaignInventoryBalance,
+    inventoryBalanceError: selectedCampaignInventoryBalanceError,
+    isLoading: isLoadingCampaignInventoryBalance,
+  } = useCampaignInventoryBalance(selectedCampaignId);
   const campaignDetailQueries = useQueries({
     queries: campaigns.map((campaign) => ({
       queryKey: ['campaigns', 'detail', campaign.campaignId, 'manager-list-area'],
@@ -583,6 +617,95 @@ export default function ManagerCampaignPage() {
       await refetchCampaignDetail();
     } catch {
       // handled by hook
+    }
+  };
+
+  const handleUpdateTeamStatus = (
+    campaignId: string,
+    teamId: string,
+    teamName: string,
+    currentStatus: number,
+  ) => {
+    let newStatus: number;
+
+    switch (currentStatus) {
+      case 0:
+        newStatus = CampaignTeamStatus.Accepted;
+        break;
+      case 1:
+        newStatus = CampaignTeamStatus.Active;
+        break;
+      default:
+        return;
+    }
+
+    setTeamToUpdateStatus({
+      campaignId,
+      teamId,
+      teamName,
+      newStatus,
+    });
+  };
+
+  const handleConfirmUpdateTeamStatus = async () => {
+    if (!teamToUpdateStatus) return;
+
+    try {
+      await updateTeamStatus({
+        id: teamToUpdateStatus.campaignId,
+        teamId: teamToUpdateStatus.teamId,
+        data: { status: teamToUpdateStatus.newStatus },
+      });
+      setTeamToUpdateStatus(null);
+      await refetchCampaignDetail();
+    } catch {
+      // handled by hook
+    }
+  };
+
+  const getTeamStatusBadgeVariant = (
+    status: number,
+  ): 'success' | 'outline' | 'destructive' | 'warning' | 'info' => {
+    switch (status) {
+      case CampaignTeamStatus.Active:
+        return 'success';
+      case CampaignTeamStatus.Accepted:
+        return 'outline';
+      case CampaignTeamStatus.Completed:
+        return 'success';
+      case CampaignTeamStatus.Cancelled:
+      case CampaignTeamStatus.Withdrawn:
+        return 'destructive';
+      case CampaignTeamStatus.Invited:
+      default:
+        return 'warning';
+    }
+  };
+
+  const isCampaignReadyForActivation = () => {
+    const hasAcceptedOrActiveTeams = selectedCampaignTeams.some(
+      (team) =>
+        team.status === CampaignTeamStatus.Accepted || team.status === CampaignTeamStatus.Active,
+    );
+    return hasAcceptedOrActiveTeams;
+  };
+
+  const getNextTeamStatusAction = (status: number) => {
+    switch (status) {
+      case CampaignTeamStatus.Invited:
+        return {
+          label: 'Chấp nhận',
+          nextStatus: CampaignTeamStatus.Accepted,
+          variant: 'success' as const,
+        };
+      case CampaignTeamStatus.Accepted:
+        return {
+          label: 'Kích hoạt',
+          nextStatus: CampaignTeamStatus.Active,
+          variant: 'primary' as const,
+        };
+      default:
+        return null;
     }
   };
 
@@ -2417,10 +2540,41 @@ export default function ManagerCampaignPage() {
                   </CardHeader>
 
                   <CardContent className="space-y-4">
-                    {!selectedCampaignInventoryBalance ? (
+                    {isLoadingCampaignInventoryBalance ? (
                       <p className="text-sm text-muted-foreground">
-                        Chưa có dữ liệu cân đối tồn kho cho chiến dịch này.
+                        Đang tải dữ liệu cân đối tồn kho chiến dịch...
                       </p>
+                    ) : selectedCampaignInventoryBalanceError ? (
+                      <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-2">
+                        <div className="flex items-start gap-2">
+                          <span className="material-symbols-outlined text-destructive mt-0.5">
+                            error
+                          </span>
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">
+                              Không tải được dữ liệu cân đối tồn kho chiến dịch
+                            </p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              {selectedCampaignInventoryBalanceError.message}
+                            </p>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              Hệ thống hiện chưa thể tổng hợp số liệu tồn kho cho chiến dịch này. Có
+                              thể backend đang thiếu dữ liệu liên kết kho/trạm/chiến dịch hoặc đang
+                              phát sinh lỗi xử lý nội bộ.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : !selectedCampaignInventoryBalance ? (
+                      <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-1">
+                        <p className="text-sm font-semibold text-foreground">
+                          Chưa có dữ liệu cân đối tồn kho
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Chiến dịch này hiện chưa có số liệu tồn kho để tổng hợp. Có thể chưa được
+                          gán trạm, chưa có inventory hoạt động hoặc chưa phát sinh dữ liệu vật tư.
+                        </p>
+                      </div>
                     ) : (
                       <>
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -2450,57 +2604,175 @@ export default function ManagerCampaignPage() {
                           </div>
                         </div>
 
-                        {selectedCampaignInventoryBalance.stations.length === 0 ? (
+                        {(selectedCampaignInventoryBalance?.stations || []).length === 0 ? (
                           <p className="text-sm text-muted-foreground">
                             Chưa có trạm nào có số liệu tồn kho trong chiến dịch này.
                           </p>
                         ) : (
                           <div className="space-y-3">
-                            {selectedCampaignInventoryBalance.stations.map((stationBalance) => (
-                              <div
-                                key={`${stationBalance.reliefStationId}-${stationBalance.inventoryId}`}
-                                className="rounded-xl border border-border p-4"
-                              >
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                  <div>
-                                    <p className="font-semibold text-foreground">
-                                      {stationBalance.reliefStationName}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground break-all mt-1">
-                                      Inventory ID: {stationBalance.inventoryId || '—'}
-                                    </p>
+                            {(selectedCampaignInventoryBalance?.stations || []).map(
+                              (stationBalance) => (
+                                <div
+                                  key={`${stationBalance.reliefStationId}-${stationBalance.inventoryId}`}
+                                  className="rounded-xl border border-border p-4"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                      <p className="font-semibold text-foreground">
+                                        {stationBalance.reliefStationName}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground break-all mt-1">
+                                        Inventory ID: {stationBalance.inventoryId || '—'}
+                                      </p>
+                                    </div>
+                                    <Badge
+                                      variant={
+                                        stationBalance.hasActiveInventory ? 'success' : 'outline'
+                                      }
+                                      size="sm"
+                                    >
+                                      {stationBalance.hasActiveInventory
+                                        ? 'Kho đang hoạt động'
+                                        : 'Chưa có kho hoạt động'}
+                                    </Badge>
                                   </div>
-                                  <Badge
-                                    variant={
-                                      stationBalance.hasActiveInventory ? 'success' : 'outline'
-                                    }
-                                    size="sm"
-                                  >
-                                    {stationBalance.hasActiveInventory
-                                      ? 'Kho đang hoạt động'
-                                      : 'Chưa có kho hoạt động'}
-                                  </Badge>
-                                </div>
 
-                                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
-                                  <span>
-                                    Danh mục có hàng:{' '}
-                                    <b className="text-foreground">
-                                      {formatNumberVN(stationBalance.distinctSupplyItemCount)}
-                                    </b>
-                                  </span>
-                                  <span>
-                                    Tổng số lượng:{' '}
-                                    <b className="text-foreground">
-                                      {formatNumberVN(stationBalance.totalQuantity)}
-                                    </b>
-                                  </span>
+                                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                                    <span>
+                                      Danh mục có hàng:{' '}
+                                      <b className="text-foreground">
+                                        {formatNumberVN(stationBalance.distinctSupplyItemCount)}
+                                      </b>
+                                    </span>
+                                    <span>
+                                      Tổng số lượng:{' '}
+                                      <b className="text-foreground">
+                                        {formatNumberVN(stationBalance.totalQuantity)}
+                                      </b>
+                                    </span>
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              ),
+                            )}
                           </div>
                         )}
                       </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border bg-card w-full">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary">groups</span>
+                      Đội ngũ trong chiến dịch
+                    </CardTitle>
+                  </CardHeader>
+
+                  <CardContent className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/20 p-4">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          Điều kiện cập nhật trạng thái chiến dịch
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Relief campaign cần ít nhất 1 team ở trạng thái Đã chấp nhận hoặc Đang
+                          hoạt động trước khi chuyển sang sẵn sàng triển khai / hoạt động.
+                        </p>
+                      </div>
+                      <Badge
+                        variant={isCampaignReadyForActivation() ? 'success' : 'warning'}
+                        size="sm"
+                      >
+                        {isCampaignReadyForActivation()
+                          ? 'Sẵn sàng kích hoạt'
+                          : 'Chưa đủ điều kiện'}
+                      </Badge>
+                    </div>
+
+                    {isLoadingCampaignTeams ? (
+                      <p className="text-sm text-muted-foreground">Đang tải danh sách đội...</p>
+                    ) : selectedCampaignTeams.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Chưa có đội nào được gán vào chiến dịch này.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {selectedCampaignTeams.map((team) => {
+                          const nextAction = getNextTeamStatusAction(Number(team.status));
+                          return (
+                            <div
+                              key={team.campaignTeamId || `${team.teamId}-${team.campaignId}`}
+                              className="rounded-xl border border-border p-4"
+                            >
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-semibold text-foreground">{team.teamName}</p>
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    {team.memberCount || 0} thành viên • Vai trò:{' '}
+                                    {getCampaignTeamRoleLabel(Number(team.role))}
+                                  </p>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge
+                                    variant={getTeamStatusBadgeVariant(Number(team.status))}
+                                    size="sm"
+                                  >
+                                    {team.status === CampaignTeamStatus.Invited
+                                      ? 'Đã mời'
+                                      : team.status === CampaignTeamStatus.Accepted
+                                        ? 'Đã chấp nhận'
+                                        : team.status === CampaignTeamStatus.Active
+                                          ? 'Đang hoạt động'
+                                          : team.status === CampaignTeamStatus.Completed
+                                            ? 'Hoàn thành'
+                                            : team.status === CampaignTeamStatus.Withdrawn
+                                              ? 'Đã rút lui'
+                                              : team.status === CampaignTeamStatus.Cancelled
+                                                ? 'Đã hủy'
+                                                : `Trạng thái ${team.status}`}
+                                  </Badge>
+
+                                  {nextAction && (
+                                    <Button
+                                      size="sm"
+                                      variant={nextAction.variant}
+                                      onClick={() =>
+                                        handleUpdateTeamStatus(
+                                          selectedCampaign.campaignId,
+                                          team.teamId,
+                                          team.teamName,
+                                          Number(team.status),
+                                        )
+                                      }
+                                    >
+                                      {nextAction.label}
+                                    </Button>
+                                  )}
+
+                                  {Number(team.status) === CampaignTeamStatus.Invited && (
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      onClick={() =>
+                                        setTeamToUpdateStatus({
+                                          campaignId: selectedCampaign.campaignId,
+                                          teamId: team.teamId,
+                                          teamName: team.teamName,
+                                          newStatus: CampaignTeamStatus.Cancelled,
+                                        })
+                                      }
+                                    >
+                                      Từ chối
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -2548,6 +2820,29 @@ export default function ManagerCampaignPage() {
         cancelText="Hủy"
         variant="destructive"
         onConfirm={handleConfirmDetachStation}
+      />
+
+      <ConfirmDialog
+        open={!!teamToUpdateStatus}
+        onOpenChange={(open) => {
+          if (!open) setTeamToUpdateStatus(null);
+        }}
+        title="Cập nhật trạng thái đội trong chiến dịch"
+        description={
+          teamToUpdateStatus
+            ? teamToUpdateStatus.newStatus === CampaignTeamStatus.Accepted
+              ? `Xác nhận chấp nhận đội "${teamToUpdateStatus.teamName}" tham gia chiến dịch?`
+              : teamToUpdateStatus.newStatus === CampaignTeamStatus.Active
+                ? `Xác nhận kích hoạt đội "${teamToUpdateStatus.teamName}" trong chiến dịch?`
+                : `Xác nhận từ chối đội "${teamToUpdateStatus.teamName}" khỏi chiến dịch?`
+            : 'Xác nhận cập nhật trạng thái đội trong chiến dịch.'
+        }
+        confirmText="Xác nhận"
+        cancelText="Hủy"
+        variant={
+          teamToUpdateStatus?.newStatus === CampaignTeamStatus.Cancelled ? 'destructive' : 'success'
+        }
+        onConfirm={handleConfirmUpdateTeamStatus}
       />
     </DashboardLayout>
   );

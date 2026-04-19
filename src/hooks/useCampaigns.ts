@@ -15,6 +15,7 @@ import type {
 } from '@/services/campaignService';
 import { toast } from 'sonner';
 import { handleHookError } from './hookErrorUtils';
+import { parseApiError } from '@/lib/apiErrors';
 
 export const CAMPAIGN_QUERY_KEYS = {
   all: ['campaigns'] as const,
@@ -95,11 +96,17 @@ export function useCampaignInventoryBalance(id: string) {
       return response.data as CampaignInventoryBalance;
     },
     enabled: !!id,
+    retry: false,
   });
+
+  const parsedError = query.error
+    ? parseApiError(query.error, 'Không tải được dữ liệu cân đối tồn kho chiến dịch.')
+    : null;
 
   return {
     ...query,
     inventoryBalance: query.data,
+    inventoryBalanceError: parsedError,
   };
 }
 

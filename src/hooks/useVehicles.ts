@@ -16,6 +16,7 @@ import type {
   SearchVehicleTypeParams,
 } from '@/services/vehicleService';
 import { toast } from 'sonner';
+import { handleHookError } from './hookErrorUtils';
 
 export const VEHICLE_QUERY_KEYS = {
   all: ['vehicles'] as const,
@@ -127,7 +128,7 @@ export function useVehicles(
       queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.myVehicles });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Không thể tạo phương tiện');
+      handleHookError(error, 'Không thể tạo phương tiện');
     },
   });
 
@@ -141,7 +142,7 @@ export function useVehicles(
       queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.myVehicles });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Không thể cập nhật phương tiện');
+      handleHookError(error, 'Không thể cập nhật phương tiện');
     },
   });
 
@@ -153,7 +154,7 @@ export function useVehicles(
       queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.myVehicles });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Không thể xóa phương tiện');
+      handleHookError(error, 'Không thể xóa phương tiện');
     },
   });
 
@@ -166,7 +167,7 @@ export function useVehicles(
       queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.counts(countsStationId) });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Không thể gán trạm cho phương tiện');
+      handleHookError(error, 'Không thể gán trạm cho phương tiện');
     },
   });
 
@@ -179,7 +180,7 @@ export function useVehicles(
       queryClient.invalidateQueries({ queryKey: VEHICLE_QUERY_KEYS.myVehicles });
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Không thể gán đội cho phương tiện');
+      handleHookError(error, 'Không thể gán đội cho phương tiện');
     },
   });
 
@@ -279,6 +280,9 @@ export function useVehicleTypes(id?: string, params?: SearchVehicleTypeParams) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: VEHICLE_TYPE_QUERY_KEYS.all });
     },
+    onError: (error: any) => {
+      handleHookError(error, 'Không thể tạo loại phương tiện');
+    },
   });
 
   const updateVehicleTypeMutation = useMutation({
@@ -288,12 +292,18 @@ export function useVehicleTypes(id?: string, params?: SearchVehicleTypeParams) {
       queryClient.invalidateQueries({ queryKey: VEHICLE_TYPE_QUERY_KEYS.all });
       queryClient.invalidateQueries({ queryKey: VEHICLE_TYPE_QUERY_KEYS.detail(variables.id) });
     },
+    onError: (error: any) => {
+      handleHookError(error, 'Không thể cập nhật loại phương tiện');
+    },
   });
 
   const deleteVehicleTypeMutation = useMutation({
     mutationFn: (id: string) => vehicleService.deleteType(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: VEHICLE_TYPE_QUERY_KEYS.all });
+    },
+    onError: (error: any) => {
+      handleHookError(error, 'Không thể xóa loại phương tiện');
     },
   });
 

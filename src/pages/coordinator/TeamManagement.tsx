@@ -30,6 +30,8 @@ import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { useUnassignedVolunteers } from '@/hooks/useVolunteerProfiles';
 import { coordinatorNavGroups } from './components/sidebarConfig';
 import { toast } from 'sonner';
+import { handleHookError } from '@/hooks/hookErrorUtils';
+import { parseApiError } from '@/lib/apiErrors';
 import type { TeamStatus } from '@/enums/beEnums';
 import {
   CampaignTeamRole,
@@ -144,6 +146,7 @@ export default function CoordinatorTeamManagementPage() {
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [selectedVolunteerIds, setSelectedVolunteerIds] = useState<string[]>([]);
+  const [manageMembersError, setManageMembersError] = useState('');
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isReliefCampaignAssignOpen, setIsReliefCampaignAssignOpen] = useState(false);
   const [editName, setEditName] = useState('');
@@ -424,7 +427,7 @@ export default function CoordinatorTeamManagementPage() {
       await refetch();
       toast.success('Tạo đội ngũ mới thành công!');
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Không thể tạo đội ngũ. Vui lòng thử lại.';
+      const msg = parseApiError(error, 'Không thể tạo đội ngũ. Vui lòng thử lại.').message;
       setCreateError(msg);
       toast.error(msg);
     } finally {
@@ -439,6 +442,7 @@ export default function CoordinatorTeamManagementPage() {
     }
 
     try {
+      setManageMembersError('');
       await addMembersBulk({
         volunteerIds: selectedVolunteerIds,
       });
@@ -446,7 +450,8 @@ export default function CoordinatorTeamManagementPage() {
       toast.success('Thao tác hoàn tất');
       setIsManageMembersOpen(false);
     } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Có lỗi xảy ra khi lưu vào hệ thống.');
+      setManageMembersError(parseApiError(e, 'Có lỗi xảy ra khi lưu vào hệ thống.').message);
+      handleHookError(e, 'Có lỗi xảy ra khi lưu vào hệ thống.');
     }
   };
 
@@ -495,7 +500,7 @@ export default function CoordinatorTeamManagementPage() {
       await refetch();
       toast.success('Cập nhật đội ngũ thành công!');
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Không thể cập nhật đội ngũ.';
+      const msg = parseApiError(error, 'Không thể cập nhật đội ngũ.').message;
       setEditError(msg);
       toast.error(msg);
     } finally {
@@ -529,8 +534,10 @@ export default function CoordinatorTeamManagementPage() {
       });
       setIsReliefCampaignAssignOpen(false);
       setSelectedReliefCampaignId('');
-    } catch {
-      // handled by hook
+    } catch (error) {
+      setReliefCampaignAssignError(
+        parseApiError(error, 'Không thể gán team vào chiến dịch cứu trợ.').message,
+      );
     }
   };
 
@@ -1201,6 +1208,7 @@ export default function CoordinatorTeamManagementPage() {
       <Dialog
         open={isCreateOpen}
         onOpenChange={(open) => {
+          if (isCreating) return;
           setIsCreateOpen(open);
           if (!open) {
             resetCreateForm();
@@ -1274,7 +1282,16 @@ export default function CoordinatorTeamManagementPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isManageMembersOpen} onOpenChange={setIsManageMembersOpen}>
+      <Dialog
+        open={isManageMembersOpen}
+        onOpenChange={(open) => {
+          if (addMembersBulkStatus === 'pending') return;
+          setIsManageMembersOpen(open);
+          if (!open) {
+            setManageMembersError('');
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
             <DialogTitle>Quản lý thành viên đội</DialogTitle>
@@ -1332,6 +1349,12 @@ export default function CoordinatorTeamManagementPage() {
               </div>
             )}
 
+            {manageMembersError ? (
+              <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {manageMembersError}
+              </div>
+            ) : null}
+
             <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
               <p className="text-sm font-semibold text-foreground">Thành viên hiện tại</p>
               {members?.length ? (
@@ -1387,7 +1410,11 @@ export default function CoordinatorTeamManagementPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsManageMembersOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsManageMembersOpen(false)}
+              disabled={addMembersBulkStatus === 'pending'}
+            >
               Đóng
             </Button>
             <Button
@@ -1404,6 +1431,7 @@ export default function CoordinatorTeamManagementPage() {
       <Dialog
         open={isEditOpen}
         onOpenChange={(open) => {
+          if (isEditing) return;
           setIsEditOpen(open);
           if (!open) setEditError('');
         }}
@@ -1487,6 +1515,7 @@ export default function CoordinatorTeamManagementPage() {
       <Dialog
         open={isReliefCampaignAssignOpen}
         onOpenChange={(open) => {
+          if (assignTeamToCampaignStatus === 'pending') return;
           setIsReliefCampaignAssignOpen(open);
           if (!open) {
             setSelectedReliefCampaignId('');
@@ -1533,7 +1562,11 @@ export default function CoordinatorTeamManagementPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsReliefCampaignAssignOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsReliefCampaignAssignOpen(false)}
+              disabled={assignTeamToCampaignStatus === 'pending'}
+            >
               Hủy
             </Button>
             <Button

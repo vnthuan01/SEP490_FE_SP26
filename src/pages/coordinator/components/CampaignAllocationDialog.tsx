@@ -34,6 +34,8 @@ export function CampaignAllocationDialog({
   const [note, setNote] = React.useState('');
   const [campaignId, setCampaignId] = React.useState('');
   const [errors, setErrors] = React.useState<{ campaign?: string; items?: string }>({});
+  const [submitError, setSubmitError] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
   const effectiveCampaignId = campaignId || selectedCampaignId || '';
   const { inventoryBalance, isLoading: isLoadingInventoryBalance } =
     useCampaignInventoryBalance(effectiveCampaignId);
@@ -54,6 +56,7 @@ export function CampaignAllocationDialog({
       setCampaignId(draft.campaignId || '');
       setEditingId(null);
       setErrors({});
+      setSubmitError('');
       return;
     }
 
@@ -63,6 +66,7 @@ export function CampaignAllocationDialog({
     setCampaignId(selectedCampaignId || '');
     setEditingId(null);
     setErrors({});
+    setSubmitError('');
   }, [open, selectedCampaignId]);
 
   React.useEffect(() => {
@@ -301,6 +305,7 @@ export function CampaignAllocationDialog({
                 onChange={(e) => {
                   setCampaignId(e.target.value);
                   setErrors((prev) => ({ ...prev, campaign: undefined }));
+                  setSubmitError('');
                 }}
                 className={`w-full h-10 rounded-md border bg-background px-3 text-sm ${errors.campaign ? 'border-red-500' : 'border-border'}`}
               >
@@ -341,6 +346,11 @@ export function CampaignAllocationDialog({
                   <span className="material-symbols-outlined text-[14px]">error</span>
                   {errors.campaign}
                 </p>
+              )}
+              {submitError && (
+                <div className="mt-3 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {submitError}
+                </div>
               )}
               {campaigns.length === 0 && (
                 <p className="text-xs text-muted-foreground mt-1">
@@ -510,6 +520,7 @@ export function CampaignAllocationDialog({
             <div className="flex flex-row gap-2 pt-6 space-y-2">
               <Button
                 variant="outline"
+                disabled={submitting}
                 onClick={() => {
                   clearDialogDraft(CAMPAIGN_ALLOCATION_DRAFT_KEY);
                   setSelectedItems([]);
@@ -524,13 +535,18 @@ export function CampaignAllocationDialog({
                 Xóa nháp
               </Button>
 
-              <Button variant="destructive" onClick={() => onOpenChange(false)}>
+              <Button
+                variant="destructive"
+                disabled={submitting}
+                onClick={() => onOpenChange(false)}
+              >
                 <span className="material-symbols-outlined">close</span>
                 Hủy
               </Button>
               <Button
                 variant="primary"
-                onClick={() => {
+                disabled={submitting}
+                onClick={async () => {
                   const errs: { campaign?: string; items?: string } = {};
                   if (!campaignId) errs.campaign = 'Vui lòng chọn chiến dịch nhận cấp phát.';
                   if (totalLines === 0)
@@ -539,12 +555,28 @@ export function CampaignAllocationDialog({
                     setErrors(errs);
                     return;
                   }
-                  clearDialogDraft(CAMPAIGN_ALLOCATION_DRAFT_KEY);
-                  onSubmit(selectedItems, note, campaignId);
+                  setSubmitError('');
+                  setSubmitting(true);
+                  try {
+                    const success = await onSubmit(selectedItems, note, campaignId);
+                    if (success) {
+                      clearDialogDraft(CAMPAIGN_ALLOCATION_DRAFT_KEY);
+                    } else {
+                      setSubmitError(
+                        'Không thể cấp phát vật tư cho chiến dịch. Vui lòng kiểm tra lại thông tin và thử lại.',
+                      );
+                    }
+                  } catch {
+                    setSubmitError(
+                      'Không thể cấp phát vật tư cho chiến dịch. Vui lòng kiểm tra lại thông tin và thử lại.',
+                    );
+                  } finally {
+                    setSubmitting(false);
+                  }
                 }}
               >
                 <span className="material-symbols-outlined mr-2">outbound</span>
-                Xác nhận cấp phát
+                {submitting ? 'Đang cấp phát...' : 'Xác nhận cấp phát'}
               </Button>
             </div>
           </div>

@@ -13,6 +13,7 @@ import {
   type SupplyEditableDraftKey,
 } from './ManagerSupplyItemFormCard';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useState } from 'react';
 
 type CreateDraft = SupplyEditableDraft & { id: string };
 type BulkDraft = SupplyEditableDraft & { draftId: string; supplyItemId: string };
@@ -33,11 +34,20 @@ export function ManagerCreateSupplyDialog({
   onDraftChange: (id: string, key: SupplyEditableDraftKey, value: string) => void;
   onAddDraft: () => void;
   onRemoveDraft: (id: string) => void;
-  onSubmit: () => void;
+  onSubmit: () => Promise<string | null>;
   isPending: boolean;
 }) {
+  const [submitError, setSubmitError] = useState('');
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (isPending && !nextOpen) return;
+        onOpenChange(nextOpen);
+        if (!nextOpen) setSubmitError('');
+      }}
+    >
       <DialogContent className="!max-w-none w-[94vw] max-w-5xl h-[88vh] overflow-hidden p-0 flex flex-col">
         <DialogHeader className="px-6 py-4 border-b border-border">
           <DialogTitle>Tạo nhiều vật phẩm cứu trợ</DialogTitle>
@@ -85,12 +95,26 @@ export function ManagerCreateSupplyDialog({
           </Button>
         </div>
 
+        {submitError ? (
+          <div className="mx-6 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {submitError}
+          </div>
+        ) : null}
+
         <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
-          <Button variant="destructive" onClick={() => onOpenChange(false)}>
+          <Button variant="destructive" onClick={() => onOpenChange(false)} disabled={isPending}>
             <span className="material-symbols-outlined text-lg">close</span>
             Hủy
           </Button>
-          <Button variant="primary" onClick={onSubmit} disabled={isPending}>
+          <Button
+            variant="primary"
+            onClick={async () => {
+              setSubmitError('');
+              const result = await onSubmit();
+              if (result) setSubmitError(result);
+            }}
+            disabled={isPending}
+          >
             <span className="material-symbols-outlined text-lg">add</span>
             {isPending ? 'Đang tạo...' : 'Tạo danh mục vật phẩm'}
           </Button>
@@ -112,11 +136,20 @@ export function ManagerBulkEditSupplyDialog({
   onOpenChange: (open: boolean) => void;
   drafts: BulkDraft[];
   onDraftChange: (draftId: string, key: SupplyEditableDraftKey, value: string) => void;
-  onSubmit: () => void;
+  onSubmit: () => Promise<string | null>;
   isPending: boolean;
 }) {
+  const [submitError, setSubmitError] = useState('');
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (isPending && !nextOpen) return;
+        onOpenChange(nextOpen);
+        if (!nextOpen) setSubmitError('');
+      }}
+    >
       <DialogContent className="!max-w-none w-[94vw] max-w-5xl h-[88vh] overflow-hidden p-0 flex flex-col">
         <DialogHeader className="px-6 py-4 border-b border-border">
           <DialogTitle>Cập nhật nhiều vật phẩm</DialogTitle>
@@ -145,12 +178,26 @@ export function ManagerBulkEditSupplyDialog({
           )}
         </div>
 
+        {submitError ? (
+          <div className="mx-6 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {submitError}
+          </div>
+        ) : null}
+
         <DialogFooter className="px-6 py-4 border-t border-border bg-background shrink-0">
-          <Button variant="destructive" onClick={() => onOpenChange(false)}>
+          <Button variant="destructive" onClick={() => onOpenChange(false)} disabled={isPending}>
             <span className="material-symbols-outlined text-lg">close</span>
             Hủy
           </Button>
-          <Button variant="primary" onClick={onSubmit} disabled={isPending}>
+          <Button
+            variant="primary"
+            onClick={async () => {
+              setSubmitError('');
+              const result = await onSubmit();
+              if (result) setSubmitError(result);
+            }}
+            disabled={isPending}
+          >
             <span className="material-symbols-outlined text-lg">save</span>
             {isPending ? 'Đang lưu...' : 'Lưu cập nhật đã chọn'}
           </Button>

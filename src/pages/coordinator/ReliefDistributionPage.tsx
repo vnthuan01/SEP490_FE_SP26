@@ -15,7 +15,6 @@ import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { useCampaigns, useCampaignTeams } from '@/hooks/useCampaigns';
 import { useProvinces } from '@/hooks/useLocations';
 import { useInventories, useInventoryStocks } from '@/hooks/useInventory';
-import { handleHookError } from '@/hooks/hookErrorUtils';
 import {
   RELIEF_DISTRIBUTION_KEYS,
   useCreateDistributionPoint,
@@ -925,7 +924,7 @@ export default function ReliefDistributionPage() {
         notes: pickFieldError(parsed.fieldErrors, 'Notes', 'notes'),
         form: parsed.message,
       });
-      handleHookError(error, 'Không thể phân công hộ dân');
+      toast.error(parsed.message);
     }
   };
 

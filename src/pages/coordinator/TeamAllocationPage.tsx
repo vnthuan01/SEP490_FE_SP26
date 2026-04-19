@@ -23,6 +23,7 @@ import { useTeamLatestTracking, useTeamsInStation, useTeamsActiveBatches } from 
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { rescueRequestService } from '@/services/rescueRequestService';
 import type { RescueRequestItem } from '@/services/rescueRequestService';
+import { parseApiError } from '@/lib/apiErrors';
 import {
   RescueRequestType,
   rescueStatusToLocationStatus,
@@ -284,7 +285,7 @@ export default function CoordinatorTeamAllocationPage() {
         toast.success(`Đã phân công ${team.name} đến ${location.locationName}`);
         await refetch();
       } catch (e: any) {
-        toast.error(e?.response?.data?.message || 'Không thể phân công đội cứu trợ.');
+        toast.error(parseApiError(e, 'Không thể phân công đội cứu trợ.').message);
       }
     },
     [reliefLocations, teams, refetch],

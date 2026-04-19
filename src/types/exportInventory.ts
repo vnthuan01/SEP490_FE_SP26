@@ -40,5 +40,5 @@ export interface CampaignAllocationDialogProps {
   items: ExportItem[];
   campaigns: CampaignOption[];
   selectedCampaignId?: string;
-  onSubmit: (items: ExportItem[], note: string, campaignId: string) => void;
+  onSubmit: (items: ExportItem[], note: string, campaignId: string) => Promise<boolean>;
 }

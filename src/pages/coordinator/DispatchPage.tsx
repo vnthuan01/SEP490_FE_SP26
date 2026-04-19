@@ -55,6 +55,7 @@ import {
   RescueRequestStatusLabel,
 } from '@/enums/beEnums';
 import { toast } from 'sonner';
+import { parseApiError } from '@/lib/apiErrors';
 
 const GOONG_MAP_KEY = import.meta.env.VITE_GOONG_MAP_KEY || '';
 const NORMAL_THRESHOLD_KM = 2;
@@ -176,7 +177,7 @@ function queueRowLeftBorder(status?: string | null, variant: 'active' | 'preview
 
 function getApiErrorMessage(error: any, fallback: string, notFoundMessage?: string) {
   if (error?.response?.status === 404 && notFoundMessage) return notFoundMessage;
-  return error?.response?.data?.message || fallback;
+  return parseApiError(error, fallback).message;
 }
 
 function translateSystemReason(reason?: string | null) {

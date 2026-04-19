@@ -11,11 +11,12 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { UserRole, type UserRoleType } from '@/enums/UserRole';
 import { useState } from 'react';
+import { parseApiError } from '@/lib/apiErrors';
 
 interface AddUserModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: CreateUserPayload) => Promise<void>;
+  onSubmit: (data: CreateUserPayload) => Promise<boolean>;
 }
 
 export interface CreateUserPayload {
@@ -35,19 +36,51 @@ export function AddUserModal({ open, onClose, onSubmit }: AddUserModalProps) {
     phone: '',
     active: true,
   });
+  const [submitError, setSubmitError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<'fullName' | 'email' | 'role' | 'phone', string>>
+  >({});
+
+  const validate = () => {
+    const nextErrors: Partial<Record<'fullName' | 'email' | 'role' | 'phone', string>> = {};
+    if (!form.fullName.trim()) nextErrors.fullName = 'Vui lòng nhập họ và tên.';
+    if (!form.email.trim()) nextErrors.email = 'Vui lòng nhập email.';
+    else if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) nextErrors.email = 'Email không hợp lệ.';
+    if (!form.role) nextErrors.role = 'Vui lòng chọn vai trò.';
+    return nextErrors;
+  };
 
   const handleSubmit = async () => {
+    const nextErrors = validate();
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      return;
+    }
+
     try {
       setLoading(true);
-      await onSubmit(form);
-      onClose();
+      setSubmitError('');
+      const success = await onSubmit(form);
+      if (success) {
+        onClose();
+      } else {
+        setSubmitError('Không thể tạo người dùng. Vui lòng kiểm tra lại thông tin và thử lại.');
+      }
+    } catch (error) {
+      setSubmitError(parseApiError(error, 'Không thể tạo người dùng. Vui lòng thử lại.').message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (loading) return;
+        if (!nextOpen) onClose();
+      }}
+    >
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Thêm người dùng & phân quyền</DialogTitle>
@@ -59,8 +92,15 @@ export function AddUserModal({ open, onClose, onSubmit }: AddUserModalProps) {
             <Input
               placeholder="Nguyễn Văn A"
               value={form.fullName}
-              onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, fullName: e.target.value });
+                setFieldErrors((prev) => ({ ...prev, fullName: undefined }));
+                setSubmitError('');
+              }}
             />
+            {fieldErrors.fullName ? (
+              <p className="text-xs text-red-500">{fieldErrors.fullName}</p>
+            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -68,15 +108,24 @@ export function AddUserModal({ open, onClose, onSubmit }: AddUserModalProps) {
             <Input
               placeholder="example@email.com"
               value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, email: e.target.value });
+                setFieldErrors((prev) => ({ ...prev, email: undefined }));
+                setSubmitError('');
+              }}
             />
+            {fieldErrors.email ? <p className="text-xs text-red-500">{fieldErrors.email}</p> : null}
           </div>
 
           <div className="space-y-2">
             <label className="text-sm font-medium">Vai trò</label>
             <Select
               value={form.role}
-              onValueChange={(value) => setForm({ ...form, role: value as UserRoleType })}
+              onValueChange={(value) => {
+                setForm({ ...form, role: value as UserRoleType });
+                setFieldErrors((prev) => ({ ...prev, role: undefined }));
+                setSubmitError('');
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -88,6 +137,7 @@ export function AddUserModal({ open, onClose, onSubmit }: AddUserModalProps) {
                 <SelectItem value={UserRole.User}>Người dùng bình thường</SelectItem>
               </SelectContent>
             </Select>
+            {fieldErrors.role ? <p className="text-xs text-red-500">{fieldErrors.role}</p> : null}
           </div>
 
           <div className="space-y-2">
@@ -136,8 +186,14 @@ export function AddUserModal({ open, onClose, onSubmit }: AddUserModalProps) {
           </div>
         </div>
 
+        {submitError ? (
+          <div className="mt-4 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {submitError}
+          </div>
+        ) : null}
+
         <div className="flex justify-end gap-3 mt-6">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} disabled={loading}>
             Hủy
           </Button>
           <Button onClick={handleSubmit} disabled={loading}>

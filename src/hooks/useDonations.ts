@@ -7,6 +7,7 @@ import {
 import { toast } from 'sonner';
 import { FUND_QUERY_KEYS } from './useFunds';
 import { CAMPAIGN_QUERY_KEYS } from './useCampaigns';
+import { handleHookError } from './hookErrorUtils';
 
 export const DONATION_QUERY_KEYS = {
   all: ['donations'] as const,
@@ -46,7 +47,7 @@ export function useCreateDonationCheckout() {
       return response.data;
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Không thể tạo liên kết thanh toán');
+      handleHookError(error, 'Không thể tạo liên kết thanh toán');
     },
   });
 }
@@ -119,7 +120,7 @@ export function useReconcileDonation() {
       invalidateAdminDonationQueries(queryClient);
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Không thể đối soát giao dịch');
+      handleHookError(error, 'Không thể đối soát giao dịch');
     },
   });
 }
@@ -137,7 +138,7 @@ export function useCancelDonation() {
       invalidateAdminDonationQueries(queryClient);
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Không thể hủy payment link');
+      handleHookError(error, 'Không thể hủy payment link');
     },
   });
 }
@@ -149,7 +150,7 @@ export function useDonationAdminExport(params?: AdminDonationQueryParams) {
       return response.data;
     },
     onError: (error: any) => {
-      toast.error(error?.response?.data?.message || 'Không thể xuất CSV quyên góp');
+      handleHookError(error, 'Không thể xuất CSV quyên góp');
     },
   });
 }

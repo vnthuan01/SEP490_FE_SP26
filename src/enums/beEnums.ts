@@ -493,15 +493,34 @@ export const CampaignTeamStatus = {
 
 export type CampaignTeamStatus = (typeof CampaignTeamStatus)[keyof typeof CampaignTeamStatus];
 
+export const CampaignTeamStatusLabel = {
+  [CampaignTeamStatus.Invited]: 'Đã mờii',
+  [CampaignTeamStatus.Accepted]: 'Đã chấp nhận',
+  [CampaignTeamStatus.Active]: 'Đang hoạt động',
+  [CampaignTeamStatus.Completed]: 'Hoàn thành',
+  [CampaignTeamStatus.Withdrawn]: 'Đã rút lui',
+  [CampaignTeamStatus.Cancelled]: 'Đã hủy',
+} as const;
+
 export const CampaignTeamRole = {
   Logistics: 0,
   Medical: 1,
   Relief: 2,
-  Communication: 3,
-  Support: 4,
+  SearchAndRescue: 3,
+  Communication: 4,
+  Command: 5,
 } as const;
 
 export type CampaignTeamRole = (typeof CampaignTeamRole)[keyof typeof CampaignTeamRole];
+
+export const CampaignTeamRoleLabel = {
+  [CampaignTeamRole.Logistics]: 'Hậu cần',
+  [CampaignTeamRole.Medical]: 'Y tế',
+  [CampaignTeamRole.Relief]: 'Cứu trợ',
+  [CampaignTeamRole.SearchAndRescue]: 'Tìm kiếm & cứu nạn',
+  [CampaignTeamRole.Communication]: 'Liên lạc',
+  [CampaignTeamRole.Command]: 'Chỉ huy',
+} as const;
 
 export const DeliveryMode = {
   DoorToDoor: 0,
