@@ -143,8 +143,8 @@ export function CoordinatorDistributionPointsMap({
       <CardHeader className="space-y-1">
         <CardTitle>Bản đồ điểm phát</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Theo dõi vị trí, tiến độ và đội phụ trách tại từng điểm phát. Chạm vào marker để xem chi
-          tiết.
+          Theo dõi vị trí, tiến độ và đội phụ trách tại từng điểm phát. Chạm vào điểm đánh dấu để
+          xem chi tiết.
         </p>
         <div className="flex flex-wrap gap-2 pt-2">
           <Badge variant="outline" appearance="light">

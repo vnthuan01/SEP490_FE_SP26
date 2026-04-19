@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { FileUploadCard } from '@/components/ui/file-upload-card';
+import CustomCalendar from '@/components/ui/customCalendar';
 import {
   Dialog,
   DialogClose,
@@ -15,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -42,8 +44,12 @@ import {
   useUpdateStock,
 } from '@/hooks/useInventory';
 import { useProvincialStations } from '@/hooks/useReliefStations';
-import { useSupplyItems } from '@/hooks/useSupplies';
-import { useCreateSupplyAllocation } from '@/hooks/useSupplies';
+import {
+  useCreateSupplyAllocation,
+  useSupplyAllocationsByCampaign,
+  useSupplyItems,
+  useUpdateSupplyAllocationStatus,
+} from '@/hooks/useSupplies';
 import { useCloudinaryUpload } from '@/hooks/useCloudinaryUpload';
 import { useVehicles } from '@/hooks/useVehicles';
 import {
@@ -66,6 +72,7 @@ import { parseApiError } from '@/lib/apiErrors';
 import {
   CampaignStatus,
   CampaignType,
+  SupplyAllocationStatus,
   getSupplyCategoryClass,
   getSupplyCategoryIcon,
   getSupplyCategoryLabel,
@@ -74,6 +81,8 @@ import {
   TransactionType,
   SupplyTransferStatus,
   VehicleStatus,
+  getSupplyAllocationStatusClass,
+  getSupplyAllocationStatusLabel,
   parseEnumValue,
 } from '@/enums/beEnums';
 import { toast } from 'sonner';
@@ -90,6 +99,7 @@ import {
   convertNumberToVietnameseWords,
   formatTransferApprovalNotes,
   parseTransferNotes,
+  type TransferApprovalItemMeta,
 } from '@/lib/transferNotes';
 
 // ─── Local helpers ──────────────────────────────────────────────────────────
@@ -246,12 +256,24 @@ export default function CoordinatorInventoryPage() {
   const [openCreate, setOpenCreate] = useState(false);
   const [openCampaignAllocation, setOpenCampaignAllocation] = useState(false);
   const [selectedCampaignAllocationId, setSelectedCampaignAllocationId] = useState('');
+  const [openCampaignAllocationStatus, setOpenCampaignAllocationStatus] = useState(false);
+  const [selectedCampaignAllocationStatusId, setSelectedCampaignAllocationStatusId] = useState('');
+  const [campaignAllocationStatusFilter, setCampaignAllocationStatusFilter] = useState<
+    'all' | 'pending' | 'approved' | 'delivered' | 'cancelled'
+  >('all');
+  const [allocationStatusUpdateState, setAllocationStatusUpdateState] = useState<{
+    allocationId: string;
+    nextStatus: number;
+  } | null>(null);
   const [openTransferRequest, setOpenTransferRequest] = useState(false);
   const [transferErrors, setTransferErrors] = useState<Record<string, string>>({});
   const [transferSubmitError, setTransferSubmitError] = useState('');
   const [isSubmittingTransferRequest, setIsSubmittingTransferRequest] = useState(false);
   const [editStockErrors, setEditStockErrors] = useState<Record<string, string>>({});
   const [openApproveTransfer, setOpenApproveTransfer] = useState(false);
+  const [openApproveExpiryCalendarKey, setOpenApproveExpiryCalendarKey] = useState<string | null>(
+    null,
+  );
   const [openShipTransfer, setOpenShipTransfer] = useState(false);
   const [openReceiveTransfer, setOpenReceiveTransfer] = useState(false);
   const [openCancelTransfer, setOpenCancelTransfer] = useState(false);
@@ -269,12 +291,21 @@ export default function CoordinatorInventoryPage() {
     referenceAmount: string;
     approverName: string;
     approverSignatureDataUrl: string;
+    itemMetas: Record<
+      string,
+      {
+        unitCost: string;
+        expiryDate: string;
+        sourceReference: string;
+      }
+    >;
     pdfBytes: Uint8Array | null;
   }>({
     actualQuantities: {},
     referenceAmount: '',
     approverName: '',
     approverSignatureDataUrl: '',
+    itemMetas: {},
     pdfBytes: null,
   });
   const [shipTransferForm, setShipTransferForm] = useState<{
@@ -289,9 +320,18 @@ export default function CoordinatorInventoryPage() {
   const [receiveTransferForm, setReceiveTransferForm] = useState<{
     notes: string;
     evidenceFiles: File[];
+    itemMetas: Record<
+      string,
+      {
+        unitCost: string;
+        expiryDate: string;
+        sourceReference: string;
+      }
+    >;
   }>({
     notes: '',
     evidenceFiles: [],
+    itemMetas: {},
   });
   const [cancelTransferForm, setCancelTransferForm] = useState<{
     notes: string;
@@ -429,6 +469,7 @@ export default function CoordinatorInventoryPage() {
   const { mutateAsync: appendTransferEvidences } = useAppendSupplyTransferEvidences();
   const { uploadFile, isUploading: isUploadingTransferEvidence } = useCloudinaryUpload();
   const { mutateAsync: createSupplyAllocation } = useCreateSupplyAllocation();
+  const { mutateAsync: updateSupplyAllocationStatus } = useUpdateSupplyAllocationStatus();
   const { mutateAsync: approveTransfer, status: approveTransferStatus } =
     useApproveSupplyTransfer();
   const { mutateAsync: shipTransfer, status: shipTransferStatus } = useShipSupplyTransfer();
@@ -561,6 +602,19 @@ export default function CoordinatorInventoryPage() {
   const relatedTransfersDetailed = useMemo(
     () => relatedTransfers.map((transfer) => detailedTransferMap.get(transfer.id) || transfer),
     [relatedTransfers, detailedTransferMap],
+  );
+
+  const relatedTransferByTransactionId = useMemo(
+    () =>
+      relatedTransfersDetailed.reduce<
+        Record<string, (typeof relatedTransfersDetailed)[number] | undefined>
+      >((acc, transfer) => {
+        (transfer.inventoryTransactionIds || []).forEach((transactionId) => {
+          if (transactionId) acc[transactionId] = transfer;
+        });
+        return acc;
+      }, {}),
+    [relatedTransfersDetailed],
   );
 
   const outgoingTransferTotalPages = Math.max(
@@ -783,6 +837,43 @@ export default function CoordinatorInventoryPage() {
               : 'Đang triển khai',
       }));
   }, [allCampaigns, station, stationCampaignDetailQueries]);
+
+  const { data: allocationsByCampaignStatus = [], isLoading: isLoadingCampaignAllocations } =
+    useSupplyAllocationsByCampaign(selectedCampaignAllocationStatusId);
+
+  const campaignAllocationSummary = useMemo(
+    () =>
+      allocationsByCampaignStatus.reduce(
+        (acc, allocation) => {
+          acc.totalAllocations += 1;
+          acc.totalItems += (allocation.items || []).length;
+          acc.totalQuantity += (allocation.items || []).reduce(
+            (sum: number, item: { quantity?: number }) => sum + Number(item.quantity || 0),
+            0,
+          );
+          return acc;
+        },
+        { totalAllocations: 0, totalItems: 0, totalQuantity: 0 },
+      ),
+    [allocationsByCampaignStatus],
+  );
+
+  const filteredAllocationsByCampaignStatus = useMemo(() => {
+    if (campaignAllocationStatusFilter === 'all') return allocationsByCampaignStatus;
+
+    return allocationsByCampaignStatus.filter((allocation) => {
+      const status = Number(allocation.status);
+      if (campaignAllocationStatusFilter === 'pending')
+        return status === SupplyAllocationStatus.Pending;
+      if (campaignAllocationStatusFilter === 'approved')
+        return status === SupplyAllocationStatus.Approved;
+      if (campaignAllocationStatusFilter === 'delivered')
+        return status === SupplyAllocationStatus.Delivered;
+      if (campaignAllocationStatusFilter === 'cancelled')
+        return status === SupplyAllocationStatus.Cancelled;
+      return true;
+    });
+  }, [allocationsByCampaignStatus, campaignAllocationStatusFilter]);
 
   const selectedTransfer = useMemo(
     () => relatedTransfersDetailed.find((t) => t.id === selectedTransferId) ?? null,
@@ -1143,11 +1234,27 @@ export default function CoordinatorInventoryPage() {
     selectedSourceStockMapBySupplyItemId,
   ]);
 
+  const approveTransferReferenceAmount = useMemo(() => {
+    if (!selectedTransfer) return 0;
+    return (selectedTransfer.items || []).reduce((sum, item, index) => {
+      const key = `${item.supplyItemId}-${index}`;
+      const itemMeta = approveTransferForm.itemMetas[key];
+      const unitCost = parseFormattedNumber(itemMeta?.unitCost || '0');
+      const actualQuantity =
+        approveTransferForm.actualQuantities[key] ??
+        item.actualQuantity ??
+        item.requestedQuantity ??
+        item.quantity ??
+        0;
+      return sum + unitCost * actualQuantity;
+    }, 0);
+  }, [approveTransferForm.actualQuantities, approveTransferForm.itemMetas, selectedTransfer]);
+
   const selectedTransferPdfData = useMemo<TransferPdfFillData | null>(() => {
     if (!selectedTransfer) return null;
 
     const parsedNotes = parseTransferNotes(selectedTransfer.notes);
-    const referenceAmount = parseFormattedNumber(approveTransferForm.referenceAmount || '0');
+    const referenceAmount = approveTransferReferenceAmount;
     const approverName = approveTransferForm.approverName.trim();
 
     return {
@@ -1174,6 +1281,7 @@ export default function CoordinatorInventoryPage() {
       items: (selectedTransfer.items || []).map((item, index) => {
         const matchedSupply = supplyMap.get(item.supplyItemId);
         const key = `${item.supplyItemId}-${index}`;
+        const itemMeta = approveTransferForm.itemMetas[key];
         const actualQuantity =
           approveTransferForm.actualQuantities[key] ??
           item.actualQuantity ??
@@ -1186,19 +1294,57 @@ export default function CoordinatorInventoryPage() {
           unit: matchedSupply?.unit || 'Đơn vị',
           actualQuantity,
           notes: item.notes,
+          unitPrice: parseFormattedNumber(itemMeta?.unitCost || '0') || item.unitCost,
+          totalAmount:
+            parseFormattedNumber(itemMeta?.unitCost || '0') > 0
+              ? parseFormattedNumber(itemMeta.unitCost || '0') * actualQuantity
+              : undefined,
         };
       }),
     };
   }, [
     approveTransferForm.actualQuantities,
     approveTransferForm.approverName,
-    approveTransferForm.referenceAmount,
+    approveTransferForm.itemMetas,
+    approveTransferReferenceAmount,
     profile?.displayName,
     selectedTransfer,
     supplyMap,
     user?.email,
     user?.fullName,
   ]);
+
+  useEffect(() => {
+    if (!selectedTransferPdfData) return;
+
+    const missingItemFields = selectedTransferPdfData.items
+      .map((item, index) => ({
+        index,
+        name: item.name,
+        hasUnitPrice: Number(item.unitPrice || 0) > 0,
+        hasActualQuantity: Number(item.actualQuantity || 0) > 0,
+        hasTotalAmount: Number(item.totalAmount || 0) > 0,
+      }))
+      .filter((item) => !item.hasUnitPrice || !item.hasActualQuantity || !item.hasTotalAmount);
+
+    const debugPayload = {
+      transferCode: selectedTransferPdfData.transferCode,
+      referenceAmount: selectedTransferPdfData.referenceAmount,
+      referenceAmountText: selectedTransferPdfData.referenceAmountText,
+      itemCount: selectedTransferPdfData.items.length,
+      missingItemFields,
+    };
+
+    console.debug('[Transfer PDF] payload summary', debugPayload);
+
+    if (
+      Number(selectedTransferPdfData.referenceAmount || 0) <= 0 ||
+      !selectedTransferPdfData.referenceAmountText ||
+      missingItemFields.length > 0
+    ) {
+      console.warn('[Transfer PDF] payload may be incomplete', debugPayload);
+    }
+  }, [selectedTransferPdfData]);
 
   const todayTransactionSummary = useMemo(() => {
     const todayKey = new Date().toDateString();
@@ -1621,6 +1767,33 @@ export default function CoordinatorInventoryPage() {
     }
   };
 
+  const getNextAllocationStatusActions = (status: number) => {
+    switch (status) {
+      case SupplyAllocationStatus.Pending:
+        return [
+          { label: 'Duyệt cấp phát', value: SupplyAllocationStatus.Approved },
+          { label: 'Hủy cấp phát', value: SupplyAllocationStatus.Cancelled },
+        ];
+      case SupplyAllocationStatus.Approved:
+        return [{ label: 'Đánh dấu đã giao', value: SupplyAllocationStatus.Delivered }];
+      default:
+        return [];
+    }
+  };
+
+  const handleUpdateCampaignAllocationStatus = async () => {
+    if (!allocationStatusUpdateState) return;
+    try {
+      await updateSupplyAllocationStatus({
+        id: allocationStatusUpdateState.allocationId,
+        data: { status: allocationStatusUpdateState.nextStatus },
+      });
+      setAllocationStatusUpdateState(null);
+    } catch {
+      // handled by hook
+    }
+  };
+
   /**
    * Approve a pending transfer where this station is the SOURCE.
    * Không trừ kho ở bước approve; backend chỉ trừ kho khi ship.
@@ -1632,7 +1805,33 @@ export default function CoordinatorInventoryPage() {
     }
 
     try {
-      const referenceAmount = parseFormattedNumber(approveTransferForm.referenceAmount || '0');
+      const referenceAmount = approveTransferReferenceAmount;
+      const approvalItemMetas: TransferApprovalItemMeta[] = (selectedTransfer.items || []).map(
+        (item, index) => {
+          const key = `${item.supplyItemId}-${index}`;
+          const itemMeta = approveTransferForm.itemMetas[key];
+          return {
+            key,
+            supplyItemId: item.supplyItemId,
+            sourceReference:
+              itemMeta?.sourceReference?.trim() ||
+              item.sourceReference?.trim() ||
+              selectedTransfer.sourceStationName ||
+              selectedTransfer.transferCode ||
+              '',
+            totalAmount:
+              itemMeta && parseFormattedNumber(itemMeta.unitCost) > 0
+                ? parseFormattedNumber(itemMeta.unitCost) *
+                  (approveTransferForm.actualQuantities[key] ??
+                    item.actualQuantity ??
+                    item.requestedQuantity ??
+                    item.quantity ??
+                    0)
+                : undefined,
+            expiryDate: itemMeta?.expiryDate || item.expiryDate || null,
+          };
+        },
+      );
       if (!approveTransferForm.approverName.trim()) {
         toast.error('Vui lòng nhập người phê duyệt.');
         return;
@@ -1649,7 +1848,10 @@ export default function CoordinatorInventoryPage() {
         );
 
         const basePdfBytes = existingPdfUrl
-          ? new Uint8Array(await (await fetch(existingPdfUrl)).arrayBuffer())
+          ? await updateTransferPdfApprovalData(
+              new Uint8Array(await (await fetch(existingPdfUrl)).arrayBuffer()),
+              selectedTransferPdfData,
+            )
           : await buildTransferPdf(selectedTransferPdfData);
 
         const signedPdf = await attachSignatureToPdf(
@@ -1671,7 +1873,10 @@ export default function CoordinatorInventoryPage() {
           folder: 'reliefhub/supply-transfer-evidence',
           resourceType: 'raw',
         });
-        evidenceUrls = [...evidenceUrls, uploaded.secureUrl];
+        evidenceUrls = [
+          ...evidenceUrls.filter((url) => !url.toLowerCase().includes('.pdf')),
+          uploaded.secureUrl,
+        ];
       }
 
       if (evidenceUrls.length > 0) {
@@ -1684,7 +1889,11 @@ export default function CoordinatorInventoryPage() {
       await approveTransfer({
         id: selectedTransfer.id,
         data: {
-          notes: formatTransferApprovalNotes(referenceAmount, approveTransferForm.approverName),
+          notes: formatTransferApprovalNotes(
+            referenceAmount,
+            approveTransferForm.approverName,
+            approvalItemMetas,
+          ),
           evidenceUrls,
         },
       });
@@ -1700,8 +1909,10 @@ export default function CoordinatorInventoryPage() {
         referenceAmount: '',
         approverName: '',
         approverSignatureDataUrl: '',
+        itemMetas: {},
         pdfBytes: null,
       });
+      setOpenApproveExpiryCalendarKey(null);
       setOpenApproveTransfer(false);
       setSelectedTransferId(null);
       toast.success(
@@ -1770,11 +1981,26 @@ export default function CoordinatorInventoryPage() {
     await receiveTransfer({
       id: selectedTransfer.id,
       data: {
-        items: (selectedTransfer.items || []).map((item) => ({
-          supplyItemId: item.supplyItemId,
-          actualQuantity: item.requestedQuantity ?? item.quantity ?? 0,
-          notes: item.notes,
-        })),
+        items: (selectedTransfer.items || []).map((item, index) => {
+          const key = `${item.supplyItemId}-${index}`;
+          const itemMeta = receiveTransferForm.itemMetas[key];
+          return {
+            supplyItemId: item.supplyItemId,
+            actualQuantity: item.requestedQuantity ?? item.quantity ?? 0,
+            notes: item.notes,
+            unitCost:
+              itemMeta && parseFormattedNumber(itemMeta.unitCost) > 0
+                ? parseFormattedNumber(itemMeta.unitCost)
+                : item.unitCost,
+            expiryDate: itemMeta?.expiryDate || item.expiryDate || null,
+            sourceReference:
+              itemMeta?.sourceReference?.trim() ||
+              item.sourceReference?.trim() ||
+              selectedTransfer.sourceStationName ||
+              selectedTransfer.transferCode ||
+              undefined,
+          };
+        }),
         notes: receiveTransferForm.notes.trim() || undefined,
         evidenceUrls,
       },
@@ -1786,7 +2012,7 @@ export default function CoordinatorInventoryPage() {
       refetchSourceTransfers(),
       refetchDestinationTransfers(),
     ]);
-    setReceiveTransferForm({ notes: '', evidenceFiles: [] });
+    setReceiveTransferForm({ notes: '', evidenceFiles: [], itemMetas: {} });
     setOpenReceiveTransfer(false);
     setSelectedTransferId(null);
   };
@@ -1835,6 +2061,7 @@ export default function CoordinatorInventoryPage() {
   const openApproveTransferDialog = (transferId: string) => {
     setSelectedTransferId(transferId);
     const transfer = relatedTransfersDetailed.find((item) => item.id === transferId) ?? null;
+    const parsedNotes = parseTransferNotes(transfer?.notes);
     setApproveTransferForm({
       actualQuantities: Object.fromEntries(
         (transfer?.items || []).map((item, index) => [
@@ -1842,12 +2069,43 @@ export default function CoordinatorInventoryPage() {
           item.actualQuantity ?? item.requestedQuantity ?? item.quantity ?? 0,
         ]),
       ),
-      referenceAmount: '',
+      referenceAmount: formatNumberInputVN(
+        (transfer?.items || []).reduce((sum, item) => sum + Number(item.totalAmount || 0), 0),
+      ),
       approverName: profile?.displayName || user?.fullName || '',
       approverSignatureDataUrl: '',
+      itemMetas: Object.fromEntries(
+        (transfer?.items || []).map((item, index) => {
+          const key = `${item.supplyItemId}-${index}`;
+          const parsedMeta = parsedNotes.itemMetas?.find((meta) => meta.key === key);
+          return [
+            key,
+            {
+              unitCost:
+                parsedMeta?.totalAmount != null &&
+                (item.actualQuantity ?? item.requestedQuantity ?? item.quantity ?? 0) > 0
+                  ? formatNumberInputVN(
+                      parsedMeta.totalAmount /
+                        (item.actualQuantity ?? item.requestedQuantity ?? item.quantity ?? 1),
+                    )
+                  : item.unitCost != null
+                    ? formatNumberInputVN(item.unitCost)
+                    : '',
+              expiryDate: parsedMeta?.expiryDate || item.expiryDate || '',
+              sourceReference:
+                parsedMeta?.sourceReference ||
+                item.sourceReference ||
+                transfer?.sourceStationName ||
+                transfer?.sourceStationId ||
+                '',
+            },
+          ];
+        }),
+      ),
       pdfBytes: null,
     });
     setOpenApproveTransfer(true);
+    setOpenApproveExpiryCalendarKey(null);
   };
 
   const openShipTransferDialog = (transferId: string) => {
@@ -1863,7 +2121,39 @@ export default function CoordinatorInventoryPage() {
 
   const openReceiveTransferDialog = (transferId: string) => {
     setSelectedTransferId(transferId);
-    setReceiveTransferForm({ notes: '', evidenceFiles: [] });
+    const transfer = relatedTransfersDetailed.find((item) => item.id === transferId) ?? null;
+    const parsedNotes = parseTransferNotes(transfer?.notes);
+    setReceiveTransferForm({
+      notes: '',
+      evidenceFiles: [],
+      itemMetas: Object.fromEntries(
+        (transfer?.items || []).map((item, index) => {
+          const key = `${item.supplyItemId}-${index}`;
+          const parsedMeta = parsedNotes.itemMetas?.find((meta) => meta.key === key);
+          return [
+            key,
+            {
+              unitCost:
+                parsedMeta?.totalAmount != null &&
+                (item.requestedQuantity ?? item.quantity ?? 0) > 0
+                  ? formatNumberInputVN(
+                      parsedMeta.totalAmount / (item.requestedQuantity ?? item.quantity ?? 1),
+                    )
+                  : item.unitCost != null
+                    ? formatNumberInputVN(item.unitCost)
+                    : '',
+              expiryDate: parsedMeta?.expiryDate || item.expiryDate || '',
+              sourceReference:
+                parsedMeta?.sourceReference ||
+                item.sourceReference ||
+                transfer?.sourceStationName ||
+                transfer?.sourceStationId ||
+                '',
+            },
+          ];
+        }),
+      ),
+    });
     setOpenReceiveTransfer(true);
   };
 
@@ -2016,6 +2306,18 @@ export default function CoordinatorInventoryPage() {
           >
             <span className="material-symbols-outlined text-lg">outbound</span>
             Cấp phát chiến dịch
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => {
+              setSelectedCampaignAllocationStatusId(stationCampaigns[0]?.id || '');
+              setCampaignAllocationStatusFilter('all');
+              setOpenCampaignAllocationStatus(true);
+            }}
+          >
+            <span className="material-symbols-outlined text-lg">fact_check</span>
+            Trạng thái cấp phát chiến dịch
           </Button>
           <Button variant="primary" className="gap-2" onClick={handleOpenCreateDialog}>
             <span className="material-symbols-outlined text-lg">inventory_2</span>
@@ -2178,31 +2480,33 @@ export default function CoordinatorInventoryPage() {
                 key={item.supplyItemId}
                 className={`group flex flex-col bg-card border-border transition ${status.hover}`}
               >
-                <CardContent className="p-5 flex flex-col flex-1">
-                  <div className="flex justify-between mb-4 gap-3">
-                    <div className="flex gap-4 min-w-0">
+                <CardContent className="min-w-0 p-5 flex flex-col flex-1">
+                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex flex-1 min-w-0 gap-4">
                       <div className="size-12 font-bold border rounded-xl bg-border-dark flex items-center justify-center shrink-0">
                         <span className="material-symbols-outlined">{item.icon}</span>
                       </div>
                       <div className="min-w-0">
-                        <h3 className="font-bold text-lg group-hover:text-primary truncate">
+                        <h3 className="font-bold text-lg group-hover:text-primary break-words leading-snug">
                           {item.name}
                         </h3>
-                        <p className="text-sm text-muted-foreground truncate">{item.category}</p>
+                        <p className="text-sm text-muted-foreground break-words">{item.category}</p>
                       </div>
                     </div>
 
                     <span
-                      className={`px-2.5 py-1 rounded-md h-6 text-xs font-bold border ${status.badge}`}
+                      className={`inline-flex max-w-full shrink-0 items-center rounded-md border px-2 py-1 text-[11px] font-bold leading-tight text-center whitespace-normal break-words sm:whitespace-nowrap ${status.badge}`}
                     >
                       {status.label}
                     </span>
                   </div>
 
                   <div className="flex-1 mb-3">
-                    <div className="flex justify-between mb-2 gap-3">
-                      <span className="text-3xl font-black">{formatNumberVN(item.current)}</span>
-                      <span className="text-sm text-muted-foreground text-right">
+                    <div className="mb-2 flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
+                      <span className="min-w-0 text-3xl font-black break-words leading-none">
+                        {formatNumberVN(item.current)}
+                      </span>
+                      <span className="basis-full text-sm text-muted-foreground break-words leading-snug sm:basis-auto sm:text-right">
                         / {formatNumberVN(item.capacity)} {item.unit}
                       </span>
                     </div>
@@ -2221,16 +2525,16 @@ export default function CoordinatorInventoryPage() {
 
                   <button
                     type="button"
-                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-3 transition-colors"
+                    className="mb-3 flex flex-wrap items-center gap-1 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
                     onClick={() => openImportHistoryBySupplyItemDialog(item)}
                   >
                     <span className="material-symbols-outlined text-sm">history</span>
                     {importHistoryCount} lần nhập hàng – Xem chi tiết
                   </button>
 
-                  <div className="flex gap-3">
+                  <div className="flex flex-wrap items-stretch gap-2">
                     <Button
-                      className="flex-1"
+                      className="min-w-[140px] flex-1"
                       variant="primary"
                       onClick={() => {
                         setSelectedCampaignAllocationId('');
@@ -2243,6 +2547,7 @@ export default function CoordinatorInventoryPage() {
                     <Button
                       size="icon"
                       variant="outline"
+                      className="shrink-0"
                       title="Chỉnh min/max trực tiếp"
                       disabled={!primaryLot}
                       onClick={() => primaryLot && handleOpenEditStock(primaryLot, item.name)}
@@ -2252,6 +2557,7 @@ export default function CoordinatorInventoryPage() {
                     <Button
                       size="icon"
                       variant="outline"
+                      className="shrink-0"
                       onClick={() => handleOpenQuickImport(item)}
                     >
                       <span className="material-symbols-outlined">add</span>
@@ -2259,6 +2565,7 @@ export default function CoordinatorInventoryPage() {
                     <Button
                       size="icon"
                       variant="outline"
+                      className="shrink-0"
                       title="Xem lịch sử nhập theo vật phẩm"
                       onClick={() => openImportHistoryBySupplyItemDialog(item)}
                     >
@@ -2727,11 +3034,242 @@ export default function CoordinatorInventoryPage() {
         }}
       />
 
+      <Dialog open={openCampaignAllocationStatus} onOpenChange={setOpenCampaignAllocationStatus}>
+        <DialogContent className="w-[96vw] !max-w-[1100px] max-h-[90vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
+            <DialogTitle>Trạng thái cấp phát chiến dịch</DialogTitle>
+            <DialogDescription>
+              Chỉ hiển thị các phiếu cấp phát của những chiến dịch thuộc trạm bạn đang quản lý.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-5">
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">Chiến dịch</p>
+              <Select
+                value={selectedCampaignAllocationStatusId}
+                onValueChange={setSelectedCampaignAllocationStatusId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn chiến dịch để xem trạng thái cấp phát" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stationCampaigns.map((campaign) => (
+                    <SelectItem key={campaign.id} value={campaign.id}>
+                      {campaign.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">Lọc trạng thái</p>
+              <Select
+                value={campaignAllocationStatusFilter}
+                onValueChange={(value) =>
+                  setCampaignAllocationStatusFilter(
+                    value as 'all' | 'pending' | 'approved' | 'delivered' | 'cancelled',
+                  )
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn trạng thái cần lọc" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả</SelectItem>
+                  <SelectItem value="pending">Chờ duyệt</SelectItem>
+                  <SelectItem value="approved">Đã duyệt</SelectItem>
+                  <SelectItem value="delivered">Đã giao</SelectItem>
+                  <SelectItem value="cancelled">Đã hủy</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {!!selectedCampaignAllocationStatusId && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="border-border bg-card">
+                  <CardContent className="p-5 bg-sky-500/10 rounded-xl">
+                    <p className="text-sm text-muted-foreground">Số đợt cấp phát</p>
+                    <p className="mt-2 text-3xl font-black text-foreground">
+                      {formatNumberVN(campaignAllocationSummary.totalAllocations)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="border-border bg-card">
+                  <CardContent className="p-5 bg-emerald-500/10 rounded-xl">
+                    <p className="text-sm text-muted-foreground">Tổng dòng vật phẩm</p>
+                    <p className="mt-2 text-3xl font-black text-foreground">
+                      {formatNumberVN(campaignAllocationSummary.totalItems)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="border-border bg-card">
+                  <CardContent className="p-5 bg-amber-500/10 rounded-xl">
+                    <p className="text-sm text-muted-foreground">Trạng thái đang lọc</p>
+                    <p className="mt-2 text-3xl font-black text-foreground">
+                      {campaignAllocationStatusFilter === 'all'
+                        ? 'Tất cả'
+                        : campaignAllocationStatusFilter === 'pending'
+                          ? 'Chờ duyệt'
+                          : campaignAllocationStatusFilter === 'approved'
+                            ? 'Đã duyệt'
+                            : campaignAllocationStatusFilter === 'delivered'
+                              ? 'Đã giao'
+                              : 'Đã hủy'}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {!selectedCampaignAllocationStatusId ? (
+              <div className="rounded-2xl border border-dashed border-border bg-muted/10 p-6 text-sm text-muted-foreground">
+                Chọn một chiến dịch thuộc trạm đang quản lý để xem các phiếu cấp phát.
+              </div>
+            ) : isLoadingCampaignAllocations ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="flex flex-col items-center gap-3">
+                  <span className="material-symbols-outlined text-4xl text-primary animate-spin">
+                    progress_activity
+                  </span>
+                  <p className="text-muted-foreground text-sm">Đang tải trạng thái cấp phát...</p>
+                </div>
+              </div>
+            ) : filteredAllocationsByCampaignStatus.length === 0 ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="flex flex-col items-center gap-3">
+                  <span className="material-symbols-outlined text-4xl text-muted-foreground">
+                    inventory_2
+                  </span>
+                  <p className="text-muted-foreground text-sm">
+                    Không có phiếu cấp phát nào phù hợp với bộ lọc hiện tại.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredAllocationsByCampaignStatus.map((allocation, index) => (
+                  <Card
+                    className="relative"
+                    key={allocation.allocationId || `${allocation.campaignId}-${index}`}
+                  >
+                    <CardContent className="p-5 space-y-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-base font-semibold text-foreground">
+                            Phiếu cấp phát #{index + 1}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1 break-all">
+                            Mã phiếu: {allocation.allocationId || '—'}
+                          </p>
+                          <p className="text-xs text-muted-foreground break-all">
+                            Kho nguồn:{' '}
+                            {allocation.sourceInventoryName || allocation.sourceInventoryId || '—'}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 justify-end">
+                          <Badge
+                            variant="outline"
+                            appearance="outline"
+                            size="sm"
+                            className={`border ${getSupplyAllocationStatusClass(allocation.status)}`}
+                          >
+                            {getSupplyAllocationStatusLabel(allocation.status)}
+                          </Badge>
+
+                          {getNextAllocationStatusActions(Number(allocation.status)).map(
+                            (action) => (
+                              <Button
+                                key={`${allocation.allocationId}-${action.value}`}
+                                size="sm"
+                                variant={
+                                  action.value === SupplyAllocationStatus.Approved
+                                    ? 'success'
+                                    : action.value === SupplyAllocationStatus.Cancelled
+                                      ? 'destructive'
+                                      : 'warning'
+                                }
+                                onClick={() =>
+                                  setAllocationStatusUpdateState({
+                                    allocationId: allocation.allocationId,
+                                    nextStatus: action.value,
+                                  })
+                                }
+                              >
+                                {action.label}
+                              </Button>
+                            ),
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        {(allocation.items || []).map((item, itemIndex: number) => (
+                          <div
+                            key={`${allocation.allocationId}-${item.supplyItemId}-${itemIndex}`}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/10 px-4 py-3"
+                          >
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground">{item.supplyItemName}</p>
+                              <p className="text-xs text-muted-foreground break-all">
+                                {item.supplyItemId}
+                              </p>
+                            </div>
+                            <p className="text-sm font-medium text-foreground whitespace-nowrap">
+                              {formatNumberVN(item.quantity)} {item.supplyItemUnit || ''}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 shrink-0">
+            <Button variant="outline" onClick={() => setOpenCampaignAllocationStatus(false)}>
+              Đóng
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!allocationStatusUpdateState}
+        onOpenChange={(open) => {
+          if (!open) setAllocationStatusUpdateState(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cập nhật trạng thái cấp phát</DialogTitle>
+            <DialogDescription>
+              Thay đổi trạng thái sẽ ảnh hưởng trực tiếp đến luồng tồn kho chiến dịch.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Huỷ</Button>
+            </DialogClose>
+            <Button variant="primary" onClick={() => void handleUpdateCampaignAllocationStatus()}>
+              {allocationStatusUpdateState
+                ? getSupplyAllocationStatusLabel(allocationStatusUpdateState.nextStatus)
+                : 'Xác nhận'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ImportHistoryBySupplyItemDialog
         open={openImportHistoryDialog}
         onOpenChange={setOpenImportHistoryDialog}
         selectedSupplyItem={selectedImportHistorySupplyItem}
         transactions={importHistoryBySupplyItem}
+        relatedTransferByTransactionId={relatedTransferByTransactionId}
         isLoading={isLoadingImportHistory}
       />
 
@@ -3281,6 +3819,11 @@ export default function CoordinatorInventoryPage() {
                     {(selectedTransfer.items || []).map((item, index) => {
                       const matchedSupply = supplyMap.get(item.supplyItemId);
                       const fieldKey = `${item.supplyItemId}-${index}`;
+                      const itemMeta = approveTransferForm.itemMetas[fieldKey] || {
+                        unitCost: '',
+                        expiryDate: '',
+                        sourceReference: '',
+                      };
                       return (
                         <div
                           key={fieldKey}
@@ -3366,6 +3909,116 @@ export default function CoordinatorInventoryPage() {
                               </p>
                             </div>
                           </div>
+
+                          <div className="mt-4 grid gap-3 md:grid-cols-3">
+                            <div className="space-y-2 rounded-2xl border border-border bg-background/70 p-3">
+                              <label className="text-sm font-medium text-foreground">
+                                Giá tiền vật phẩm (x1)
+                              </label>
+                              <Input
+                                value={itemMeta.unitCost}
+                                onChange={(e) =>
+                                  setApproveTransferForm((prev) => ({
+                                    ...prev,
+                                    itemMetas: {
+                                      ...prev.itemMetas,
+                                      [fieldKey]: {
+                                        ...prev.itemMetas[fieldKey],
+                                        unitCost: formatNumberInputVN(
+                                          parseFormattedNumber(e.target.value),
+                                        ),
+                                        expiryDate: prev.itemMetas[fieldKey]?.expiryDate || '',
+                                        sourceReference:
+                                          prev.itemMetas[fieldKey]?.sourceReference || '',
+                                      },
+                                    },
+                                  }))
+                                }
+                                placeholder="Ví dụ: 12.000"
+                              />
+                            </div>
+                            <div className="space-y-2 rounded-2xl border border-border bg-background/70 p-3">
+                              <label className="text-sm font-medium text-foreground">
+                                Hạn sử dụng
+                              </label>
+                              <Popover
+                                open={openApproveExpiryCalendarKey === fieldKey}
+                                onOpenChange={(open) =>
+                                  setOpenApproveExpiryCalendarKey(open ? fieldKey : null)
+                                }
+                              >
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="w-full justify-between font-normal"
+                                  >
+                                    <span className="truncate">
+                                      {itemMeta.expiryDate
+                                        ? new Date(itemMeta.expiryDate).toLocaleDateString('vi-VN')
+                                        : 'Chọn hạn sử dụng'}
+                                    </span>
+                                    <span className="material-symbols-outlined text-[18px] text-muted-foreground">
+                                      calendar_month
+                                    </span>
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent
+                                  className="z-[120] w-auto p-0"
+                                  align="start"
+                                  side="bottom"
+                                >
+                                  <CustomCalendar
+                                    value={
+                                      itemMeta.expiryDate
+                                        ? new Date(itemMeta.expiryDate)
+                                        : undefined
+                                    }
+                                    onChange={(date) => {
+                                      setApproveTransferForm((prev) => ({
+                                        ...prev,
+                                        itemMetas: {
+                                          ...prev.itemMetas,
+                                          [fieldKey]: {
+                                            ...prev.itemMetas[fieldKey],
+                                            unitCost: prev.itemMetas[fieldKey]?.unitCost || '',
+                                            expiryDate: date ? date.toISOString().slice(0, 10) : '',
+                                            sourceReference:
+                                              prev.itemMetas[fieldKey]?.sourceReference || '',
+                                          },
+                                        },
+                                      }));
+                                      setOpenApproveExpiryCalendarKey(null);
+                                    }}
+                                  />
+                                </PopoverContent>
+                              </Popover>
+                            </div>
+                            <div className="space-y-2 rounded-2xl border border-border bg-background/70 p-3">
+                              <label className="text-sm font-medium text-foreground">
+                                Nguồn hàng từ:
+                              </label>
+                              <Input
+                                disabled
+                                value={itemMeta.sourceReference}
+                                onChange={(e) =>
+                                  setApproveTransferForm((prev) => ({
+                                    ...prev,
+                                    itemMetas: {
+                                      ...prev.itemMetas,
+                                      [fieldKey]: {
+                                        ...prev.itemMetas[fieldKey],
+                                        unitCost: prev.itemMetas[fieldKey]?.unitCost || '',
+                                        expiryDate: prev.itemMetas[fieldKey]?.expiryDate || '',
+                                        sourceReference: e.target.value,
+                                      },
+                                    },
+                                  }))
+                                }
+                                placeholder="Ví dụ: Kho nguồn Trạm A / mã phiếu"
+                              />
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
@@ -3396,29 +4049,24 @@ export default function CoordinatorInventoryPage() {
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-foreground">
-                        Số tiền tham chiếu
+                        Tổng số tiền tham chiếu
                       </label>
                       <Input
-                        value={approveTransferForm.referenceAmount}
-                        onChange={(e) =>
-                          setApproveTransferForm((prev) => ({
-                            ...prev,
-                            referenceAmount: formatNumberInputVN(
-                              parseFormattedNumber(e.target.value),
-                            ),
-                          }))
-                        }
-                        placeholder="Ví dụ: 12.500.000"
+                        value={formatNumberInputVN(approveTransferReferenceAmount)}
+                        readOnly
+                        placeholder="Tự động tính từ đơn giá x số lượng thực tế"
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Hệ thống tự tính tổng từ đơn giá từng mặt hàng và số lượng thực tế đã duyệt.
+                      </p>
                     </div>
                   </div>
 
                   <div className="mt-4 rounded-2xl border border-border bg-muted/10 p-4 text-sm text-muted-foreground">
                     <p className="font-medium text-foreground">Số tiền bằng chữ</p>
                     <p className="mt-1 leading-6">
-                      {convertNumberToVietnameseWords(
-                        parseFormattedNumber(approveTransferForm.referenceAmount || '0'),
-                      ) || 'Chưa có dữ liệu'}
+                      {convertNumberToVietnameseWords(approveTransferReferenceAmount) ||
+                        'Chưa có dữ liệu'}
                     </p>
                   </div>
 
@@ -3611,7 +4259,7 @@ export default function CoordinatorInventoryPage() {
           </DialogHeader>
 
           <div className="flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
-            <div className="grid h-full gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+            <div className="grid h-full gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
               <div className="space-y-4 overflow-y-auto pr-1">
                 <div className="rounded-2xl border border-border bg-muted/10 p-4">
                   <p className="mb-3 text-sm font-semibold text-foreground">Thông tin phiếu</p>
@@ -3756,7 +4404,7 @@ export default function CoordinatorInventoryPage() {
           </DialogHeader>
 
           <div className="flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
-            <div className="grid h-full gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+            <div className="grid h-full gap-6 xl:grid-cols-[350px_minmax(0,1fr)]">
               <div className="space-y-4 overflow-y-auto pr-1">
                 <div className="rounded-2xl border border-border bg-muted/10 p-4">
                   <p className="mb-3 text-sm font-semibold text-foreground">Thông tin phiếu</p>
@@ -4091,7 +4739,7 @@ export default function CoordinatorInventoryPage() {
                             <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
                               Lý do điều phối
                             </p>
-                            <p className="mt-2 leading-6 text-foreground">
+                            <p className="mt-2 whitespace-pre-wrap break-words leading-6 text-foreground">
                               {selectedTransfer.reason || parsedNotes.reason || 'Không có lý do'}
                             </p>
                           </div>
@@ -4099,7 +4747,7 @@ export default function CoordinatorInventoryPage() {
                             <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
                               Ghi chú chung
                             </p>
-                            <p className="mt-2 leading-6 text-foreground">
+                            <p className="mt-2 whitespace-pre-wrap break-words leading-6 text-foreground">
                               {parsedNotes.note || parsedNotes.raw || 'Không có ghi chú'}
                             </p>
                           </div>

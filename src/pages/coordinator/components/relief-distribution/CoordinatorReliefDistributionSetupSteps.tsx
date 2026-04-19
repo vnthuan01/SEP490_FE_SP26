@@ -490,7 +490,7 @@ export function CoordinatorReliefDistributionSetupSteps({
                 <div className="border-b border-border px-4 py-3">
                   <p className="text-sm font-medium text-foreground">Xem trước trên bản đồ</p>
                   <p className="text-xs text-muted-foreground">
-                    Xem nhanh vị trí điểm phát sau khi chọn trên bản đồ.
+                    Dùng bản đồ để lấy đúng vĩ độ/kinh độ và địa chỉ phát hàng cụ thể.
                   </p>
                 </div>
 
@@ -499,13 +499,13 @@ export function CoordinatorReliefDistributionSetupSteps({
 
                   {isLoadingPreviewMap && (
                     <div className="absolute inset-0 flex items-center justify-center bg-background/70 text-sm text-muted-foreground">
-                      Đang tải preview map...
+                      Đang tải bản đồ xem trước...
                     </div>
                   )}
 
                   {previewMapError && (
                     <div className="absolute inset-0 flex items-center justify-center bg-background/80 px-4 text-center text-sm text-destructive">
-                      Không thể tải preview map Goong.
+                      Không thể tải bản đồ xem trước Goong.
                     </div>
                   )}
                 </div>
@@ -583,11 +583,10 @@ export function CoordinatorReliefDistributionSetupSteps({
             )}
           </div>
           <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 text-sm">
-            <p className="font-medium text-primary">
-              Gói hỗ trợ được tạo từ vật phẩm hiện có trong kho
-            </p>
+            <p className="font-medium text-primary">Gói hỗ trợ được tạo từ tồn kho chiến dịch</p>
             <p className="mt-1 text-muted-foreground">
-              Chọn vật phẩm, số lượng và đơn vị để cấu thành gói hỗ trợ.
+              Chọn vật phẩm, số lượng và đơn vị để cấu thành gói hỗ trợ. Hệ thống sẽ tự xác định vật
+              phẩm đầu ra theo xử lý của hệ thống.
             </p>
           </div>
 

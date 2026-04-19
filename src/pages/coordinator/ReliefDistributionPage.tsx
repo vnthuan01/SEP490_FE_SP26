@@ -12,11 +12,16 @@ import { formatNumberInputVN, formatNumberVN } from '@/lib/utils';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { coordinatorNavGroups } from './components/sidebarConfig';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
-import { useCampaigns, useCampaignTeams } from '@/hooks/useCampaigns';
+import {
+  CAMPAIGN_QUERY_KEYS,
+  useCampaignInventoryBalance,
+  useCampaigns,
+  useCampaignTeams,
+} from '@/hooks/useCampaigns';
 import { useProvinces } from '@/hooks/useLocations';
-import { useInventories, useInventoryStocks } from '@/hooks/useInventory';
 import {
   RELIEF_DISTRIBUTION_KEYS,
+  useAssembleReliefPackage,
   useCreateDistributionPoint,
   useCreateReliefPackage,
   useDeleteDistributionPoint,
@@ -25,6 +30,7 @@ import {
   usePatchDistributionPoint,
   usePatchReliefHousehold,
   usePatchReliefPackage,
+  usePackageAssemblyAvailability,
   useReliefChecklist,
   useDistributionPoints,
   useReliefHouseholds,
@@ -223,12 +229,9 @@ export default function ReliefDistributionPage() {
   const reliefCampaigns = useMemo(
     () =>
       campaigns.filter((campaign) =>
-        [
-          CampaignStatus.Draft,
-          CampaignStatus.Active,
-          CampaignStatus.ReadyToExecute,
-          CampaignStatus.InProgress,
-        ].some((status) => status === Number(campaign.status)),
+        [CampaignStatus.Draft, CampaignStatus.Active, CampaignStatus.Suspended].some(
+          (status) => status === Number(campaign.status),
+        ),
       ),
     [campaigns],
   );
@@ -252,21 +255,12 @@ export default function ReliefDistributionPage() {
   const { checklist } = useReliefChecklist(effectiveSelectedCampaignId);
   const { distributionPoints } = useDistributionPoints(effectiveSelectedCampaignId);
   const { packages } = useReliefPackages(effectiveSelectedCampaignId);
+  const {
+    inventoryBalance,
+    inventoryBalanceError,
+    isLoading: isLoadingInventoryBalance,
+  } = useCampaignInventoryBalance(effectiveSelectedCampaignId);
   const { data: provinces = [] } = useProvinces();
-  const { data: inventoriesData } = useInventories(
-    {
-      reliefStationId: station?.reliefStationId,
-      pageIndex: 1,
-      pageSize: 20,
-    },
-    { enabled: hasAssignedStation },
-  );
-  const selectedInventoryId = inventoriesData?.items?.[0]?.inventoryId || '';
-  const { data: inventoryStocksData } = useInventoryStocks(selectedInventoryId, {
-    pageIndex: 1,
-    pageSize: 200,
-  });
-
   const createPointMutation = useCreateDistributionPoint();
   const createPackageMutation = useCreateReliefPackage();
   const patchPointMutation = usePatchDistributionPoint();
@@ -275,18 +269,41 @@ export default function ReliefDistributionPage() {
   const deletePackageMutation = useDeleteReliefPackage();
   const patchHouseholdMutation = usePatchReliefHousehold();
   const deleteHouseholdMutation = useDeleteReliefHousehold();
+  const assemblePackageMutation = useAssembleReliefPackage();
+  const {
+    data: packageAssemblyAvailability,
+    isLoading: isLoadingAssemblyAvailability,
+    error: packageAssemblyAvailabilityError,
+  } = usePackageAssemblyAvailability(
+    effectiveSelectedCampaignId,
+    assignForm.reliefPackageDefinitionId,
+    station?.reliefStationId && inventoryBalance?.campaignInventoryId
+      ? {
+          reliefStationId: station.reliefStationId,
+          campaignInventoryId: inventoryBalance.campaignInventoryId,
+        }
+      : undefined,
+  );
 
   const supplyItems = useMemo(
     () =>
-      (inventoryStocksData?.items ?? []).map((stock) => ({
-        id: stock.supplyItemId,
-        name: stock.supplyItemName,
-        unit: stock.supplyItemUnit,
-        categoryName: stock.supplyItemCategoryName,
-        category: stock.supplyItemCategoryName,
-        availableQuantity: stock.currentQuantity,
+      (inventoryBalance?.items ?? []).map((item) => ({
+        id: item.supplyItemId,
+        name: item.supplyItemName,
+        unit: item.supplyItemUnit,
+        categoryName: '',
+        category: '',
+        availableQuantity: item.quantity,
       })),
-    [inventoryStocksData?.items],
+    [inventoryBalance?.items],
+  );
+
+  const selectedPackageForAvailability = useMemo(
+    () =>
+      packages.find(
+        (pkg) => pkg.reliefPackageDefinitionId === assignForm.reliefPackageDefinitionId,
+      ) || null,
+    [packages, assignForm.reliefPackageDefinitionId],
   );
 
   const headerStationName = station?.name || '';
@@ -419,7 +436,7 @@ export default function ReliefDistributionPage() {
       clientErrors.address = 'Vui lòng chọn địa chỉ điểm phát.';
     if (!distributionPointForm.locationId.trim())
       clientErrors.locationId =
-        'Chưa map được locationId. Hãy chọn lại địa chỉ hoặc dùng vị trí trạm hiện tại.';
+        'Chưa xác định được mã khu vực. Hãy chọn lại địa chỉ hoặc dùng vị trí trạm hiện tại.';
     if (!distributionPointForm.startsAt) clientErrors.startsAt = 'Vui lòng chọn thời gian bắt đầu.';
     if (distributionPointForm.latitude < -90 || distributionPointForm.latitude > 90) {
       clientErrors.latitude = 'Vĩ độ phải nằm trong khoảng từ -90 đến 90.';
@@ -515,7 +532,6 @@ export default function ReliefDistributionPage() {
         campaignId: effectiveSelectedCampaignId,
         data: {
           ...packageForm,
-          outputSupplyItemId: packageForm.items[0]?.supplyItemId || '',
         },
       });
       setPackageForm(createDefaultPackageForm());
@@ -588,7 +604,7 @@ export default function ReliefDistributionPage() {
       clientErrors.address = 'Vui lòng chọn địa chỉ điểm phát.';
     if (!distributionPointForm.locationId.trim())
       clientErrors.locationId =
-        'Chưa map được locationId. Hãy chọn lại địa chỉ hoặc dùng vị trí trạm hiện tại.';
+        'Chưa xác định được mã khu vực. Hãy chọn lại địa chỉ hoặc dùng vị trí trạm hiện tại.';
     if (!distributionPointForm.startsAt) clientErrors.startsAt = 'Vui lòng chọn thời gian bắt đầu.';
     if (distributionPointForm.latitude < -90 || distributionPointForm.latitude > 90) {
       clientErrors.latitude = 'Vĩ độ phải nằm trong khoảng từ -90 đến 90.';
@@ -697,8 +713,6 @@ export default function ReliefDistributionPage() {
         reliefPackageDefinitionId: editingPackage.reliefPackageDefinitionId,
         data: {
           ...packageForm,
-          outputSupplyItemId:
-            packageForm.items[0]?.supplyItemId || editingPackage.outputSupplyItemId,
         },
       });
       handleCancelEditPackage();
@@ -709,6 +723,56 @@ export default function ReliefDistributionPage() {
         description: pickFieldError(parsed.fieldErrors, 'Description', 'description'),
         items: pickFieldError(parsed.fieldErrors, 'Items', 'items'),
       });
+    }
+  };
+
+  const handleAssembleSelectedPackage = async () => {
+    if (
+      !effectiveSelectedCampaignId ||
+      !assignForm.reliefPackageDefinitionId ||
+      !station?.reliefStationId ||
+      !inventoryBalance?.campaignInventoryId
+    ) {
+      toast.error('Chưa đủ thông tin tồn kho chiến dịch để đóng gói hỗ trợ.');
+      return;
+    }
+
+    if (!packageAssemblyAvailability || packageAssemblyAvailability.maxAssemblableQuantity <= 0) {
+      toast.error('Gói đang chọn chưa đủ thành phần trong tồn kho chiến dịch để đóng gói.');
+      return;
+    }
+
+    try {
+      await assemblePackageMutation.mutateAsync({
+        campaignId: effectiveSelectedCampaignId,
+        reliefPackageDefinitionId: assignForm.reliefPackageDefinitionId,
+        data: {
+          reliefStationId: station.reliefStationId,
+          campaignInventoryId: inventoryBalance.campaignInventoryId,
+          quantityToAssemble: 1,
+          notes: 'Assemble nhanh từ trang phân phối cứu trợ',
+        },
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: CAMPAIGN_QUERY_KEYS.inventoryBalance(effectiveSelectedCampaignId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: RELIEF_DISTRIBUTION_KEYS.assemblyAvailability(
+            effectiveSelectedCampaignId,
+            assignForm.reliefPackageDefinitionId,
+            {
+              reliefStationId: station.reliefStationId,
+              campaignInventoryId: inventoryBalance.campaignInventoryId,
+            },
+          ),
+        }),
+      ]);
+      toast.success('Đã đóng nhanh 1 gói hỗ trợ');
+    } catch (error) {
+      const parsed = parseApiError(error, 'Không thể đóng gói hỗ trợ');
+      toast.error(parsed.message);
     }
   };
 
@@ -862,9 +926,9 @@ export default function ReliefDistributionPage() {
   const handleAssignSelectedHouseholds = async () => {
     const nextErrors: Record<string, string> = {};
     if (!effectiveSelectedCampaignId) nextErrors.form = 'Vui lòng chọn chiến dịch cứu trợ.';
-    if (teams.length === 0) nextErrors.campaignTeamId = 'Chiến dịch chưa có team để phân công.';
+    if (teams.length === 0) nextErrors.campaignTeamId = 'Chiến dịch chưa có đội để phân công.';
     if (!effectiveAssignForm.campaignTeamId)
-      nextErrors.campaignTeamId = 'Vui lòng chọn team phụ trách.';
+      nextErrors.campaignTeamId = 'Vui lòng chọn đội phụ trách.';
     if (!effectiveAssignForm.reliefPackageDefinitionId)
       nextErrors.reliefPackageDefinitionId = 'Vui lòng chọn gói cứu trợ.';
     if (!effectiveAssignForm.scheduledAt)
@@ -1146,12 +1210,295 @@ export default function ReliefDistributionPage() {
               iconClass="bg-amber-500/10 text-amber-600 dark:text-amber-300"
             />
             <StatCard
+              label="Mặt hàng trong chiến dịch"
+              value={inventoryBalance?.distinctSupplyItemCount ?? 0}
+              note={
+                inventoryBalance?.campaignInventoryId
+                  ? 'Số loại hàng hiện có trong tồn kho chiến dịch'
+                  : 'Chiến dịch chưa có tồn kho hoặc chưa được cấp phát hàng'
+              }
+              icon="inventory"
+              iconClass="bg-violet-500/10 text-violet-600 dark:text-violet-300"
+            />
+            <StatCard
               label="Gói hỗ trợ đã tạo"
               value={packages.length}
               note="Dùng để gán cho hộ dân khi phân phối"
               icon="inventory_2"
               iconClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
             />
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+            <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">Tồn kho chiến dịch</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Đây là nguồn dữ liệu chính để đóng gói hỗ trợ và theo dõi lượng hàng thực tế của
+                    chiến dịch.
+                  </p>
+                </div>
+                <Badge
+                  variant={inventoryBalance?.campaignInventoryId ? 'success' : 'warning'}
+                  appearance="light"
+                >
+                  {inventoryBalance?.campaignInventoryId
+                    ? 'Sẵn sàng để đóng gói'
+                    : 'Chưa có tồn kho'}
+                </Badge>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Ngân sách tổng
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-foreground">
+                    {formatNumberVN(inventoryBalance?.budgetTotal ?? 0)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Đã chi</p>
+                  <p className="mt-2 text-lg font-semibold text-foreground">
+                    {formatNumberVN(inventoryBalance?.budgetSpent ?? 0)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Tổng số lượng
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-foreground">
+                    {formatNumberVN(inventoryBalance?.totalQuantity ?? 0)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-dashed border-border bg-muted/10 p-4 text-sm">
+                <p className="text-xs text-muted-foreground">Mã tồn kho chiến dịch</p>
+                <p className="mt-1 text-muted-foreground break-all">
+                  {inventoryBalance?.campaignInventoryId || 'Chưa phát sinh'}
+                </p>
+              </div>
+
+              {inventoryBalanceError ? (
+                <p className="mt-4 text-sm text-destructive">{inventoryBalanceError.message}</p>
+              ) : isLoadingInventoryBalance ? (
+                <p className="mt-4 text-sm text-muted-foreground">Đang tải tồn kho chiến dịch...</p>
+              ) : !inventoryBalance?.items?.length ? (
+                <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  <p className="font-medium">Tồn kho chiến dịch đang trống</p>
+                  <p className="mt-1">
+                    Cần duyệt cấp phát trước khi có thể đóng gói hỗ trợ từ tồn kho chiến dịch.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {inventoryBalance.items.slice(0, 6).map((item) => (
+                    <div
+                      key={item.supplyItemId}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3"
+                    >
+                      <div>
+                        <p className="font-medium text-foreground">{item.supplyItemName}</p>
+                        <p className="text-xs text-muted-foreground break-all">
+                          {item.supplyItemId}
+                        </p>
+                      </div>
+                      <Badge variant="outline" appearance="light">
+                        {formatNumberVN(item.quantity)} {item.supplyItemUnit}
+                      </Badge>
+                    </div>
+                  ))}
+                  {inventoryBalance.items.length > 6 && (
+                    <p className="text-xs text-muted-foreground">
+                      +{formatNumberVN(inventoryBalance.items.length - 6)} mặt hàng khác trong tồn
+                      kho chiến dịch.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">
+                    Khả năng đóng gói hỗ trợ
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Chọn gói ở bước gán hộ để biết hiện tại có thể đóng được bao nhiêu gói hỗ trợ.
+                  </p>
+                </div>
+                <Badge
+                  variant={
+                    packageAssemblyAvailability?.maxAssemblableQuantity
+                      ? 'success'
+                      : selectedPackageForAvailability
+                        ? 'warning'
+                        : 'info'
+                  }
+                  appearance="light"
+                >
+                  {selectedPackageForAvailability?.name || 'Chưa chọn gói'}
+                </Badge>
+              </div>
+
+              {!assignForm.reliefPackageDefinitionId ? (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Chọn gói ở bước gán hộ để tải dữ liệu khả năng đóng gói từ hệ thống.
+                </p>
+              ) : isLoadingAssemblyAvailability ? (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Đang kiểm tra khả năng đóng gói...
+                </p>
+              ) : packageAssemblyAvailabilityError ? (
+                <p className="mt-4 text-sm text-destructive">
+                  {
+                    parseApiError(
+                      packageAssemblyAvailabilityError,
+                      'Không tải được dữ liệu khả năng đóng gói',
+                    ).message
+                  }
+                </p>
+              ) : packageAssemblyAvailability ? (
+                <div className="mt-4 space-y-4">
+                  <div
+                    className={`rounded-2xl border px-4 py-4 ${
+                      packageAssemblyAvailability.maxAssemblableQuantity > 0
+                        ? 'border-emerald-300 bg-emerald-50'
+                        : 'border-amber-300 bg-amber-50'
+                    }`}
+                  >
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Kết quả đóng gói hiện tại
+                    </p>
+                    <div className="mt-2 flex items-end justify-between gap-3">
+                      <div>
+                        <p className="text-3xl font-black text-foreground">
+                          {formatNumberVN(packageAssemblyAvailability.maxAssemblableQuantity)}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {packageAssemblyAvailability.outputUnit} có thể đóng ngay
+                        </p>
+                      </div>
+                      <Badge
+                        variant={
+                          packageAssemblyAvailability.maxAssemblableQuantity > 0
+                            ? 'success'
+                            : 'warning'
+                        }
+                        appearance="light"
+                      >
+                        {packageAssemblyAvailability.maxAssemblableQuantity > 0
+                          ? 'Có thể đóng gói'
+                          : 'Đang thiếu hàng'}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-border bg-muted/20 p-4">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Vật phẩm đầu ra
+                      </p>
+                      <p className="mt-2 font-semibold text-foreground">
+                        {packageAssemblyAvailability.outputSupplyItemName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {packageAssemblyAvailability.outputUnit} · Mã tồn kho chiến dịch:{' '}
+                        {packageAssemblyAvailability.campaignInventoryId || '—'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Số gói tối đa
+                      </p>
+                      <p className="mt-2 font-semibold text-foreground">
+                        {formatNumberVN(packageAssemblyAvailability.maxAssemblableQuantity)}{' '}
+                        {packageAssemblyAvailability.outputUnit}
+                      </p>
+                    </div>
+                  </div>
+
+                  {packageAssemblyAvailability.maxAssemblableQuantity <= 0 && (
+                    <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      <p className="font-medium">Chưa thể đóng gói này</p>
+                      <p className="mt-1">
+                        Hệ thống đang thiếu một hoặc nhiều thành phần trong tồn kho chiến dịch. Xem
+                        các dòng bên dưới để biết vật phẩm đang giới hạn số lượng gói.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    {packageAssemblyAvailability.components.map((component) => (
+                      <div
+                        key={component.supplyItemId}
+                        className={`rounded-xl border px-4 py-3 ${
+                          component.maxAssemblableByItem <=
+                          packageAssemblyAvailability.maxAssemblableQuantity
+                            ? 'border-amber-300 bg-amber-50'
+                            : 'border-border bg-muted/20'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-medium text-foreground">
+                                {component.supplyItemName}
+                              </p>
+                              {component.maxAssemblableByItem <=
+                                packageAssemblyAvailability.maxAssemblableQuantity && (
+                                <Badge variant="warning" appearance="light">
+                                  Vật phẩm giới hạn
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Cần {formatNumberVN(component.requiredPerPackage)} {component.unit} /
+                              gói
+                            </p>
+                          </div>
+                          <div className="text-right text-xs text-muted-foreground">
+                            <p>
+                              Tồn hiện có: {formatNumberVN(component.availableQuantity)}{' '}
+                              {component.unit}
+                            </p>
+                            <p>
+                              Tối đa theo vật phẩm: {formatNumberVN(component.maxAssemblableByItem)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button
+                    type="button"
+                    className="gap-2"
+                    disabled={
+                      assemblePackageMutation.isPending ||
+                      packageAssemblyAvailability.maxAssemblableQuantity <= 0
+                    }
+                    onClick={handleAssembleSelectedPackage}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">inventory_2</span>
+                    {packageAssemblyAvailability.maxAssemblableQuantity > 0
+                      ? 'Đóng ngay 1 gói'
+                      : 'Chưa thể đóng gói'}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Thao tác này sẽ tiêu hao ngay hàng trong tồn kho chiến dịch và cộng vật phẩm đầu
+                    ra vào tồn kho chiến dịch.
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Chưa có dữ liệu khả năng đóng gói.
+                </p>
+              )}
+            </div>
           </div>
 
           <CoordinatorReliefDistributionSetupSteps
@@ -1279,10 +1626,10 @@ export default function ReliefDistributionPage() {
             <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
               <div className="mb-4">
                 <ReliefStickySectionHeader
-                  title="Theo dõi hoạt động team"
-                  description="Tổng hợp nhanh số hộ đã được giao và đã hoàn tất theo từng team."
+                  title="Theo dõi hoạt động đội"
+                  description="Tổng hợp nhanh số hộ đã được giao và đã hoàn tất theo từng đội."
                   badgeIcon="groups"
-                  badgeLabel={`${formatNumberInputVN(filteredTeamActivitySummary.length)} team`}
+                  badgeLabel={`${formatNumberInputVN(filteredTeamActivitySummary.length)} đội`}
                 />
               </div>
               <div className="max-h-[292px] space-y-3 overflow-y-auto pr-1">
@@ -1318,8 +1665,8 @@ export default function ReliefDistributionPage() {
                     </span>
                     <p className="mt-3 font-medium text-foreground">
                       {teamActivitySummary.length === 0
-                        ? 'Chưa có hoạt động team để hiển thị.'
-                        : 'Không tìm thấy team phù hợp với bộ lọc hiện tại.'}
+                        ? 'Chưa có hoạt động đội để hiển thị.'
+                        : 'Không tìm thấy đội phù hợp với bộ lọc hiện tại.'}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {teamActivitySummary.length === 0
@@ -1529,6 +1876,10 @@ export default function ReliefDistributionPage() {
                             </span>
                             {formatNumberVN(pkg.items.length)} vật phẩm
                           </Badge>
+                          <Badge variant="outline" appearance="light">
+                            Đầu ra: {pkg.outputSupplyItemName || 'Chưa rõ'}
+                            {pkg.outputUnit ? ` · ${pkg.outputUnit}` : ''}
+                          </Badge>
                           {pkg.isDefault && (
                             <Badge variant="success" appearance="light">
                               Mặc định
@@ -1630,7 +1981,7 @@ export default function ReliefDistributionPage() {
               households.map((household) => [
                 household.campaignHouseholdId,
                 household.campaignTeamId
-                  ? teamNameById[household.campaignTeamId] || 'Đã gán team'
+                  ? teamNameById[household.campaignTeamId] || 'Đã gán đội'
                   : '',
               ]),
             )}
@@ -1695,7 +2046,7 @@ export default function ReliefDistributionPage() {
                           {item.householdCode} · {item.headOfHouseholdName}
                         </p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          {teamNameById[item.campaignTeamId || ''] || 'Chưa rõ team'} · Hẹn phát{' '}
+                          {teamNameById[item.campaignTeamId || ''] || 'Chưa rõ đội'} · Hẹn phát{' '}
                           {formatDateTimeVN(item.scheduledAt)}
                         </p>
                       </div>

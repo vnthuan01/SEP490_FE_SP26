@@ -136,7 +136,7 @@ export interface ReliefPackageDefinitionItemRequest {
 export interface CreateReliefPackageDefinitionRequest {
   name: string;
   description?: string | null;
-  outputSupplyItemId: string;
+  outputSupplyItemId?: string;
   isDefault: boolean;
   isActive: boolean;
   items: ReliefPackageDefinitionItemRequest[];
@@ -175,8 +175,9 @@ export interface ReliefPackageAssemblyAvailabilityItemResponse {
 
 export interface ReliefPackageAssemblyAvailabilityResponse {
   campaignId: string;
+  campaignInventoryId?: string | null;
   reliefStationId: string;
-  inventoryId: string;
+  inventoryId?: string;
   reliefPackageDefinitionId: string;
   outputSupplyItemId: string;
   outputSupplyItemName: string;
@@ -187,7 +188,7 @@ export interface ReliefPackageAssemblyAvailabilityResponse {
 
 export interface AssembleReliefPackageRequest {
   reliefStationId: string;
-  inventoryId: string;
+  campaignInventoryId: string;
   quantityToAssemble: number;
   notes?: string | null;
 }
@@ -203,7 +204,8 @@ export interface ReliefPackageAssemblyResponse {
   reliefPackageAssemblyId: string;
   campaignId: string;
   reliefStationId: string;
-  inventoryId: string;
+  campaignInventoryId?: string | null;
+  inventoryId?: string;
   reliefPackageDefinitionId: string;
   outputSupplyItemId: string;
   outputSupplyItemName: string;
@@ -378,7 +380,7 @@ export interface GetShortageRequestsParams {
 
 export interface GetPackageAssemblyAvailabilityParams {
   reliefStationId: string;
-  inventoryId: string;
+  campaignInventoryId: string;
 }
 
 const baseCampaignPath = (campaignId: string) => `/relief/campaigns/${campaignId}`;

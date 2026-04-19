@@ -18,6 +18,10 @@ export interface SupplyTransferItem {
   actualQuantity?: number | null;
   supplyItemName?: string;
   notes?: string;
+  unitCost?: number;
+  expiryDate?: string | null;
+  sourceReference?: string;
+  totalAmount?: number;
 }
 
 export interface CreateSupplyTransferPayload {
@@ -83,6 +87,10 @@ type RawSupplyTransferItem = {
   actualQuantity?: number | null;
   quantity?: number;
   notes?: string;
+  unitCost?: number;
+  expiryDate?: string | null;
+  sourceReference?: string;
+  totalAmount?: number;
 };
 
 type RawSupplyTransfer = {
@@ -148,6 +156,9 @@ export type ReceiveSupplyTransferPayload = {
     supplyItemId: string;
     actualQuantity: number;
     notes?: string;
+    unitCost?: number;
+    expiryDate?: string | null;
+    sourceReference?: string;
   }>;
   notes?: string;
   evidenceUrls?: string[];
@@ -217,6 +228,10 @@ function mapSupplyTransfer(raw: RawSupplyTransfer): SupplyTransfer {
       actualQuantity: item.actualQuantity,
       quantity: item.requestedQuantity ?? item.quantity ?? 0,
       notes: item.notes,
+      unitCost: item.unitCost != null ? Number(item.unitCost) : undefined,
+      expiryDate: item.expiryDate ?? null,
+      sourceReference: item.sourceReference,
+      totalAmount: item.totalAmount != null ? Number(item.totalAmount) : undefined,
     })),
     approvedBy: raw.approvedBy ?? null,
     approvedByName: raw.approvedByName ?? null,

@@ -142,7 +142,7 @@ export function CoordinatorReliefDistributionAssignmentStep({
             <div>
               <p className="font-medium">Chiến dịch chưa có đội phụ trách</p>
               <p className="text-sm text-muted-foreground">
-                Bước gán hộ đang tạm khóa. Hãy sang Team Management để tạo đội hoặc gắn đội vào
+                Bước gán hộ đang tạm khóa. Hãy sang trang Quản lý đội để tạo đội hoặc gắn đội vào
                 chiến dịch, sau đó quay lại để phân công hộ dân.
               </p>
             </div>
@@ -186,8 +186,8 @@ export function CoordinatorReliefDistributionAssignmentStep({
           <div>
             <p className="font-medium text-foreground">Thiết lập gán hộ</p>
             <p className="text-sm text-muted-foreground">
-              Gom toàn bộ chọn đội, gói hỗ trợ, lịch phát và ghi chú vào một sheet để giao diện gọn
-              hơn.
+              Gom toàn bộ chọn đội, gói hỗ trợ, lịch phát và ghi chú vào một bảng thiết lập để giao
+              diện gọn hơn.
             </p>
           </div>
           <Sheet open={openActionSheet} onOpenChange={setOpenActionSheet}>
@@ -218,7 +218,7 @@ export function CoordinatorReliefDistributionAssignmentStep({
                     }
                   >
                     <SelectTrigger disabled={!hasTeams}>
-                      <SelectValue placeholder="Chọn team phụ trách" />
+                      <SelectValue placeholder="Chọn đội phụ trách" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Không chọn</SelectItem>
@@ -393,8 +393,8 @@ export function CoordinatorReliefDistributionAssignmentStep({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tất cả</SelectItem>
-                <SelectItem value="assigned">Đã gán team</SelectItem>
-                <SelectItem value="unassigned">Chưa gán team</SelectItem>
+                <SelectItem value="assigned">Đã gán đội</SelectItem>
+                <SelectItem value="unassigned">Chưa gán đội</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -422,7 +422,7 @@ export function CoordinatorReliefDistributionAssignmentStep({
                 <TableHead>Chủ hộ</TableHead>
                 <TableHead>Hình thức nhận</TableHead>
                 <TableHead>Trạng thái</TableHead>
-                <TableHead>Team hiện tại</TableHead>
+                <TableHead>Đội hiện tại</TableHead>
                 <TableHead className="text-right">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
@@ -473,7 +473,7 @@ export function CoordinatorReliefDistributionAssignmentStep({
                         appearance="light"
                       >
                         {assignedTeamNameByHouseholdId[household.campaignHouseholdId] ||
-                          'Chưa gán team'}
+                          'Chưa gán đội'}
                       </Badge>
                     </TableCell>
                     <TableCell>

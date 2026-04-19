@@ -169,7 +169,7 @@ export function usePackageAssemblyAvailability(
     enabled:
       !!campaignId &&
       !!reliefPackageDefinitionId &&
-      !!params?.inventoryId &&
+      !!params?.campaignInventoryId &&
       !!params?.reliefStationId,
   });
 }
