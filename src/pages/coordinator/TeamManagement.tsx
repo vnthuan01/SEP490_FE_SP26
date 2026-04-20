@@ -572,7 +572,7 @@ export default function CoordinatorTeamManagementPage() {
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => {
-              navigate('/portal/coordinator/team-allocation');
+              navigate('/portal/coordinator/volunteer-allocation');
             }}
             variant="outline"
             className="gap-2 text-base px-6 h-12"

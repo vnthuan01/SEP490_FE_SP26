@@ -19,12 +19,18 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 // ── API hooks ──
 import { useRescueRequests } from '@/hooks/useRescueRequests';
-import { useTeamLatestTracking, useTeamsInStation, useTeamsActiveBatches } from '@/hooks/useTeams';
+import {
+  useTeamLatestTracking,
+  useTeamsInStation,
+  useTeamsActiveBatches,
+  TEAM_QUERY_KEYS,
+} from '@/hooks/useTeams';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { rescueRequestService } from '@/services/rescueRequestService';
 import type { RescueRequestItem } from '@/services/rescueRequestService';
 import { parseApiError } from '@/lib/apiErrors';
 import { vehicleService, type Vehicle } from '@/services/vehicleService';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   RescueRequestType,
   rescueStatusToLocationStatus,
@@ -132,6 +138,7 @@ function toTeam(apiTeam: any): Team {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function CoordinatorTeamAllocationPage() {
+  const queryClient = useQueryClient();
   // ── API data ──
   const { station } = useMyReliefStation();
   const hasAssignedStation = !!station?.reliefStationId;
@@ -278,38 +285,26 @@ export default function CoordinatorTeamAllocationPage() {
 
   const availableTeams = useMemo(() => teamOptions.filter((t) => !t.disabledReason), [teamOptions]);
 
-  useEffect(() => {
-    let mounted = true;
+  const loadAvailableVehicles = useCallback(async () => {
+    if (!hasAssignedStation) {
+      setAvailableVehicles([]);
+      return;
+    }
 
-    const loadAvailableVehicles = async () => {
-      if (!hasAssignedStation) {
-        if (mounted) setAvailableVehicles([]);
-        return;
-      }
-
-      try {
-        setIsLoadingVehicles(true);
-        const items = await vehicleService.getAvailableForDispatch();
-        if (mounted) {
-          setAvailableVehicles(items);
-        }
-      } catch {
-        if (mounted) {
-          setAvailableVehicles([]);
-        }
-      } finally {
-        if (mounted) {
-          setIsLoadingVehicles(false);
-        }
-      }
-    };
-
-    void loadAvailableVehicles();
-
-    return () => {
-      mounted = false;
-    };
+    try {
+      setIsLoadingVehicles(true);
+      const items = await vehicleService.getAvailableForDispatch();
+      setAvailableVehicles(items);
+    } catch {
+      setAvailableVehicles([]);
+    } finally {
+      setIsLoadingVehicles(false);
+    }
   }, [hasAssignedStation]);
+
+  useEffect(() => {
+    void loadAvailableVehicles();
+  }, [loadAvailableVehicles]);
 
   // ── stats ──
   const stats = useMemo(
@@ -336,12 +331,23 @@ export default function CoordinatorTeamAllocationPage() {
           note,
         });
         toast.success(`Đã phân công ${team.name} đến ${location.locationName}`);
-        await refetch();
+
+        // Refresh data to update availability
+        await Promise.all([
+          refetch(),
+          loadAvailableVehicles(),
+          queryClient.invalidateQueries({ queryKey: ['teams', teamId, 'active-batch'] }),
+          queryClient.invalidateQueries({
+            queryKey: station?.reliefStationId
+              ? TEAM_QUERY_KEYS.inStation(station.reliefStationId)
+              : [],
+          }),
+        ]);
       } catch (e: any) {
         toast.error(parseApiError(e, 'Không thể phân công đội cứu trợ.').message);
       }
     },
-    [reliefLocations, teams, refetch],
+    [reliefLocations, teams, refetch, loadAvailableVehicles, queryClient, station?.reliefStationId],
   );
 
   // ── location click ──

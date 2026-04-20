@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -338,11 +339,11 @@ export default function VolunteerAllocationPage() {
                   disabled={!selectedTeamId || selectedVolunteerIds.size === 0 || isSaving}
                   className="flex items-center gap-2 rounded-lg px-6 py-3 font-bold text-white shadow-lg shadow-primary/20"
                 >
-                  <span className="material-symbols-outlined">group_add</span>
+                  <span className="material-symbols-outlined">assignment_ind</span>
                   <span>
                     {isSaving
-                      ? 'Đang thêm...'
-                      : `Thêm ${selectedVolunteerIds.size} TNV${selectedTeam ? ` vào ${selectedTeam.name}` : ''}`}
+                      ? 'Đang điều phối...'
+                      : `Điều phối ${selectedVolunteerIds.size} TNV${selectedTeam ? ` vào ${selectedTeam.name}` : ''}`}
                   </span>
                 </Button>
               </div>
@@ -604,126 +605,145 @@ export default function VolunteerAllocationPage() {
                         TeamStatusLabel[team.status as TeamStatus] ?? 'Không xác định';
 
                       return (
-                        <div
+                        <motion.div
+                          layout
                           key={team.id}
+                          onClick={() => setSelectedTeamId(team.id)}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          whileHover={{ scale: 1.01 }}
+                          whileTap={{ scale: 0.98 }}
                           className={cn(
-                            'relative overflow-hidden rounded-xl border bg-card p-5 shadow-sm transition-all',
+                            'group relative flex flex-col cursor-pointer overflow-hidden rounded-2xl border bg-card p-5 shadow-sm transition-all duration-300 h-full min-h-[340px]',
                             isSelectedTeam
-                              ? 'border-primary shadow-[0_0_0_1px_rgba(59,130,246,0.45)]'
-                              : 'border-border hover:border-primary/40',
+                              ? 'border-primary ring-2 ring-inset ring-primary bg-primary/5 shadow-lg'
+                              : 'border-border hover:border-primary/40 hover:shadow-md',
                           )}
                         >
-                          <div className="mb-4 space-y-3">
-                            <div className="flex flex-wrap items-start justify-between gap-2">
-                              <h4 className="min-w-0 flex-1 pr-2 text-lg font-bold text-foreground break-words">
-                                {team.name}
-                              </h4>
-                              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                                <span
-                                  className={cn(
-                                    'inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium',
-                                    Number(team.teamType ?? 1) === 2
-                                      ? 'border-rose-200 bg-rose-500/10 text-rose-700 dark:border-rose-900/40 dark:text-rose-300'
-                                      : 'border-emerald-200 bg-emerald-500/10 text-emerald-700 dark:border-emerald-900/40 dark:text-emerald-300',
-                                  )}
-                                >
-                                  {team.teamTypeName ||
-                                    (Number(team.teamType ?? 1) === 2 ? 'Cứu hộ' : 'Cứu trợ')}
-                                </span>
-                                <span
-                                  className={cn(
-                                    'inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium',
-                                    statusClass,
-                                  )}
-                                >
-                                  {statusLabel}
+                          {isSelectedTeam && (
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              className="absolute right-3 top-3 z-10"
+                            >
+                              <div className="flex size-7 items-center justify-center rounded-full bg-primary text-white shadow-lg ring-4 ring-background">
+                                <span className="material-symbols-outlined text-[16px] font-bold">
+                                  check
                                 </span>
                               </div>
-                            </div>
-                            <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-                              <span className="material-symbols-outlined text-[16px]">
-                                location_on
-                              </span>
-                              {team.area || station?.locationName || 'Chưa định vị khu vực'}
-                            </p>
-                            {team.leader && (
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                Trưởng nhóm: {team.leader}
-                              </p>
-                            )}
-                            {team.description && (
-                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                                {team.description}
-                              </p>
-                            )}
-                          </div>
+                            </motion.div>
+                          )}
 
-                          <div className="mb-6 space-y-3">
-                            <div className="mb-1 flex justify-between text-sm">
-                              <span className="text-muted-foreground">Nhân sự hiện tại</span>
-                              <span className="font-medium text-foreground">
-                                {team.members} / 20
-                              </span>
-                            </div>
-                            <div className="h-2 w-full rounded-full bg-slate-200 dark:bg-background">
-                              <div
-                                className={cn(
-                                  'h-2 rounded-full',
-                                  team.status === TeamStatus.Active
-                                    ? 'bg-green-500'
-                                    : team.status === TeamStatus.Suspended
-                                      ? 'bg-red-500'
-                                      : team.status === TeamStatus.Archived
-                                        ? 'bg-yellow-500'
-                                        : 'bg-primary',
-                                )}
-                                style={{ width: `${Math.min((team.members / 20) * 100, 100)}%` }}
-                              />
-                            </div>
-                            <div className="mt-2 flex gap-2 text-xs">
-                              {team.members < 20 ? (
-                                <>
-                                  <span className="text-muted-foreground">Đang cần:</span>
-                                  <span className="font-bold text-foreground">
-                                    {20 - team.members} tình nguyện viên
+                          <div className="flex-1 space-y-3">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <h4
+                                  className={cn(
+                                    'text-xl font-bold break-words transition-colors leading-tight',
+                                    isSelectedTeam
+                                      ? 'text-primary'
+                                      : 'text-foreground group-hover:text-primary',
+                                  )}
+                                >
+                                  {team.name}
+                                </h4>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <span
+                                    className={cn(
+                                      'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider',
+                                      Number(team.teamType ?? 1) === 2
+                                        ? 'border-rose-200 bg-rose-500/10 text-rose-700'
+                                        : 'border-emerald-200 bg-emerald-500/10 text-emerald-700',
+                                    )}
+                                  >
+                                    {team.teamTypeName ||
+                                      (Number(team.teamType ?? 1) === 2 ? 'Cứu hộ' : 'Cứu trợ')}
                                   </span>
-                                </>
-                              ) : (
-                                <span className="font-bold text-green-600 dark:text-green-400">
-                                  Đội đã đủ nhân sự
+                                  {statusLabel && (
+                                    <span
+                                      className={cn(
+                                        'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] uppercase font-black tracking-widest',
+                                        statusClass,
+                                      )}
+                                    >
+                                      {statusLabel}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {team.description ? (
+                              <p className="mt-2 line-clamp-3 text-sm text-muted-foreground/80 leading-relaxed italic">
+                                "{team.description}"
+                              </p>
+                            ) : (
+                              <p className="mt-2 text-sm text-muted-foreground/50 italic">
+                                Chưa có mô tả cho nhóm này
+                              </p>
+                            )}
+
+                            <div className="grid grid-cols-1 gap-2 pt-4 border-t border-dashed border-border/60">
+                              <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                                <span className="material-symbols-outlined text-[16px] opacity-70">
+                                  location_on
                                 </span>
+                                <span className="truncate">
+                                  {team.area || station?.locationName || 'Chưa định vị'}
+                                </span>
+                              </p>
+                              {team.leader && (
+                                <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                                  <span className="material-symbols-outlined text-[16px] opacity-70">
+                                    person
+                                  </span>
+                                  <span className="truncate">
+                                    Trưởng nhóm:{' '}
+                                    <span className="text-foreground font-semibold">
+                                      {team.leader}
+                                    </span>
+                                  </span>
+                                </p>
                               )}
                             </div>
                           </div>
 
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            <Button
-                              type="button"
-                              variant={isSelectedTeam ? 'primary' : 'outline'}
-                              className="gap-2"
-                              onClick={() => setSelectedTeamId(team.id)}
-                            >
-                              <span className="material-symbols-outlined text-[18px]">
-                                {isSelectedTeam ? 'check_circle' : 'radio_button_checked'}
+                          <div className="mt-6 space-y-3 rounded-xl bg-slate-50 p-4 dark:bg-slate-900/50">
+                            <div className="flex justify-between text-xs items-center">
+                              <span className="font-bold text-muted-foreground uppercase tracking-tight">
+                                Số lượng nhân sự
                               </span>
-                              {isSelectedTeam ? 'Đã chọn team' : 'Chọn team này'}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="gap-2"
-                              disabled={
-                                selectedVolunteerIds.size === 0 || !isSelectedTeam || isSaving
-                              }
-                              onClick={handleAssignSelected}
-                            >
-                              <span className="material-symbols-outlined text-[18px]">
-                                group_add
+                              <span
+                                className={cn(
+                                  'font-black tabular-nums text-sm',
+                                  team.members >= 20 ? 'text-emerald-600' : 'text-primary',
+                                )}
+                              >
+                                {team.members} / 20
                               </span>
-                              Thêm {selectedVolunteerIds.size} TNV
-                            </Button>
+                            </div>
+                            <div className="relative h-4 w-full rounded-full bg-slate-200 dark:bg-slate-800 shadow-inner overflow-hidden">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${Math.min((team.members / 20) * 100, 100)}%` }}
+                                transition={{ duration: 1, ease: 'easeOut' }}
+                                className={cn(
+                                  'absolute inset-y-0 left-0 rounded-full',
+                                  team.status === TeamStatus.Active
+                                    ? 'bg-emerald-500'
+                                    : team.status === TeamStatus.Suspended
+                                      ? 'bg-rose-500'
+                                      : 'bg-primary',
+                                )}
+                              />
+                            </div>
+                            <p className="text-[10px] font-bold text-center text-muted-foreground uppercase">
+                              {team.members >= 20
+                                ? 'Đã đủ nhân sự'
+                                : `Cần thêm ${20 - team.members} tình nguyện viên`}
+                            </p>
                           </div>
-                        </div>
+                        </motion.div>
                       );
                     })
                   )}
