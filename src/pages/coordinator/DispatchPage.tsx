@@ -185,14 +185,40 @@ function translateSystemReason(reason?: string | null) {
   if (!value) return '--';
 
   const lower = value.toLowerCase();
-  if (lower === 'team has no tracking location for smart assignment.') {
-    return 'Đội cứu hộ chưa có vị trí theo dõi nên chưa thể tính điều phối thông minh.';
-  }
+
+  // Mapping for exact matches or common phrases
   if (lower.includes('team has no tracking location')) {
     return 'Đội cứu hộ chưa có vị trí theo dõi.';
   }
-  if (lower.includes('smart assignment')) {
-    return 'Chưa thể tính toán điều phối thông minh với dữ liệu hiện tại.';
+  if (lower.includes('smart assignment') || lower.includes('smart dispatch')) {
+    return 'Không thể tính toán điều phối thông minh với dữ liệu hiện tại.';
+  }
+  if (lower.includes('already assigned') || lower.includes('already in another batch')) {
+    return 'Yêu cầu đã được gán hoặc đang nằm trong hàng đợi của đội khác.';
+  }
+  if (lower.includes('not verified') || lower.includes('not in verified status')) {
+    return 'Yêu cầu chưa được xác minh.';
+  }
+  if (lower.includes('distance exceeds') || lower.includes('too far')) {
+    return 'Khoảng cách vượt quá ngưỡng cho phép của trạm.';
+  }
+  if (lower.includes('requires backtrack') || lower.includes('requires major backtrack')) {
+    return 'Yêu cầu di chuyển ngược lại quá xa so với lộ trình hiện hữu.';
+  }
+  if (lower.includes('detour') && lower.includes('too high')) {
+    return 'Quãng đường vòng để tiếp cận yêu cầu này quá lớn.';
+  }
+  if (lower.includes('eligible for smart')) {
+    return 'Đủ điều kiện để điều phối thông minh.';
+  }
+  if (lower.includes('out of station coverage')) {
+    return 'Nằm ngoài phạm vi quản lý của trạm cứu trợ.';
+  }
+  if (lower.includes('team is busy') || lower.includes('handling another')) {
+    return 'Đội hiện đang bận xử lý nhiệm vụ khác.';
+  }
+  if (lower.includes('no valid route')) {
+    return 'Không tìm thấy tuyến đường hợp lệ để tiếp cận.';
   }
 
   return value;
@@ -256,7 +282,9 @@ function isVerifiedCandidate(req: DispatchCandidateItem): boolean {
 
 function getBlockReason(req: DispatchCandidateItem): string | null {
   if (req.canDispatch === false) {
-    return req.dispatchBlockReason || 'Yêu cầu này hiện không thể điều phối.';
+    return (
+      translateSystemReason(req.dispatchBlockReason) || 'Yêu cầu này hiện không thể điều phối.'
+    );
   }
 
   const status = normalizeStatus(req.rescueRequestStatus);
