@@ -1140,7 +1140,7 @@ export default function CoordinatorTeamManagementPage() {
                     Quản lý
                   </button>
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 max-h-[230px] overflow-y-auto pr-2 custom-scrollbar">
                   {members && members.length > 0 ? (
                     members.map((member: any) => (
                       <div
@@ -1373,7 +1373,7 @@ export default function CoordinatorTeamManagementPage() {
               </div>
             ) : null}
 
-            <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+            <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3 max-h-[320px] overflow-y-auto custom-scrollbar">
               <p className="text-sm font-semibold text-foreground">Thành viên hiện tại</p>
               {members?.length ? (
                 members.map((member: any) => (
