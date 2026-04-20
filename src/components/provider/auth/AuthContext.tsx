@@ -7,7 +7,7 @@ import {
 } from '@/services/authService';
 import { AuthContext } from './AuthContextType';
 import { getAuthToken, setAuthToken, setRefreshToken, clearAuthToken } from '@/lib/cookies';
-import { decodeJwt } from '@/lib/jwt';
+import { decodeJwt, getUserRoleFromToken } from '@/lib/jwt';
 import type { UserRoleType } from '@/enums/UserRole';
 import { registerTokenUpdateCallback, unregisterTokenUpdateCallback } from '@/lib/tokenBridge';
 import { useQueryClient } from '@tanstack/react-query';
@@ -27,11 +27,12 @@ function parseUserFromToken(token: string | null): User | null {
   if (!token) return null;
   const decoded = decodeJwt(token);
   if (!decoded) return null;
+  const role = getUserRoleFromToken(token);
   return {
     id: decoded.sub,
     email: decoded.email,
     fullName: decoded['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name'],
-    role: decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] as UserRoleType,
+    role: (role as UserRoleType | null) ?? undefined,
   } as User;
 }
 

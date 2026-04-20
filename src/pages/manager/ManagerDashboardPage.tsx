@@ -1264,7 +1264,12 @@ export default function ManagerDashboardPage() {
                         </div>
                       </TableCell>
                       <TableCell>{vehicle.vehicleTypeName || '—'}</TableCell>
-                      <TableCell>{vehicle.teamUsed || '—'}</TableCell>
+                      <TableCell>
+                        {vehicle.currentUsingTeamName ||
+                          vehicle.teamUsed ||
+                          vehicle.teamName ||
+                          '—'}
+                      </TableCell>
                       <TableCell>
                         {vehicle.status === 0 ? (
                           <Badge variant="success" size="xs">

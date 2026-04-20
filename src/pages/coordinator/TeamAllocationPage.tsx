@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -24,6 +24,7 @@ import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { rescueRequestService } from '@/services/rescueRequestService';
 import type { RescueRequestItem } from '@/services/rescueRequestService';
 import { parseApiError } from '@/lib/apiErrors';
+import { vehicleService, type Vehicle } from '@/services/vehicleService';
 import {
   RescueRequestType,
   rescueStatusToLocationStatus,
@@ -145,7 +146,20 @@ export default function CoordinatorTeamAllocationPage() {
     scope: 'my-station',
     enabled: hasAssignedStation,
   });
-  const { teams: apiTeams } = useTeamsInStation(station?.reliefStationId);
+  const { teams: stationTeams } = useTeamsInStation(station?.reliefStationId);
+
+  const apiTeams = useMemo(
+    () =>
+      (stationTeams || []).filter((team: any) => {
+        const type = Number(team.teamType ?? -1);
+        const typeName = String(team.teamTypeName ?? '')
+          .trim()
+          .toLowerCase();
+        return type === 2 || typeName.includes('cứu hộ') || typeName.includes('rescue');
+      }),
+    [stationTeams],
+  );
+
   const firstTeamId = apiTeams?.[0]?.teamId;
   const { trackingPoints } = useTeamLatestTracking(String(firstTeamId || ''), 100);
   const allTeamIds = useMemo(() => (apiTeams || []).map((t: any) => String(t.teamId)), [apiTeams]);
@@ -218,6 +232,8 @@ export default function CoordinatorTeamAllocationPage() {
   const [selectedLocationId, setSelectedLocationId] = useState<string>();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [availableVehicles, setAvailableVehicles] = useState<Vehicle[]>([]);
+  const [isLoadingVehicles, setIsLoadingVehicles] = useState(false);
 
   // ── filtered locations ──
   const filteredLocations = useMemo(() => {
@@ -262,6 +278,39 @@ export default function CoordinatorTeamAllocationPage() {
 
   const availableTeams = useMemo(() => teamOptions.filter((t) => !t.disabledReason), [teamOptions]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const loadAvailableVehicles = async () => {
+      if (!hasAssignedStation) {
+        if (mounted) setAvailableVehicles([]);
+        return;
+      }
+
+      try {
+        setIsLoadingVehicles(true);
+        const items = await vehicleService.getAvailableForDispatch();
+        if (mounted) {
+          setAvailableVehicles(items);
+        }
+      } catch {
+        if (mounted) {
+          setAvailableVehicles([]);
+        }
+      } finally {
+        if (mounted) {
+          setIsLoadingVehicles(false);
+        }
+      }
+    };
+
+    void loadAvailableVehicles();
+
+    return () => {
+      mounted = false;
+    };
+  }, [hasAssignedStation]);
+
   // ── stats ──
   const stats = useMemo(
     () => ({
@@ -275,13 +324,17 @@ export default function CoordinatorTeamAllocationPage() {
 
   // ── assign team → real API call ──
   const handleAssignTeam = useCallback(
-    async (locationId: string, teamId: string) => {
+    async (locationId: string, teamId: string, vehicleId?: string | null, note?: string) => {
       const location = reliefLocations.find((l) => l.id === locationId);
       const team = teams.find((t) => t.id === teamId);
       if (!location || !team) return;
 
       try {
-        await rescueRequestService.assignTeam(locationId, { teamId });
+        await rescueRequestService.assignTeam(locationId, {
+          teamId,
+          vehicleId: vehicleId ?? null,
+          note,
+        });
         toast.success(`Đã phân công ${team.name} đến ${location.locationName}`);
         await refetch();
       } catch (e: any) {
@@ -363,6 +416,8 @@ export default function CoordinatorTeamAllocationPage() {
             onClose={() => setSelectedLocationId(undefined)}
             availableTeams={availableTeams}
             allTeams={teamOptions}
+            availableVehicles={availableVehicles}
+            isLoadingVehicles={isLoadingVehicles}
             onAssignTeam={handleAssignTeam}
           />
 
@@ -527,6 +582,8 @@ export default function CoordinatorTeamAllocationPage() {
         onClose={() => setSelectedLocationId(undefined)}
         availableTeams={availableTeams}
         allTeams={teamOptions}
+        availableVehicles={availableVehicles}
+        isLoadingVehicles={isLoadingVehicles}
         onAssignTeam={handleAssignTeam}
       />
     </DashboardLayout>

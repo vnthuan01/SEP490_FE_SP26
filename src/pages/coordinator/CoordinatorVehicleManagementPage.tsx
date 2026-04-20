@@ -226,7 +226,7 @@ export default function CoordinatorVehicleManagementPage() {
                     <TableRow>
                       <TableHead>Biển số xe</TableHead>
                       <TableHead>Loại phương tiện</TableHead>
-                      <TableHead>Đội phụ trách</TableHead>
+                      <TableHead>Đội đang sử dụng</TableHead>
                       <TableHead>Ngày thêm</TableHead>
                       <TableHead>Trạng thái</TableHead>
                       <TableHead className="text-right">Thao tác</TableHead>
@@ -245,7 +245,9 @@ export default function CoordinatorVehicleManagementPage() {
                           </p>
                         </TableCell>
                         <TableCell>{v.vehicleTypeName || '—'}</TableCell>
-                        <TableCell>{v.teamName || v.teamUsed || '—'}</TableCell>
+                        <TableCell>
+                          {v.currentUsingTeamName || v.teamName || v.teamUsed || '—'}
+                        </TableCell>
                         <TableCell>
                           {v.createdAt ? new Date(v.createdAt).toLocaleDateString() : '—'}
                         </TableCell>
