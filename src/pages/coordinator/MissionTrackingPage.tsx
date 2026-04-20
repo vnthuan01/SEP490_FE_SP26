@@ -831,6 +831,25 @@ export default function MissionTrackingPage() {
                               </span>
                             </div>
                           )}
+                          {(activeOperation.vehicleName ||
+                            activeOperation.vehicleLicensePlate ||
+                            activeDetail.assignedRescueTeam?.vehicleName ||
+                            activeDetail.assignedRescueTeam?.vehicleLicensePlate) && (
+                            <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
+                              <span className="material-symbols-outlined text-emerald-600 text-base">
+                                local_shipping
+                              </span>
+                              <span className="font-medium text-emerald-700">
+                                {(activeOperation.vehicleName ||
+                                  activeDetail.assignedRescueTeam?.vehicleName ||
+                                  'Vehicle') +
+                                  ' - ' +
+                                  (activeOperation.vehicleLicensePlate ||
+                                    activeDetail.assignedRescueTeam?.vehicleLicensePlate ||
+                                    '--')}
+                              </span>
+                            </div>
+                          )}
                           {activeOperation.stationName && (
                             <div className="flex items-center gap-1.5 text-muted-foreground">
                               <span className="material-symbols-outlined text-base">home_pin</span>

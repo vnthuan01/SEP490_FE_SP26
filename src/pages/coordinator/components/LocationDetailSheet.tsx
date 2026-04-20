@@ -2,6 +2,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetBody } from '@/compo
 // import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -12,6 +13,7 @@ import {
 import type { ReliefLocation, Team } from './types';
 import { getUrgencyColor, getStatusColor, formatDistance, formatDuration } from './utils';
 import { useState } from 'react';
+import type { Vehicle } from '@/services/vehicleService';
 
 interface LocationDetailSheetProps {
   location: ReliefLocation | null;
@@ -19,8 +21,15 @@ interface LocationDetailSheetProps {
   onClose: () => void;
   availableTeams: Team[];
   allTeams?: Team[];
+  availableVehicles?: Vehicle[];
+  isLoadingVehicles?: boolean;
   assignedTeam?: Team;
-  onAssignTeam: (_locationId: string, _teamId: string) => void;
+  onAssignTeam: (
+    _locationId: string,
+    _teamId: string,
+    _vehicleId?: string | null,
+    _note?: string,
+  ) => void;
 }
 
 const getPriorityColor = (value: number) => {
@@ -68,17 +77,28 @@ export function LocationDetailSheet({
   onClose,
   availableTeams,
   allTeams,
+  availableVehicles = [],
+  isLoadingVehicles = false,
   assignedTeam,
   onAssignTeam,
 }: LocationDetailSheetProps) {
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('none');
+  const [assignNote, setAssignNote] = useState<string>('');
 
   if (!location) return null;
 
   const handleAssign = () => {
     if (selectedTeamId) {
-      onAssignTeam(location.id, selectedTeamId);
+      onAssignTeam(
+        location.id,
+        selectedTeamId,
+        selectedVehicleId === 'none' ? null : selectedVehicleId,
+        assignNote.trim() || undefined,
+      );
       setSelectedTeamId('');
+      setSelectedVehicleId('none');
+      setAssignNote('');
       onClose();
     }
   };
@@ -426,6 +446,46 @@ export function LocationDetailSheet({
                           ))}
                         </SelectContent>
                       </Select>
+
+                      <Select value={selectedVehicleId} onValueChange={setSelectedVehicleId}>
+                        <SelectTrigger className="w-full bg-background relative h-10">
+                          <SelectValue placeholder="Chọn xe (optional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Không dùng xe</SelectItem>
+                          {availableVehicles.map((vehicle) => (
+                            <SelectItem key={vehicle.vehicleId} value={vehicle.vehicleId}>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-medium truncate">
+                                  {`${vehicle.vehicleTypeName || 'Vehicle'} - ${vehicle.licensePlate}`}
+                                </div>
+                                <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                                  {vehicle.currentUsingTeamName
+                                    ? `Đang dùng bởi: ${vehicle.currentUsingTeamName}`
+                                    : 'Chưa có team sử dụng'}
+                                </p>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {isLoadingVehicles ? (
+                        <p className="text-xs text-muted-foreground">
+                          Đang tải danh sách xe khả dụng...
+                        </p>
+                      ) : availableVehicles.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          Không có xe khả dụng. Bạn vẫn có thể phân công team.
+                        </p>
+                      ) : null}
+
+                      <Textarea
+                        value={assignNote}
+                        onChange={(event) => setAssignNote(event.target.value)}
+                        placeholder="Ghi chú điều phối (optional)"
+                        rows={3}
+                      />
 
                       {availableTeams.length === 0 ? (
                         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">

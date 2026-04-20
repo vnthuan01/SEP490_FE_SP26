@@ -31,6 +31,9 @@ export function DashboardHeader({
     .trim()
     .toLowerCase();
   const canSeeNotifications =
+    normalizedRole === '3' ||
+    normalizedRole.includes('moderator') ||
+    normalizedRole.includes('coordinator') ||
     normalizedRole === UserRole.Coordinator.toLowerCase() ||
     normalizedRole === 'coordinator' ||
     normalizedRole === 'moderator';

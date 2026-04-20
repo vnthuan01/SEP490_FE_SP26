@@ -114,6 +114,10 @@ const resolveNotificationTypeKey = (
 const canUseRealtimeNotifications = (role: string | undefined) => {
   if (!role) return false;
   const normalizedRole = role.trim().toLowerCase();
+  if (normalizedRole === '3') return true;
+  if (normalizedRole.includes('moderator') || normalizedRole.includes('coordinator')) {
+    return true;
+  }
   return (
     normalizedRole === UserRole.Coordinator.toLowerCase() ||
     normalizedRole === 'coordinator' ||

@@ -386,7 +386,21 @@ function QueueRow({
 export default function DispatchPage() {
   const { station } = useMyReliefStation();
   const hasAssignedStation = !!station?.reliefStationId;
-  const { teams, isLoading: isTeamsLoading } = useTeamsInStation(station?.reliefStationId);
+  const { teams: stationTeams, isLoading: isTeamsLoading } = useTeamsInStation(
+    station?.reliefStationId,
+  );
+
+  const teams = useMemo(
+    () =>
+      (stationTeams || []).filter((team) => {
+        const type = Number((team as any).teamType ?? -1);
+        const typeName = String((team as any).teamTypeName ?? '')
+          .trim()
+          .toLowerCase();
+        return type === 2 || typeName.includes('cứu hộ') || typeName.includes('rescue');
+      }),
+    [stationTeams],
+  );
 
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [selectedRequestId, setSelectedRequestId] = useState('');

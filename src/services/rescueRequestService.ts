@@ -81,6 +81,7 @@ export interface RejectRescueRequestPayload {
 
 export interface AssignTeamPayload {
   teamId: string;
+  vehicleId?: string | null;
   note?: string;
 }
 
@@ -214,6 +215,9 @@ export interface AssignedRescueTeamDto {
   rescueOperationId?: string | null;
   teamId?: string | null;
   teamName?: string | null;
+  vehicleId?: string | null;
+  vehicleName?: string | null;
+  vehicleLicensePlate?: string | null;
   operationStatus?: string | null;
   currentLatitude?: number | null;
   currentLongitude?: number | null;
@@ -240,6 +244,9 @@ export interface TeamLocationDto {
 export interface RescueOperationDetail extends RescueOperationItem {
   teamId?: string | null;
   teamName?: string | null;
+  vehicleId?: string | null;
+  vehicleName?: string | null;
+  vehicleLicensePlate?: string | null;
   status?: string | null;
   endedAt?: string | null;
   completionNote?: string | null;

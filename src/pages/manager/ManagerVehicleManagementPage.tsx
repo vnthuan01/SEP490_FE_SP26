@@ -416,7 +416,7 @@ export default function ManagerVehicleManagementPage() {
                       <TableHead>Biển số xe</TableHead>
                       <TableHead>Loại phương tiện</TableHead>
                       <TableHead>Trạm cứu trợ</TableHead>
-                      <TableHead>Đội phụ trách</TableHead>
+                      <TableHead>Đội đang sử dụng</TableHead>
                       <TableHead>Ngày thêm</TableHead>
                       <TableHead>Trạng thái</TableHead>
                       <TableHead className="text-right">Thao tác</TableHead>
@@ -450,9 +450,9 @@ export default function ManagerVehicleManagementPage() {
                         <TableCell>
                           <span
                             className="text-foreground text-sm truncate max-w-[150px] inline-block"
-                            title={v.teamName || v.teamUsed}
+                            title={v.currentUsingTeamName || v.teamName || v.teamUsed}
                           >
-                            {v.teamName || v.teamUsed || '—'}
+                            {v.currentUsingTeamName || v.teamName || v.teamUsed || '—'}
                           </span>
                         </TableCell>
                         <TableCell>

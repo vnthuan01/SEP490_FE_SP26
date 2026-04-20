@@ -12,6 +12,9 @@ export interface Vehicle {
   teamId?: string;
   teamName?: string;
   teamUsed?: string;
+  currentOperationId?: string | null;
+  currentUsingTeamId?: string | null;
+  currentUsingTeamName?: string | null;
   status: number;
   statusName?: string;
   createdAt?: string;
@@ -76,6 +79,9 @@ export const normalizeVehicle = (item: any): Vehicle => ({
   teamId: item?.teamId,
   teamName: item?.teamName || item?.teamUsed || '',
   teamUsed: item?.teamUsed || item?.teamName || '',
+  currentOperationId: item?.currentOperationId ?? null,
+  currentUsingTeamId: item?.currentUsingTeamId ?? null,
+  currentUsingTeamName: item?.currentUsingTeamName ?? null,
   status: Number(item?.status || 0),
   statusName: item?.statusName,
   createdAt: item?.createdAt,
@@ -176,6 +182,13 @@ export const vehicleService = {
 
   // Get my vehicles
   getMyVehicles: () => apiClient.get<Vehicle[]>('/Vehicle/my-vehicles'),
+
+  // Get dispatch-available vehicles for moderator at current station
+  getAvailableForDispatch: async (): Promise<Vehicle[]> => {
+    const response = await apiClient.get('/Vehicle/available-for-dispatch');
+    const payload = response.data?.data ?? response.data;
+    return Array.isArray(payload) ? payload.map(normalizeVehicle) : [];
+  },
 
   // Assign vehicle to station (manager only)
   assignStation: (id: string, stationId: string) =>
