@@ -174,6 +174,24 @@ export interface CampaignInventoryBalance {
   }>;
 }
 
+export interface ExtractCampaignBudgetRequest {
+  targetReliefCampaignId: string;
+  amount: number;
+  note?: string | null;
+}
+
+export interface CampaignBudgetTransferResponse {
+  campaignBudgetTransferId: string;
+  sourceCampaignId: string;
+  targetCampaignId: string;
+  amount: number;
+  transferredByUserId?: string | null;
+  transferredAt: string;
+  note?: string | null;
+  sourceRemainingBudget: number;
+  targetRemainingBudget: number;
+}
+
 export const campaignService = {
   // Create Campaign
   create: (data: CreateCampaignPayload) => apiClient.post<Campaign>('/campaigns', data),
@@ -195,6 +213,10 @@ export const campaignService = {
   // Get campaign inventory balance
   getInventoryBalance: (id: string) =>
     apiClient.get<CampaignInventoryBalance>(`/campaigns/${id}/inventory-balance`),
+
+  // Extract budget to relief campaign
+  extractBudget: (id: string, data: ExtractCampaignBudgetRequest) =>
+    apiClient.post<CampaignBudgetTransferResponse>(`/campaigns/${id}/extract-budget`, data),
 
   // Update campaign status
   updateStatus: (id: string, data: UpdateStatusPayload) =>

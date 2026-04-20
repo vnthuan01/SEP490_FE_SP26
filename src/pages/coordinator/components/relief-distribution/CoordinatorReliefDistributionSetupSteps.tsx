@@ -582,6 +582,25 @@ export function CoordinatorReliefDistributionSetupSteps({
               <p className="text-sm text-destructive">{packageErrors.description}</p>
             )}
           </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Hỗ trợ tiền mặt / hộ</p>
+            <Input
+              placeholder="Ví dụ: 200000"
+              value={packageForm.cashSupportAmount}
+              onChange={(e) =>
+                onChangePackageForm((prev) => ({
+                  ...prev,
+                  cashSupportAmount: formatNumberInputVN(e.target.value),
+                }))
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              Nhập 0 nếu gói không có hỗ trợ tiền mặt.
+            </p>
+            {packageErrors.cashSupportAmount && (
+              <p className="text-sm text-destructive">{packageErrors.cashSupportAmount}</p>
+            )}
+          </div>
           <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 text-sm">
             <p className="font-medium text-primary">Gói hỗ trợ được tạo từ tồn kho chiến dịch</p>
             <p className="mt-1 text-muted-foreground">

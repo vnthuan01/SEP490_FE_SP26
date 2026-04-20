@@ -75,6 +75,7 @@ export interface HouseholdDeliveryResponse {
   status: number;
   scheduledAt: string;
   deliveredAt?: string | null;
+  cashSupportAmount?: number | null;
   notes?: string | null;
   createdAt: string;
   proofs: HouseholdDeliveryProofResponse[];
@@ -137,6 +138,7 @@ export interface CreateReliefPackageDefinitionRequest {
   name: string;
   description?: string | null;
   outputSupplyItemId?: string;
+  cashSupportAmount?: number | null;
   isDefault: boolean;
   isActive: boolean;
   items: ReliefPackageDefinitionItemRequest[];
@@ -158,6 +160,7 @@ export interface ReliefPackageDefinitionResponse {
   outputUnit: string;
   name: string;
   description?: string | null;
+  cashSupportAmount?: number | null;
   isDefault: boolean;
   isActive: boolean;
   createdAt: string;
@@ -220,6 +223,7 @@ export interface ReliefPackageAssemblyResponse {
 export interface CompleteHouseholdDeliveryRequest {
   reliefPackageDefinitionId?: string | null;
   campaignTeamId?: string | null;
+  cashSupportAmount?: number | null;
   notes?: string | null;
   proofNote?: string | null;
   proofFileUrl: string;
@@ -328,6 +332,7 @@ export interface GetDeliveriesParams {
 
 export interface CompleteDeliveriesBatchItemRequest {
   householdDeliveryId: string;
+  cashSupportAmount?: number | null;
   notes?: string | null;
   proofNote?: string | null;
   proofFileUrl: string;
@@ -369,6 +374,7 @@ export interface UpdateReliefPackageDefinitionRequest {
   name?: string;
   description?: string | null;
   outputSupplyItemId?: string;
+  cashSupportAmount?: number | null;
   isDefault?: boolean;
   isActive?: boolean;
   items?: ReliefPackageDefinitionItemRequest[];

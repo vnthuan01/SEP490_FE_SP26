@@ -12,26 +12,55 @@ export type ParsedApiError = {
 const FIELD_LABELS: Record<string, string> = {
   name: 'tên',
   description: 'mô tả',
+  note: 'ghi chú',
+  notes: 'ghi chú',
   locationid: 'khu vực điểm phát',
   managerid: 'người quản lý',
   moderatoruserid: 'điều phối viên phụ trách',
   teamid: 'đội',
+  campaignteamid: 'đội phụ trách',
   status: 'trạng thái',
   rejectionreason: 'lý do từ chối',
   address: 'địa chỉ',
   startsat: 'thời gian bắt đầu',
   endsat: 'thời gian kết thúc',
+  scheduledat: 'thời gian hẹn phát',
   coverageradiuskm: 'bán kính khu vực phụ trách',
   outputsupplyitemid: 'vật phẩm đầu ra',
   items: 'danh sách thành phần',
   supplyitemid: 'vật phẩm',
+  reliefpackagedefinitionid: 'gói cứu trợ',
+  distributionpointid: 'điểm phát',
   quantity: 'số lượng',
   unit: 'đơn vị',
+  amount: 'số tiền',
+  cashsupportamount: 'tiền hỗ trợ',
   gender: 'giới tính',
   dateofbirth: 'ngày sinh',
+  latitude: 'vĩ độ',
+  longitude: 'kinh độ',
+  prooffileurl: 'đường dẫn minh chứng',
+  proofcontenttype: 'loại tệp minh chứng',
+  proofnote: 'ghi chú minh chứng',
+  contactphone: 'số điện thoại',
+  householdsize: 'số nhân khẩu',
+  isisolated: 'trạng thái cô lập',
+  deliverymode: 'hình thức nhận',
+  headofhouseholdname: 'tên chủ hộ',
+  sourcecampaignid: 'chiến dịch gây quỹ nguồn',
+  targetreliefcampaignid: 'chiến dịch cứu trợ đích',
 };
 
 const localizeFieldName = (fieldName: string) => FIELD_LABELS[fieldName.toLowerCase()] || fieldName;
+
+const looksLikeUntranslatedEnglish = (message: string) => {
+  const normalized = message.trim();
+  if (!normalized) return false;
+
+  return /\b(required|invalid|failed|forbidden|unauthorized|must|cannot|already exists|not found|campaign|delivery|package|station|inventory|proof|budget|team|household|duplicate|quantity|request)\b/i.test(
+    normalized,
+  );
+};
 
 const translateRegexPatterns = (message: string) => {
   for (const [pattern, replacement] of BACKEND_LITERAL_MESSAGE_MAP) {
@@ -83,6 +112,42 @@ const translateRegexPatterns = (message: string) => {
     return 'Một vật phẩm đang bị lặp lại nhiều lần trong gói cứu trợ. Mỗi vật phẩm chỉ nên xuất hiện một lần.';
   }
 
+  const greaterThanMatch = message.match(/^(.+?) must be greater than (.+)\.?$/i);
+  if (greaterThanMatch) {
+    return `${localizeFieldName(greaterThanMatch[1])} phải lớn hơn ${greaterThanMatch[2]}.`;
+  }
+
+  const greaterThanOrEqualMatch = message.match(
+    /^(.+?) must be greater than or equal to (.+)\.?$/i,
+  );
+  if (greaterThanOrEqualMatch) {
+    return `${localizeFieldName(greaterThanOrEqualMatch[1])} phải lớn hơn hoặc bằng ${greaterThanOrEqualMatch[2]}.`;
+  }
+
+  const lessThanOrEqualMatch = message.match(/^(.+?) must be less than or equal to (.+)\.?$/i);
+  if (lessThanOrEqualMatch) {
+    return `${localizeFieldName(lessThanOrEqualMatch[1])} phải nhỏ hơn hoặc bằng ${lessThanOrEqualMatch[2]}.`;
+  }
+
+  const betweenMatch = message.match(/^(.+?) must be between (.+?) and (.+?)\.?$/i);
+  if (betweenMatch) {
+    return `${localizeFieldName(betweenMatch[1])} phải nằm trong khoảng từ ${betweenMatch[2]} đến ${betweenMatch[3]}.`;
+  }
+
+  const maxLengthMatch = message.match(
+    /^The field (.+?) must be a string with a maximum length of (\d+)\.?$/i,
+  );
+  if (maxLengthMatch) {
+    return `${localizeFieldName(maxLengthMatch[1])} không được vượt quá ${maxLengthMatch[2]} ký tự.`;
+  }
+
+  const minLengthMatch = message.match(
+    /^The field (.+?) must be a string with a minimum length of (\d+)\.?$/i,
+  );
+  if (minLengthMatch) {
+    return `${localizeFieldName(minLengthMatch[1])} phải có ít nhất ${minLengthMatch[2]} ký tự.`;
+  }
+
   return message
     .replace(
       /^One or more validation errors occurred\.?$/i,
@@ -129,7 +194,7 @@ export function parseApiError(error: unknown, fallbackMessage: string): ParsedAp
   const rawDetail = responseData?.detail || '';
   const shouldPreferDetail = GENERIC_BACKEND_MESSAGES.has(String(rawMessage).trim()) && !!rawDetail;
 
-  const message =
+  const resolvedMessage =
     localizeMessage(firstFieldMessage) ||
     localizeMessage(fromCode) ||
     localizeMessage(plainBody) ||
@@ -137,6 +202,10 @@ export function parseApiError(error: unknown, fallbackMessage: string): ParsedAp
     localizeMessage(shouldPreferDetail ? rawMessage : rawDetail) ||
     localizeMessage(responseData?.title || '') ||
     getStatusFallback(statusCode, fallbackMessage);
+
+  const message = looksLikeUntranslatedEnglish(resolvedMessage)
+    ? localizeMessage(fallbackMessage) || fallbackMessage
+    : resolvedMessage;
 
   const localizedFieldErrors = Object.fromEntries(
     Object.entries(fieldErrors).map(([key, values]) => [

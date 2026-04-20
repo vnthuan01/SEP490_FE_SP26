@@ -14,6 +14,7 @@ import { coordinatorNavGroups } from './components/sidebarConfig';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import {
   CAMPAIGN_QUERY_KEYS,
+  useExtractCampaignBudget,
   useCampaignInventoryBalance,
   useCampaigns,
   useCampaignTeams,
@@ -22,6 +23,7 @@ import { useProvinces } from '@/hooks/useLocations';
 import {
   RELIEF_DISTRIBUTION_KEYS,
   useAssembleReliefPackage,
+  useCompleteReliefDelivery,
   useCreateDistributionPoint,
   useCreateReliefPackage,
   useDeleteDistributionPoint,
@@ -41,6 +43,7 @@ import {
   reliefDistributionService,
   type CampaignHouseholdResponse,
   type DistributionPointResponse,
+  type HouseholdChecklistItemResponse,
   type ReliefPackageDefinitionResponse,
 } from '@/services/reliefDistributionService';
 import { CoordinatorReliefDistributionPageHeader } from './components/relief-distribution/CoordinatorReliefDistributionPageHeader';
@@ -64,6 +67,14 @@ import {
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ReliefStickySectionHeader } from './components/relief-distribution/ReliefStickySectionHeader';
 import { ReliefFilterBar } from './components/relief-distribution/ReliefFilterBar';
 import { ReliefPaginationBar } from './components/relief-distribution/ReliefPaginationBar';
@@ -87,6 +98,7 @@ const createDefaultDistributionPointForm = (station?: {
 const createDefaultPackageForm = (): CoordinatorPackageForm => ({
   name: '',
   description: '',
+  cashSupportAmount: '',
   isDefault: true,
   isActive: true,
   items: [{ supplyItemId: '', quantity: 1, unit: '' }],
@@ -108,6 +120,10 @@ const mapDistributionPointToForm = (
 const mapPackageToForm = (pkg: ReliefPackageDefinitionResponse): CoordinatorPackageForm => ({
   name: pkg.name || '',
   description: pkg.description || '',
+  cashSupportAmount:
+    pkg.cashSupportAmount && Number(pkg.cashSupportAmount) > 0
+      ? formatNumberInputVN(pkg.cashSupportAmount)
+      : '',
   isDefault: pkg.isDefault,
   isActive: pkg.isActive,
   items:
@@ -130,6 +146,20 @@ type HouseholdEditForm = {
   notes: string;
   latitude: number;
   longitude: number;
+};
+
+type BudgetExtractForm = {
+  sourceCampaignId: string;
+  amount: string;
+  note: string;
+};
+
+type CompleteDeliveryForm = {
+  notes: string;
+  proofNote: string;
+  proofFileUrl: string;
+  proofContentType: string;
+  cashSupportAmount: string;
 };
 
 const mapHouseholdToEditForm = (household: CampaignHouseholdResponse): HouseholdEditForm => ({
@@ -208,6 +238,23 @@ export default function ReliefDistributionPage() {
   const [householdEditForm, setHouseholdEditForm] = useState<HouseholdEditForm | null>(null);
   const [householdEditErrors, setHouseholdEditErrors] = useState<Record<string, string>>({});
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [budgetExtractOpen, setBudgetExtractOpen] = useState(false);
+  const [budgetExtractForm, setBudgetExtractForm] = useState<BudgetExtractForm>({
+    sourceCampaignId: '',
+    amount: '',
+    note: '',
+  });
+  const [budgetExtractErrors, setBudgetExtractErrors] = useState<Record<string, string>>({});
+  const [completeDeliveryTarget, setCompleteDeliveryTarget] =
+    useState<HouseholdChecklistItemResponse | null>(null);
+  const [completeDeliveryForm, setCompleteDeliveryForm] = useState<CompleteDeliveryForm>({
+    notes: '',
+    proofNote: '',
+    proofFileUrl: '',
+    proofContentType: '',
+    cashSupportAmount: '',
+  });
+  const [completeDeliveryErrors, setCompleteDeliveryErrors] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<
     | { type: 'household'; id: string; label: string }
     | { type: 'distribution-point'; id: string; label: string }
@@ -249,6 +296,14 @@ export default function ReliefDistributionPage() {
 
     return '';
   }, [reliefCampaigns, selectedCampaignId]);
+  const { campaigns: fundraisingCampaigns } = useCampaigns(
+    {
+      pageIndex: 1,
+      pageSize: 200,
+      type: CampaignType.Fundraising,
+    },
+    { enabled: true },
+  );
 
   const { teams } = useCampaignTeams(effectiveSelectedCampaignId);
   const { households } = useReliefHouseholds(effectiveSelectedCampaignId);
@@ -270,6 +325,8 @@ export default function ReliefDistributionPage() {
   const patchHouseholdMutation = usePatchReliefHousehold();
   const deleteHouseholdMutation = useDeleteReliefHousehold();
   const assemblePackageMutation = useAssembleReliefPackage();
+  const extractBudgetMutation = useExtractCampaignBudget();
+  const completeDeliveryMutation = useCompleteReliefDelivery();
   const {
     data: packageAssemblyAvailability,
     isLoading: isLoadingAssemblyAvailability,
@@ -493,8 +550,13 @@ export default function ReliefDistributionPage() {
 
   const handleCreatePackage = async () => {
     const clientErrors: Record<string, string> = {};
+    const cashSupportAmount =
+      parseInt((packageForm.cashSupportAmount || '0').replace(/\D/g, ''), 10) || 0;
 
     if (!packageForm.name.trim()) clientErrors.name = 'Vui lòng nhập tên gói cứu trợ.';
+    if (cashSupportAmount < 0) {
+      clientErrors.cashSupportAmount = 'Số tiền hỗ trợ phải lớn hơn hoặc bằng 0.';
+    }
     const seenSupplyItems = new Set<string>();
     if (
       !packageForm.items.length ||
@@ -532,6 +594,7 @@ export default function ReliefDistributionPage() {
         campaignId: effectiveSelectedCampaignId,
         data: {
           ...packageForm,
+          cashSupportAmount,
         },
       });
       setPackageForm(createDefaultPackageForm());
@@ -541,6 +604,11 @@ export default function ReliefDistributionPage() {
       const nextErrors: Record<string, string> = {
         name: pickFieldError(parsed.fieldErrors, 'Name', 'name'),
         description: pickFieldError(parsed.fieldErrors, 'Description', 'description'),
+        cashSupportAmount: pickFieldError(
+          parsed.fieldErrors,
+          'CashSupportAmount',
+          'cashSupportAmount',
+        ),
         items: pickFieldError(parsed.fieldErrors, 'Items', 'items'),
       };
 
@@ -674,8 +742,13 @@ export default function ReliefDistributionPage() {
   const handleUpdatePackage = async () => {
     if (!effectiveSelectedCampaignId || !editingPackage) return;
     const clientErrors: Record<string, string> = {};
+    const cashSupportAmount =
+      parseInt((packageForm.cashSupportAmount || '0').replace(/\D/g, ''), 10) || 0;
 
     if (!packageForm.name.trim()) clientErrors.name = 'Vui lòng nhập tên gói cứu trợ.';
+    if (cashSupportAmount < 0) {
+      clientErrors.cashSupportAmount = 'Số tiền hỗ trợ phải lớn hơn hoặc bằng 0.';
+    }
     const seenSupplyItems = new Set<string>();
     if (
       !packageForm.items.length ||
@@ -713,6 +786,7 @@ export default function ReliefDistributionPage() {
         reliefPackageDefinitionId: editingPackage.reliefPackageDefinitionId,
         data: {
           ...packageForm,
+          cashSupportAmount,
         },
       });
       handleCancelEditPackage();
@@ -721,6 +795,11 @@ export default function ReliefDistributionPage() {
       setPackageErrors({
         name: pickFieldError(parsed.fieldErrors, 'Name', 'name'),
         description: pickFieldError(parsed.fieldErrors, 'Description', 'description'),
+        cashSupportAmount: pickFieldError(
+          parsed.fieldErrors,
+          'CashSupportAmount',
+          'cashSupportAmount',
+        ),
         items: pickFieldError(parsed.fieldErrors, 'Items', 'items'),
       });
     }
@@ -820,6 +899,127 @@ export default function ReliefDistributionPage() {
       }
     } finally {
       setDeleteTarget(null);
+    }
+  };
+
+  const handleSubmitBudgetExtract = async () => {
+    if (!effectiveSelectedCampaignId) return;
+    const nextErrors: Record<string, string> = {};
+    const amount = parseInt((budgetExtractForm.amount || '0').replace(/\D/g, ''), 10) || 0;
+
+    if (!budgetExtractForm.sourceCampaignId) {
+      nextErrors.sourceCampaignId = 'Vui lòng chọn chiến dịch gây quỹ nguồn.';
+    }
+    if (amount <= 0) {
+      nextErrors.amount = 'Số tiền trích phải lớn hơn 0.';
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setBudgetExtractErrors(nextErrors);
+      toast.error(Object.values(nextErrors)[0]);
+      return;
+    }
+
+    try {
+      setBudgetExtractErrors({});
+      await extractBudgetMutation.mutateAsync({
+        id: budgetExtractForm.sourceCampaignId,
+        data: {
+          targetReliefCampaignId: effectiveSelectedCampaignId,
+          amount,
+          note: budgetExtractForm.note || undefined,
+        },
+      });
+      setBudgetExtractOpen(false);
+      setBudgetExtractForm({ sourceCampaignId: '', amount: '', note: '' });
+      await queryClient.invalidateQueries({
+        queryKey: CAMPAIGN_QUERY_KEYS.inventoryBalance(effectiveSelectedCampaignId),
+      });
+    } catch (error) {
+      const parsed = parseApiError(error, 'Không thể trích ngân sách');
+      setBudgetExtractErrors({
+        sourceCampaignId: pickFieldError(
+          parsed.fieldErrors,
+          'SourceCampaignId',
+          'sourceCampaignId',
+          'TargetReliefCampaignId',
+          'targetReliefCampaignId',
+        ),
+        amount: pickFieldError(parsed.fieldErrors, 'Amount', 'amount'),
+        note: pickFieldError(parsed.fieldErrors, 'Note', 'note'),
+        form: parsed.message,
+      });
+      toast.error(parsed.message);
+    }
+  };
+
+  const handleOpenCompleteDelivery = (item: HouseholdChecklistItemResponse) => {
+    setCompleteDeliveryTarget(item);
+    setCompleteDeliveryErrors({});
+    setCompleteDeliveryForm({
+      notes: item.notes || '',
+      proofNote: '',
+      proofFileUrl: '',
+      proofContentType: '',
+      cashSupportAmount: '',
+    });
+  };
+
+  const handleSubmitCompleteDelivery = async () => {
+    if (!effectiveSelectedCampaignId || !completeDeliveryTarget) return;
+    const nextErrors: Record<string, string> = {};
+    const cashSupportAmount =
+      parseInt((completeDeliveryForm.cashSupportAmount || '0').replace(/\D/g, ''), 10) || 0;
+
+    if (!completeDeliveryForm.proofFileUrl.trim()) {
+      nextErrors.proofFileUrl = 'Vui lòng nhập URL minh chứng.';
+    }
+    if (cashSupportAmount < 0) {
+      nextErrors.cashSupportAmount = 'Số tiền hỗ trợ phải lớn hơn hoặc bằng 0.';
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setCompleteDeliveryErrors(nextErrors);
+      toast.error(Object.values(nextErrors)[0]);
+      return;
+    }
+
+    try {
+      setCompleteDeliveryErrors({});
+      await completeDeliveryMutation.mutateAsync({
+        campaignId: effectiveSelectedCampaignId,
+        householdDeliveryId: completeDeliveryTarget.householdDeliveryId,
+        data: {
+          reliefPackageDefinitionId: completeDeliveryTarget.reliefPackageDefinitionId,
+          campaignTeamId: completeDeliveryTarget.campaignTeamId || undefined,
+          notes: completeDeliveryForm.notes || undefined,
+          proofNote: completeDeliveryForm.proofNote || undefined,
+          proofFileUrl: completeDeliveryForm.proofFileUrl,
+          proofContentType: completeDeliveryForm.proofContentType || undefined,
+          cashSupportAmount,
+        },
+      });
+      setCompleteDeliveryTarget(null);
+      setCompleteDeliveryErrors({});
+    } catch (error) {
+      const parsed = parseApiError(error, 'Không thể hoàn tất phát quà');
+      setCompleteDeliveryErrors({
+        proofFileUrl: pickFieldError(parsed.fieldErrors, 'ProofFileUrl', 'proofFileUrl'),
+        proofContentType: pickFieldError(
+          parsed.fieldErrors,
+          'ProofContentType',
+          'proofContentType',
+        ),
+        proofNote: pickFieldError(parsed.fieldErrors, 'ProofNote', 'proofNote'),
+        notes: pickFieldError(parsed.fieldErrors, 'Notes', 'notes'),
+        cashSupportAmount: pickFieldError(
+          parsed.fieldErrors,
+          'CashSupportAmount',
+          'cashSupportAmount',
+        ),
+        form: parsed.message,
+      });
+      toast.error(parsed.message);
     }
   };
 
@@ -1279,6 +1479,27 @@ export default function ReliefDistributionPage() {
                 <p className="mt-1 text-muted-foreground break-all">
                   {inventoryBalance?.campaignInventoryId || 'Chưa phát sinh'}
                 </p>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <div>
+                  <p className="font-medium text-emerald-900">Bổ sung quỹ chi cứu trợ</p>
+                  <p className="text-sm text-emerald-800/80">
+                    Trích ngân sách từ chiến dịch gây quỹ để bổ sung số dư cho campaign cứu trợ này.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2 border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-100"
+                  onClick={() => setBudgetExtractOpen(true)}
+                  disabled={!effectiveSelectedCampaignId}
+                >
+                  <span className="material-symbols-outlined text-[18px]">
+                    account_balance_wallet
+                  </span>
+                  Trích ngân sách
+                </Button>
               </div>
 
               {inventoryBalanceError ? (
@@ -1885,6 +2106,9 @@ export default function ReliefDistributionPage() {
                               Mặc định
                             </Badge>
                           )}
+                          <Badge variant="info" appearance="light">
+                            Tiền mặt: {formatNumberVN(pkg.cashSupportAmount ?? 0)}
+                          </Badge>
                         </div>
                       </div>
                       <Separator className="my-3" />
@@ -2054,6 +2278,18 @@ export default function ReliefDistributionPage() {
                         Minh chứng: {formatNumberVN(item.proofCount)} · Đã phát:{' '}
                         {item.deliveredAt ? formatDateTimeVN(item.deliveredAt) : 'Chưa phát'}
                       </div>
+                    </div>
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        type="button"
+                        variant={item.deliveredAt ? 'outline' : 'primary'}
+                        className="gap-2"
+                        disabled={!!item.deliveredAt}
+                        onClick={() => handleOpenCompleteDelivery(item)}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">task_alt</span>
+                        {item.deliveredAt ? 'Đã hoàn tất' : 'Hoàn tất phát quà'}
+                      </Button>
                     </div>
                   </div>
                 ))
@@ -2281,6 +2517,233 @@ export default function ReliefDistributionPage() {
             variant="destructive"
             onConfirm={handleConfirmDelete}
           />
+
+          <Dialog open={budgetExtractOpen} onOpenChange={setBudgetExtractOpen}>
+            <DialogContent className="sm:max-w-[560px]">
+              <DialogHeader>
+                <DialogTitle>Trích ngân sách sang chiến dịch cứu trợ</DialogTitle>
+                <DialogDescription>
+                  Chọn chiến dịch gây quỹ nguồn, số tiền và ghi chú để chuyển quỹ sang campaign này.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Chiến dịch gây quỹ nguồn</p>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={budgetExtractForm.sourceCampaignId}
+                    onChange={(e) =>
+                      setBudgetExtractForm((prev) => ({
+                        ...prev,
+                        sourceCampaignId: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Chọn chiến dịch gây quỹ</option>
+                    {fundraisingCampaigns.map((campaign) => (
+                      <option key={campaign.campaignId} value={campaign.campaignId}>
+                        {campaign.name}
+                      </option>
+                    ))}
+                  </select>
+                  {budgetExtractErrors.sourceCampaignId && (
+                    <p className="text-sm text-destructive">
+                      {budgetExtractErrors.sourceCampaignId}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Số tiền trích</p>
+                  <Input
+                    placeholder="Ví dụ: 10000000"
+                    value={budgetExtractForm.amount}
+                    onChange={(e) =>
+                      setBudgetExtractForm((prev) => ({
+                        ...prev,
+                        amount: formatNumberInputVN(e.target.value),
+                      }))
+                    }
+                  />
+                  {budgetExtractErrors.amount && (
+                    <p className="text-sm text-destructive">{budgetExtractErrors.amount}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Ghi chú</p>
+                  <Textarea
+                    placeholder="Ví dụ: Bổ sung ngân sách hỗ trợ tiền mặt"
+                    value={budgetExtractForm.note}
+                    onChange={(e) =>
+                      setBudgetExtractForm((prev) => ({ ...prev, note: e.target.value }))
+                    }
+                  />
+                  {budgetExtractErrors.note && (
+                    <p className="text-sm text-destructive">{budgetExtractErrors.note}</p>
+                  )}
+                </div>
+
+                {budgetExtractErrors.form && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                    {budgetExtractErrors.form}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setBudgetExtractOpen(false)}>
+                  Hủy
+                </Button>
+                <Button
+                  onClick={handleSubmitBudgetExtract}
+                  disabled={extractBudgetMutation.isPending}
+                >
+                  {extractBudgetMutation.isPending ? 'Đang trích...' : 'Xác nhận trích ngân sách'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={!!completeDeliveryTarget}
+            onOpenChange={(open) => {
+              if (!open) {
+                setCompleteDeliveryTarget(null);
+                setCompleteDeliveryErrors({});
+              }
+            }}
+          >
+            <DialogContent className="sm:max-w-[640px]">
+              <DialogHeader>
+                <DialogTitle>Hoàn tất phát quà</DialogTitle>
+                <DialogDescription>
+                  Bổ sung minh chứng và tiền mặt hỗ trợ thực tế cho lượt phát này.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                {completeDeliveryTarget && (
+                  <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm">
+                    <p className="font-medium text-foreground">
+                      {completeDeliveryTarget.householdCode} ·{' '}
+                      {completeDeliveryTarget.headOfHouseholdName}
+                    </p>
+                    <p className="mt-1 text-muted-foreground">
+                      Hẹn phát: {formatDateTimeVN(completeDeliveryTarget.scheduledAt)}
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">URL minh chứng</p>
+                  <Input
+                    placeholder="https://..."
+                    value={completeDeliveryForm.proofFileUrl}
+                    onChange={(e) =>
+                      setCompleteDeliveryForm((prev) => ({ ...prev, proofFileUrl: e.target.value }))
+                    }
+                  />
+                  {completeDeliveryErrors.proofFileUrl && (
+                    <p className="text-sm text-destructive">
+                      {completeDeliveryErrors.proofFileUrl}
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Loại file</p>
+                    <Input
+                      placeholder="image/jpeg"
+                      value={completeDeliveryForm.proofContentType}
+                      onChange={(e) =>
+                        setCompleteDeliveryForm((prev) => ({
+                          ...prev,
+                          proofContentType: e.target.value,
+                        }))
+                      }
+                    />
+                    {completeDeliveryErrors.proofContentType && (
+                      <p className="text-sm text-destructive">
+                        {completeDeliveryErrors.proofContentType}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Tiền hỗ trợ thực tế</p>
+                    <Input
+                      placeholder="Ví dụ: 200000"
+                      value={completeDeliveryForm.cashSupportAmount}
+                      onChange={(e) =>
+                        setCompleteDeliveryForm((prev) => ({
+                          ...prev,
+                          cashSupportAmount: formatNumberInputVN(e.target.value),
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Nếu không đủ quỹ, hãy trích thêm ngân sách từ chiến dịch gây quỹ.
+                    </p>
+                    {completeDeliveryErrors.cashSupportAmount && (
+                      <p className="text-sm text-destructive">
+                        {completeDeliveryErrors.cashSupportAmount}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Ghi chú minh chứng</p>
+                  <Textarea
+                    value={completeDeliveryForm.proofNote}
+                    onChange={(e) =>
+                      setCompleteDeliveryForm((prev) => ({ ...prev, proofNote: e.target.value }))
+                    }
+                  />
+                  {completeDeliveryErrors.proofNote && (
+                    <p className="text-sm text-destructive">{completeDeliveryErrors.proofNote}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Ghi chú giao hàng</p>
+                  <Textarea
+                    value={completeDeliveryForm.notes}
+                    onChange={(e) =>
+                      setCompleteDeliveryForm((prev) => ({ ...prev, notes: e.target.value }))
+                    }
+                  />
+                  {completeDeliveryErrors.notes && (
+                    <p className="text-sm text-destructive">{completeDeliveryErrors.notes}</p>
+                  )}
+                </div>
+
+                {completeDeliveryErrors.form && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                    {completeDeliveryErrors.form}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setCompleteDeliveryTarget(null)}
+                >
+                  Hủy
+                </Button>
+                <Button
+                  onClick={handleSubmitCompleteDelivery}
+                  disabled={completeDeliveryMutation.isPending}
+                >
+                  {completeDeliveryMutation.isPending ? 'Đang hoàn tất...' : 'Xác nhận hoàn tất'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
     </DashboardLayout>

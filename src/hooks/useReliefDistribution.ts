@@ -238,10 +238,10 @@ export function useImportReliefHouseholds() {
       data: ImportCampaignHouseholdsRequest;
     }) => reliefDistributionService.importHouseholds(campaignId, data),
     onSuccess: async (_, { campaignId }) => {
-      toast.success('Đã import danh sách hộ dân');
+      toast.success('Đã nhập danh sách hộ dân');
       await invalidateCampaign(queryClient, campaignId);
     },
-    onError: (error) => handleHookError(error, 'Không thể import hộ dân'),
+    onError: (error) => handleHookError(error, 'Không thể nhập danh sách hộ dân'),
   });
 }
 

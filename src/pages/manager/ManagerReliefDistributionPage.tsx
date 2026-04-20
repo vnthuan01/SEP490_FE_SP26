@@ -191,7 +191,7 @@ export default function ManagerReliefDistributionPage() {
     });
 
     if (!effectiveSelectedCampaignId) nextErrors.form = 'Vui lòng chọn chiến dịch cứu trợ.';
-    if (householdSamples.length === 0) nextErrors.form = 'Cần ít nhất 1 hộ dân để import.';
+    if (householdSamples.length === 0) nextErrors.form = 'Cần ít nhất 1 hộ dân để nhập.';
     if (Object.keys(nextErrors).length > 0) {
       setSampleErrors(nextErrors);
       toast.error(Object.values(nextErrors)[0]);
@@ -256,8 +256,8 @@ export default function ManagerReliefDistributionPage() {
           )}`
         : '';
       const clonedAddress = sampleToClone.address?.trim()
-        ? `${sampleToClone.address.trim()} - bản clone`
-        : 'Địa chỉ hộ dân clone';
+        ? `${sampleToClone.address.trim()} - bản sao`
+        : 'Địa chỉ hộ dân bản sao';
 
       const clonedSample: HouseholdSampleForm = {
         ...sampleToClone,
@@ -330,8 +330,8 @@ export default function ManagerReliefDistributionPage() {
           <CardContent className="flex flex-col gap-2 p-4 text-sm text-primary">
             <p className="font-semibold">Vai trò tại màn hình Manager</p>
             <p>
-              Manager xem thông số chiến dịch và có thể thêm nhanh dữ liệu mẫu hộ dân để
-              test/import. Các bước cấu hình điểm phát, tạo gói cứu trợ và phân công team được
+              Manager xem thông số chiến dịch và có thể thêm nhanh dữ liệu mẫu hộ dân để thử
+              nghiệm/nhập liệu. Các bước cấu hình điểm phát, tạo gói cứu trợ và phân công đội được
               chuyển sang màn hình điều phối.
             </p>
           </CardContent>
@@ -358,8 +358,8 @@ export default function ManagerReliefDistributionPage() {
             />
             {households.length > 0 && (
               <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">
-                Chiến dịch này đã có dữ liệu hộ dân. Bạn vẫn có thể thêm tiếp để test, miễn là mã hộ
-                không bị trùng.
+                Chiến dịch này đã có dữ liệu hộ dân. Bạn vẫn có thể thêm tiếp để thử nghiệm, miễn là
+                mã hộ không bị trùng.
               </p>
             )}
           </div>
@@ -368,7 +368,7 @@ export default function ManagerReliefDistributionPage() {
             <CardHeader className="space-y-1">
               <CardTitle>Danh sách hộ dân hiện có</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Hiển thị theo trang để manager theo dõi tình hình dataseed và trạng thái phân phối.
+                Hiển thị theo trang để manager theo dõi danh sách hộ dân và trạng thái phân phối.
               </p>
             </CardHeader>
             <CardContent className="space-y-4">

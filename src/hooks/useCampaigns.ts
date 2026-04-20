@@ -2,11 +2,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { campaignService } from '@/services/campaignService';
 import type {
   Campaign,
+  CampaignBudgetTransferResponse,
   CampaignSummary,
   CampaignTeam,
   CampaignInventoryBalance,
   PublicCampaignSummary,
   CreateCampaignPayload,
+  ExtractCampaignBudgetRequest,
   UpdateCampaignPayload,
   SearchCampaignParams,
   AssignStationPayload,
@@ -100,7 +102,7 @@ export function useCampaignInventoryBalance(id: string) {
   });
 
   const parsedError = query.error
-    ? parseApiError(query.error, 'Không tải được dữ liệu cân đối tồn kho chiến dịch.')
+    ? parseApiError(query.error, 'Không thể tải dữ liệu cân đối tồn kho của chiến dịch.')
     : null;
 
   return {
@@ -258,6 +260,35 @@ export function useRemoveTeamFromCampaign() {
     },
     onError: (error: any) => {
       handleHookError(error, 'Không thể gỡ đội khỏi chiến dịch');
+    },
+  });
+}
+
+export function useExtractCampaignBudget() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: ExtractCampaignBudgetRequest }) =>
+      campaignService.extractBudget(id, data),
+    onSuccess: async (response, variables) => {
+      const result = response.data as CampaignBudgetTransferResponse;
+      toast.success('Đã trích ngân sách sang chiến dịch cứu trợ');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.all }),
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) }),
+        queryClient.invalidateQueries({
+          queryKey: CAMPAIGN_QUERY_KEYS.inventoryBalance(variables.id),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: CAMPAIGN_QUERY_KEYS.detail(result.targetCampaignId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: CAMPAIGN_QUERY_KEYS.inventoryBalance(result.targetCampaignId),
+        }),
+      ]);
+    },
+    onError: (error: any) => {
+      handleHookError(error, 'Không thể trích ngân sách chiến dịch');
     },
   });
 }
