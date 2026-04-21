@@ -13,6 +13,7 @@ import {
   createVictimMarkerElement,
   decodePolyline,
   hasMeaningfulCoordinateShift,
+  normalizeRouteCoords,
   safeRemoveLayer,
   safeRemoveSource,
   trackingPointsToCoords,
@@ -72,6 +73,23 @@ export function MissionTrackingMapSection({
     destination: { lat: number; lng: number };
   } | null>(null);
   const [routeSource, setRouteSource] = useState<string>('pending');
+  const [routeDebug, setRouteDebug] = useState<Record<string, unknown>>({ phase: 'init' });
+
+  const captureRouteDebug = useCallback((phase: string, extra?: Record<string, unknown>) => {
+    const map = mapRef.current as any;
+    const payload: Record<string, unknown> = {
+      phase,
+      styleLoaded: Boolean(map?.isStyleLoaded?.()),
+      hasDirectionSource: Boolean(map?.getSource?.('direction')),
+      hasDirectionLayer: Boolean(map?.getLayer?.('direction-line')),
+      hasDirectionCasing: Boolean(map?.getLayer?.('direction-casing')),
+      at: new Date().toLocaleTimeString('vi-VN'),
+      ...extra,
+    };
+
+    setRouteDebug(payload);
+    console.debug('[MissionTrackingRouteDebug]', payload);
+  }, []);
 
   // ── Stable coords — only recalculate when the actual numeric values change ─
   // Victim marker creation depends ONLY on victim coords, not the whole detail object
@@ -82,15 +100,15 @@ export function MissionTrackingMapSection({
     return { lat, lng };
   }, [detail?.latitude, detail?.longitude]);
 
-  const teamLat = teamLocation?.currentLatitude ?? detail?.assignedRescueTeam?.currentLatitude;
-  const teamLng = teamLocation?.currentLongitude ?? detail?.assignedRescueTeam?.currentLongitude;
+  const latestTrackingPoint = useMemo(() => {
+    if (!trackingPoints.length) return null;
 
-  const teamCoords = useMemo(() => {
-    const lat = Number(teamLat);
-    const lng = Number(teamLng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return null;
-    return { lat, lng };
-  }, [teamLat, teamLng]);
+    return [...trackingPoints].sort(
+      (a, b) =>
+        new Date(b.capturedAtUtc || b.createdAtUtc || 0).getTime() -
+        new Date(a.capturedAtUtc || a.createdAtUtc || 0).getTime(),
+    )[0];
+  }, [trackingPoints]);
 
   // ── Stable popup HTML builders (metadata updates without recreating markers) ─
   const victimPopupHtml = useMemo(
@@ -109,9 +127,34 @@ export function MissionTrackingMapSection({
   const assignedRoutePolyline = detail?.assignedRescueTeam?.routePolyline ?? null;
   const teamSource = teamLocation
     ? 'Thời gian thực'
-    : detail?.assignedRescueTeam?.currentLatitude && detail?.assignedRescueTeam?.currentLongitude
-      ? 'Từ dữ liệu đội'
-      : 'Chưa có';
+    : latestTrackingPoint
+      ? 'Từ GPS gần nhất'
+      : detail?.assignedRescueTeam?.currentLatitude && detail?.assignedRescueTeam?.currentLongitude
+        ? 'Từ dữ liệu đội'
+        : 'Chưa có';
+
+  const teamCoords = useMemo(() => {
+    const teamLat =
+      teamLocation?.currentLatitude ??
+      latestTrackingPoint?.latitude ??
+      detail?.assignedRescueTeam?.currentLatitude;
+    const teamLng =
+      teamLocation?.currentLongitude ??
+      latestTrackingPoint?.longitude ??
+      detail?.assignedRescueTeam?.currentLongitude;
+
+    const lat = Number(teamLat);
+    const lng = Number(teamLng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return null;
+    return { lat, lng };
+  }, [
+    detail?.assignedRescueTeam?.currentLatitude,
+    detail?.assignedRescueTeam?.currentLongitude,
+    latestTrackingPoint?.latitude,
+    latestTrackingPoint?.longitude,
+    teamLocation?.currentLatitude,
+    teamLocation?.currentLongitude,
+  ]);
 
   // ── Reset map state when selected request changes ─────────────────────────
   const requestKey =
@@ -119,6 +162,7 @@ export function MissionTrackingMapSection({
     (detail as any).rescueRequestId ??
     `${detail.latitude}-${detail.longitude}`;
 
+  // Reset map state ONLY when the selected request changes (not on every coord update)
   useEffect(() => {
     const map = mapRef.current;
 
@@ -152,7 +196,9 @@ export function MissionTrackingMapSection({
 
     // Reset debug info
     setRouteSource('Đang tải');
-  }, [requestKey]);
+    captureRouteDebug('request-reset', { requestKey });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKey]); // intentionally only reset when the request changes
 
   const mapCallbackRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -176,12 +222,24 @@ export function MissionTrackingMapSection({
       });
 
       const map = mapRef.current as any;
+      let styleReadyFired = false;
       const handleStyleReady = () => {
-        pendingDrawRef.current?.();
+        if (styleReadyFired) return;
+        styleReadyFired = true;
+        captureRouteDebug('map-style-load');
+        const pending = pendingDrawRef.current;
+        pendingDrawRef.current = null;
+        pending?.();
+        // reset for next style cycle
+        setTimeout(() => {
+          styleReadyFired = false;
+        }, 200);
       };
       map.on('load', handleStyleReady);
+      map.on('styledata', handleStyleReady);
+      map.on('idle', handleStyleReady);
     },
-    [goongMapKey],
+    [captureRouteDebug, goongMapKey],
   );
 
   // ── Victim marker: only recreate when coords change ───────────────────────
@@ -302,7 +360,15 @@ export function MissionTrackingMapSection({
     let cancelled = false;
 
     const drawLine = (coords: Array<[number, number]>, dashed: boolean) => {
-      if (cancelled || !(map as any).isStyleLoaded()) return;
+      if (cancelled) return false;
+
+      const styleLoaded = (map as any).isStyleLoaded();
+      const existingSource = (map as any).getSource('direction');
+      const existingLayer = (map as any).getLayer('direction-line');
+
+      // If source and layers already exist, we can update data regardless of isStyleLoaded()
+      // Only gate on isStyleLoaded when we need to addSource/addLayer
+      if (!styleLoaded && !existingSource) return false;
 
       const routeData = {
         type: 'Feature',
@@ -310,32 +376,57 @@ export function MissionTrackingMapSection({
         geometry: { type: 'LineString', coordinates: coords },
       };
 
-      const existingSource = (map as any).getSource('direction');
-      if (existingSource) {
-        existingSource.setData(routeData);
-      } else {
-        (map as any).addSource('direction', {
-          type: 'geojson',
-          data: routeData,
-        });
+      try {
+        if (existingSource) {
+          existingSource.setData(routeData);
+        } else {
+          (map as any).addSource('direction', {
+            type: 'geojson',
+            data: routeData,
+          });
+        }
+
+        if (!existingLayer) {
+          if (!styleLoaded) return false; // need style loaded to addLayer
+          (map as any).addLayer({
+            id: 'direction-casing',
+            type: 'line',
+            source: 'direction',
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: {
+              'line-color': '#ffffff',
+              'line-width': 8,
+              'line-opacity': 0.9,
+            },
+          });
+
+          (map as any).addLayer({
+            id: 'direction-line',
+            type: 'line',
+            source: 'direction',
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: {
+              'line-color': '#1d4ed8',
+              'line-width': 5,
+              'line-opacity': 0.95,
+            },
+          });
+        }
+
+        // Always solid line — no dasharray
+      } catch (err) {
+        captureRouteDebug('draw-line-error', { error: String(err) });
+        return false;
       }
 
-      if (!(map as any).getLayer('direction-line')) {
-        (map as any).addLayer({
-          id: 'direction-line',
-          type: 'line',
-          source: 'direction',
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: {
-            'line-color': '#2563eb',
-            'line-width': 4,
-            'line-opacity': 0.85,
-          },
-        });
-      }
-
-      (map as any).setPaintProperty('direction-line', 'line-dasharray', dashed ? [4, 3] : [1, 0]);
       lastDrawnRouteRef.current = { coords, dashed };
+      captureRouteDebug('draw-line', {
+        coordsCount: coords.length,
+        dashed,
+        styleLoaded,
+        usedExistingSource: Boolean(existingSource),
+      });
+      return true;
     };
 
     const last = lastRouteFetchRef.current;
@@ -370,10 +461,59 @@ export function MissionTrackingMapSection({
       (map as any).fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 1200 });
     };
 
+    const drawFallbackRoute = () => {
+      if (assignedRoutePolyline) {
+        try {
+          const fallbackCoords = normalizeRouteCoords(decodePolyline(assignedRoutePolyline));
+          if (fallbackCoords.length >= 2) {
+            const drawn = drawLine(fallbackCoords, false);
+            if (!drawn) return false;
+            fitBoundsFor(fallbackCoords);
+            setRouteSource('Tuyến dự phòng');
+            captureRouteDebug('fallback-polyline', {
+              coordsCount: fallbackCoords.length,
+            });
+            return true;
+          }
+        } catch {
+          void 0;
+        }
+      }
+
+      if (straightLine.length >= 2) {
+        const drawn = drawLine(straightLine, true);
+        if (!drawn) return false;
+        fitBoundsFor(straightLine);
+        setRouteSource('Đường thẳng');
+        captureRouteDebug('fallback-straight-line', {
+          coordsCount: straightLine.length,
+        });
+        return true;
+      }
+
+      captureRouteDebug('fallback-missing', {
+        hasTeamCoords: canUseTeamCoords,
+        hasVictimCoords: Boolean(victimCoords),
+      });
+
+      return false;
+    };
+
     if (destSame && originNoise) {
       if (lastDrawnRouteRef.current && (map as any).isStyleLoaded()) {
-        drawLine(lastDrawnRouteRef.current.coords, lastDrawnRouteRef.current.dashed);
+        const drawn = drawLine(lastDrawnRouteRef.current.coords, lastDrawnRouteRef.current.dashed);
+        if (!drawn) {
+          pendingDrawRef.current = () => {
+            void drawRoute();
+          };
+          captureRouteDebug('style-unloaded-reuse-route');
+          return;
+        }
         fitBoundsFor(lastDrawnRouteRef.current.coords);
+        captureRouteDebug('reuse-last-route', {
+          coordsCount: lastDrawnRouteRef.current.coords.length,
+          dashed: lastDrawnRouteRef.current.dashed,
+        });
       }
       return;
     }
@@ -389,13 +529,17 @@ export function MissionTrackingMapSection({
         : Promise.resolve(null);
 
     const drawRoute = async () => {
-      setRouteSource('Đang tải');
-
       if (!(map as any).isStyleLoaded()) {
+        captureRouteDebug('waiting-style-load');
         pendingDrawRef.current = () => {
           void drawRoute();
         };
         return;
+      }
+
+      const hasFallbackRoute = drawFallbackRoute();
+      if (!hasFallbackRoute) {
+        setRouteSource('Đang tải');
       }
 
       const direction = await directionPromise;
@@ -422,33 +566,34 @@ export function MissionTrackingMapSection({
 
       const route = finalDirection?.routes?.[0];
       const overviewPoints = route?.overview_polyline?.points;
-      const realCoords = overviewPoints ? decodePolyline(overviewPoints) : null;
+      const realCoords = overviewPoints
+        ? normalizeRouteCoords(decodePolyline(overviewPoints))
+        : null;
 
       if (realCoords && realCoords.length >= 2) {
-        drawLine(realCoords, false);
+        const drawn = drawLine(realCoords, false);
+        if (!drawn) {
+          pendingDrawRef.current = () => {
+            void drawRoute();
+          };
+          captureRouteDebug('style-unloaded-goong-route', {
+            coordsCount: realCoords.length,
+          });
+          return;
+        }
         fitBoundsFor(realCoords);
         setRouteSource('Goong API');
+        captureRouteDebug('goong-route', {
+          coordsCount: realCoords.length,
+        });
         return;
       }
 
-      if (assignedRoutePolyline) {
-        try {
-          const fallbackCoords = decodePolyline(assignedRoutePolyline);
-          if (fallbackCoords.length >= 2) {
-            drawLine(fallbackCoords, false);
-            fitBoundsFor(fallbackCoords);
-            setRouteSource('Tuyến dự phòng');
-            return;
-          }
-        } catch {
-          void 0;
-        }
-      }
-
-      if (straightLine.length >= 2) {
-        drawLine(straightLine, true);
-        fitBoundsFor(straightLine);
-        setRouteSource('Đường thẳng');
+      if (hasFallbackRoute) {
+        setRouteSource(assignedRoutePolyline ? 'Tuyến dự phòng' : 'Đường thẳng');
+        captureRouteDebug('fallback-kept-after-goong-miss', {
+          source: assignedRoutePolyline ? 'polyline' : 'straight',
+        });
         return;
       }
 
@@ -460,7 +605,10 @@ export function MissionTrackingMapSection({
           geometry: { type: 'LineString', coordinates: [] },
         });
       }
+      safeRemoveLayer(map, 'direction-line');
+      safeRemoveLayer(map, 'direction-casing');
       setRouteSource('Thiếu tọa độ đội');
+      captureRouteDebug('no-route-drawn');
     };
 
     pendingDrawRef.current = () => {
@@ -471,7 +619,7 @@ export function MissionTrackingMapSection({
     return () => {
       cancelled = true;
     };
-  }, [teamCoords, victimCoords, goongApiKey, assignedRoutePolyline]);
+  }, [assignedRoutePolyline, captureRouteDebug, goongApiKey, teamCoords, victimCoords]);
 
   // ── Ensure route source/layer exist when style loads ─────────────────────
   useEffect(() => {
@@ -493,6 +641,20 @@ export function MissionTrackingMapSection({
         });
       }
 
+      if (!(map as any).getLayer('direction-casing')) {
+        (map as any).addLayer({
+          id: 'direction-casing',
+          type: 'line',
+          source: 'direction',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': '#ffffff',
+            'line-width': 8,
+            'line-opacity': 0.9,
+          },
+        });
+      }
+
       if (!(map as any).getLayer('direction-line')) {
         (map as any).addLayer({
           id: 'direction-line',
@@ -500,9 +662,9 @@ export function MissionTrackingMapSection({
           source: 'direction',
           layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: {
-            'line-color': '#2563eb',
-            'line-width': 4,
-            'line-opacity': 0.85,
+            'line-color': '#1d4ed8',
+            'line-width': 5,
+            'line-opacity': 0.95,
           },
         });
       }
@@ -563,6 +725,15 @@ export function MissionTrackingMapSection({
           Khóa API:{' '}
           <span className="font-semibold text-foreground">{goongApiKey ? 'Có' : 'Thiếu'}</span>
         </span>
+      </div>
+
+      <div className="rounded-lg border border-dashed border-border bg-background/70 px-3 py-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Route Debug
+        </p>
+        <pre className="mt-1 whitespace-pre-wrap break-all text-[11px] leading-relaxed text-foreground">
+          {JSON.stringify(routeDebug, null, 2)}
+        </pre>
       </div>
 
       {isEnRoute && teamLocation && (
