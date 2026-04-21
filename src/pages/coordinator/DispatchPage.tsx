@@ -187,6 +187,16 @@ function getApiErrorMessage(error: any, fallback: string, notFoundMessage?: stri
   return parseApiError(error, fallback).message;
 }
 
+function isDuplicateKeyError(error: any): boolean {
+  const message = String(
+    error?.response?.data?.message || error?.response?.data?.detail || error?.message || '',
+  ).toLowerCase();
+  return (
+    message.includes('same key has already been added') ||
+    (message.includes('duplicate') && message.includes('key'))
+  );
+}
+
 function translateSystemReason(reason?: string | null) {
   const value = String(reason ?? '').trim();
   if (!value) return '--';
@@ -463,6 +473,8 @@ export default function DispatchPage() {
   const expandedMapRef = useRef<GoongMap | null>(null);
   const expandedMarkersRef = useRef<Marker[]>([]);
   const toastCooldownRef = useRef<Record<string, number>>({});
+  const previewInFlightRef = useRef(false);
+  const assignInFlightRef = useRef(false);
 
   const trimmedSearch = search.trim();
 
@@ -493,7 +505,21 @@ export default function DispatchPage() {
 
   const candidateCurrentPage = candidatePaging?.currentPage ?? candidatePage;
   const candidateTotalPages = Math.max(candidatePaging?.totalPages ?? 1, 1);
-  const selectedRequestBlockReason = selectedRequest ? getBlockReason(selectedRequest) : null;
+  const isSelectedRequestAlreadyInCurrentBatch = useMemo(
+    () =>
+      Boolean(
+        selectedRequestId &&
+        (activeBatch?.items || []).some((item) => item.rescueRequestId === selectedRequestId),
+      ),
+    [activeBatch?.items, selectedRequestId],
+  );
+
+  const selectedRequestBlockReason = selectedRequest
+    ? getBlockReason(selectedRequest) ||
+      (isSelectedRequestAlreadyInCurrentBatch
+        ? 'Yêu cầu này đã nằm trong hàng đợi hiện tại của đội.'
+        : null)
+    : null;
   const selectedVerifiedRequest =
     selectedRequest && isVerifiedCandidate(selectedRequest) ? selectedRequest : null;
 
@@ -736,7 +762,13 @@ export default function DispatchPage() {
 
   const handlePreview = async () => {
     if (!selectedTeamId || !selectedRequestId) return;
+    if (previewInFlightRef.current) return;
+    if (isSelectedRequestAlreadyInCurrentBatch) {
+      toast.warning('Yêu cầu đã có trong hàng đợi của đội, không cần xem trước lại.');
+      return;
+    }
 
+    previewInFlightRef.current = true;
     setIsPreviewLoading(true);
 
     try {
@@ -752,12 +784,19 @@ export default function DispatchPage() {
       setPreview(null);
     } finally {
       setIsPreviewLoading(false);
+      previewInFlightRef.current = false;
     }
   };
 
   const handleSmartAssign = async () => {
     if (!selectedTeamId || !selectedRequestId) return;
+    if (assignInFlightRef.current) return;
+    if (isSelectedRequestAlreadyInCurrentBatch) {
+      toast.warning('Yêu cầu đã có trong hàng đợi của đội, không thể điều phối trùng.');
+      return;
+    }
 
+    assignInFlightRef.current = true;
     setIsAssigning(true);
 
     try {
@@ -776,6 +815,17 @@ export default function DispatchPage() {
       });
       toast.success('Đã điều phối thành công.');
     } catch (error: any) {
+      if (isDuplicateKeyError(error)) {
+        toast.warning('Yêu cầu có thể đã được thêm vào hàng đợi. Đang đồng bộ lại dữ liệu...');
+        setPreview(null);
+        setQueueTab('current');
+        setSelectedRequestId('');
+        await refreshDispatchData(selectedTeamId, candidatePage, trimmedSearch, {
+          silentNotFound: true,
+        });
+        return;
+      }
+
       showErrorToast(
         'dispatch-assign',
         error,
@@ -784,6 +834,7 @@ export default function DispatchPage() {
       );
     } finally {
       setIsAssigning(false);
+      assignInFlightRef.current = false;
     }
   };
 
@@ -980,6 +1031,7 @@ export default function DispatchPage() {
     !preview?.eligible ||
     !selectedTeamId ||
     !selectedRequestId ||
+    isSelectedRequestAlreadyInCurrentBatch ||
     isAssigning ||
     Boolean(selectedRequestBlockReason);
 
