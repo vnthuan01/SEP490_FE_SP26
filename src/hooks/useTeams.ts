@@ -15,6 +15,13 @@ import type {
 import { teamJoinRequestService } from '@/services/teamService';
 import { handleHookError } from './hookErrorUtils';
 import { toast } from 'sonner';
+import { RescueBatchItemStatus } from '@/enums/beEnums';
+
+export interface ActiveBatchVehicleInfo {
+  vehicleId: string;
+  vehicleName?: string | null;
+  vehicleLicensePlate?: string | null;
+}
 
 export const TEAM_QUERY_KEYS = {
   all: ['teams'] as const,
@@ -421,8 +428,8 @@ export function useTeamJoinRequests(teamId?: string) {
 
 /**
  * Lấy active-batch của nhiều team song song.
- * Rule cho TeamAllocation: team nào còn active batch thì không cho assign thêm.
- * Lý do: team đó đã có mission đang chạy hoặc đang trên đường xử lý.
+ * Rule cho TeamAllocation: chỉ chặn team khi batch có item InProgress.
+ * Nếu batch chỉ toàn Pending/Assigned thì vẫn cho phân công thêm.
  */
 export function useTeamsActiveBatches(teamIds: string[]) {
   const results = useQueries({
@@ -435,14 +442,46 @@ export function useTeamsActiveBatches(teamIds: string[]) {
   });
 
   const busyTeamIds = new Set<string>();
+  const dispatchedVehicleByTeamId: Record<string, ActiveBatchVehicleInfo> = {};
   results.forEach((result, index) => {
     const batch = result.data;
     if (!batch) return;
-    const hasActiveBatch = (batch.items || []).length > 0;
-    if (hasActiveBatch) busyTeamIds.add(teamIds[index]);
+
+    const batchVehicle = (batch.items || []).find((item: any) =>
+      String(item?.vehicleId || '').trim(),
+    ) as any | undefined;
+    if (batchVehicle?.vehicleId) {
+      dispatchedVehicleByTeamId[teamIds[index]] = {
+        vehicleId: String(batchVehicle.vehicleId),
+        vehicleName: batchVehicle.vehicleName ?? null,
+        vehicleLicensePlate: batchVehicle.vehicleLicensePlate ?? null,
+      };
+    }
+
+    const hasInProgressItem = (batch.items || []).some((item) => {
+      const requestStatus = String((item as any)?.rescueRequestStatus ?? '')
+        .trim()
+        .toLowerCase();
+      if (requestStatus) {
+        return requestStatus === 'inprogress' || requestStatus === 'in_progress';
+      }
+
+      const rawStatus = item?.status;
+      const numericStatus = Number(rawStatus);
+      if (Number.isFinite(numericStatus)) {
+        return numericStatus === RescueBatchItemStatus.InProgress;
+      }
+
+      const normalizedStatus = String(rawStatus ?? '')
+        .trim()
+        .toLowerCase();
+      return normalizedStatus === 'inprogress' || normalizedStatus === 'in_progress';
+    });
+
+    if (hasInProgressItem) busyTeamIds.add(teamIds[index]);
   });
 
   const isLoading = results.some((r) => r.isLoading);
 
-  return { busyTeamIds, isLoading };
+  return { busyTeamIds, dispatchedVehicleByTeamId, isLoading };
 }
