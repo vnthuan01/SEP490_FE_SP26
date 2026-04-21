@@ -72,6 +72,13 @@ type Coordinate = { lat: number; lng: number };
 type LoadOptions = { silentNotFound?: boolean };
 type MapRenderOptions = { fitPadding?: number };
 
+function isMapStyleReady(map: GoongMap | null): boolean {
+  if (!map) return false;
+  const mapAny = map as any;
+  if (typeof mapAny.isStyleLoaded === 'function') return mapAny.isStyleLoaded();
+  return true;
+}
+
 function decodePolyline(encoded: string): Array<[number, number]> {
   const coordinates: Array<[number, number]> = [];
   let index = 0;
@@ -783,6 +790,13 @@ export default function DispatchPage() {
   const renderMapData = useCallback(
     (map: GoongMap | null, markerStore: MutableRefObject<Marker[]>, options?: MapRenderOptions) => {
       if (!map) return;
+
+      if (!isMapStyleReady(map)) {
+        (map as any).once?.('load', () => {
+          renderMapData(map, markerStore, options);
+        });
+        return;
+      }
 
       markerStore.current.forEach((marker) => marker.remove());
       markerStore.current = [];

@@ -84,6 +84,24 @@ export function trackingPointsToCoords(points: TeamTrackingPoint[]): RouteCoordi
   return points.map((point) => [point.longitude, point.latitude]);
 }
 
+export function normalizeRouteCoords(coords: RouteCoordinate[]): RouteCoordinate[] {
+  return coords
+    .map(([a, b]) => {
+      const x = Number(a);
+      const y = Number(b);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+      // Normal case: [lng, lat]
+      if (Math.abs(x) <= 180 && Math.abs(y) <= 90) return [x, y] as RouteCoordinate;
+
+      // Swapped input: [lat, lng]
+      if (Math.abs(x) <= 90 && Math.abs(y) <= 180) return [y, x] as RouteCoordinate;
+
+      return null;
+    })
+    .filter(Boolean) as RouteCoordinate[];
+}
+
 export function createVictimMarkerElement(label = 'SOS') {
   const el = document.createElement('div');
   el.style.cssText = 'cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px';
