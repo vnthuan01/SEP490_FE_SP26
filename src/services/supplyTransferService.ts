@@ -18,6 +18,10 @@ export interface SupplyTransferItem {
   actualQuantity?: number | null;
   supplyItemName?: string;
   notes?: string;
+  unitCost?: number;
+  expiryDate?: string | null;
+  sourceReference?: string;
+  totalAmount?: number;
 }
 
 export interface CreateSupplyTransferPayload {
@@ -83,6 +87,10 @@ type RawSupplyTransferItem = {
   actualQuantity?: number | null;
   quantity?: number;
   notes?: string;
+  unitCost?: number;
+  expiryDate?: string | null;
+  sourceReference?: string;
+  totalAmount?: number;
 };
 
 type RawSupplyTransfer = {
@@ -137,24 +145,26 @@ type ApproveSupplyTransferPayload = {
   evidenceUrls?: string[];
 };
 
-type ShipSupplyTransferPayload = {
-  vehicleId?: string;
-  driverUserId?: string;
+export type ShipSupplyTransferPayload = {
+  vehicleId: string;
   notes?: string;
   evidenceUrls?: string[];
 };
 
-type ReceiveSupplyTransferPayload = {
+export type ReceiveSupplyTransferPayload = {
   items: Array<{
     supplyItemId: string;
     actualQuantity: number;
     notes?: string;
+    unitCost?: number;
+    expiryDate?: string | null;
+    sourceReference?: string;
   }>;
   notes?: string;
   evidenceUrls?: string[];
 };
 
-type CancelSupplyTransferPayload = {
+export type CancelSupplyTransferPayload = {
   notes?: string;
   evidenceUrls?: string[];
 };
@@ -165,15 +175,6 @@ export interface ReplaceSupplyTransferEvidenceUrlsPayload {
 
 export interface AppendSupplyTransferEvidencesPayload {
   evidenceUrls: string[];
-}
-
-export interface CreateSupplyTransferDocumentPayload {
-  documentType: number;
-  fileUrl: string;
-  fileName?: string;
-  contentType?: string;
-  fileSizeBytes?: number;
-  notes?: string;
 }
 
 function mapSupplyTransferDocument(raw: RawSupplyTransferDocument): SupplyTransferDocument {
@@ -227,6 +228,10 @@ function mapSupplyTransfer(raw: RawSupplyTransfer): SupplyTransfer {
       actualQuantity: item.actualQuantity,
       quantity: item.requestedQuantity ?? item.quantity ?? 0,
       notes: item.notes,
+      unitCost: item.unitCost != null ? Number(item.unitCost) : undefined,
+      expiryDate: item.expiryDate ?? null,
+      sourceReference: item.sourceReference,
+      totalAmount: item.totalAmount != null ? Number(item.totalAmount) : undefined,
     })),
     approvedBy: raw.approvedBy ?? null,
     approvedByName: raw.approvedByName ?? null,
@@ -301,9 +306,4 @@ export const supplyTransferService = {
 
   appendEvidences: (id: string, data: AppendSupplyTransferEvidencesPayload) =>
     apiClient.post(`/SupplyTransfer/${id}/evidences`, data),
-
-  addDocument: (id: string, data: CreateSupplyTransferDocumentPayload) =>
-    apiClient
-      .post<RawSupplyTransfer>(`/SupplyTransfer/${id}/documents`, data)
-      .then((response) => ({ ...response, data: mapSupplyTransfer(response.data) })),
 };

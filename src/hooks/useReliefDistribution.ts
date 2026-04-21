@@ -20,6 +20,7 @@ import {
   type ImportCampaignHouseholdsRequest,
   type ReviewSupplyShortageRequest,
   type UpdateCampaignHouseholdRequest,
+  type UpdateCampaignHouseholdStatusRequest,
   type UpdateDistributionPointRequest,
   type UpdateReliefPackageDefinitionRequest,
 } from '@/services/reliefDistributionService';
@@ -169,7 +170,7 @@ export function usePackageAssemblyAvailability(
     enabled:
       !!campaignId &&
       !!reliefPackageDefinitionId &&
-      !!params?.inventoryId &&
+      !!params?.campaignInventoryId &&
       !!params?.reliefStationId,
   });
 }
@@ -198,12 +199,18 @@ export function usePackageAssemblyHistoryByStation(campaignId: string, reliefSta
 }
 
 export function useShortageRequests(campaignId: string, params?: GetShortageRequestsParams) {
-  return useQuery({
+  const query = useQuery({
     queryKey: RELIEF_DISTRIBUTION_KEYS.shortageRequests(campaignId, params),
     queryFn: async () =>
       (await reliefDistributionService.getShortageRequests(campaignId, params)).data,
     enabled: !!campaignId,
   });
+
+  return {
+    ...query,
+    shortageRequests: query.data?.items ?? [],
+    pagination: query.data,
+  };
 }
 
 const invalidateCampaign = async (
@@ -238,10 +245,10 @@ export function useImportReliefHouseholds() {
       data: ImportCampaignHouseholdsRequest;
     }) => reliefDistributionService.importHouseholds(campaignId, data),
     onSuccess: async (_, { campaignId }) => {
-      toast.success('Đã import danh sách hộ dân');
+      toast.success('Đã nhập danh sách hộ dân');
       await invalidateCampaign(queryClient, campaignId);
     },
-    onError: (error) => handleHookError(error, 'Không thể import hộ dân'),
+    onError: (error) => handleHookError(error, 'Không thể nhập danh sách hộ dân'),
   });
 }
 
@@ -564,5 +571,25 @@ export function useRejectShortageRequest() {
       });
     },
     onError: (error) => handleHookError(error, 'Không thể từ chối yêu cầu thiếu hụt'),
+  });
+}
+
+export function usePatchReliefHouseholdStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      campaignHouseholdId,
+      data,
+    }: {
+      campaignId: string;
+      campaignHouseholdId: string;
+      data: UpdateCampaignHouseholdStatusRequest;
+    }) => reliefDistributionService.patchHouseholdStatus(campaignId, campaignHouseholdId, data),
+    onSuccess: async (_, { campaignId }) => {
+      toast.success('Đã cập nhật trạng thái hộ dân');
+      await invalidateCampaign(queryClient, campaignId);
+    },
+    onError: (error) => handleHookError(error, 'Không thể cập nhật trạng thái hộ dân'),
   });
 }

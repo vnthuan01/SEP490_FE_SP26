@@ -12,11 +12,18 @@ import { formatNumberInputVN, formatNumberVN } from '@/lib/utils';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { coordinatorNavGroups } from './components/sidebarConfig';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
-import { useCampaigns, useCampaignTeams } from '@/hooks/useCampaigns';
+import {
+  CAMPAIGN_QUERY_KEYS,
+  useExtractCampaignBudget,
+  useCampaignInventoryBalance,
+  useCampaigns,
+  useCampaignTeams,
+} from '@/hooks/useCampaigns';
 import { useProvinces } from '@/hooks/useLocations';
-import { useInventories, useInventoryStocks } from '@/hooks/useInventory';
 import {
   RELIEF_DISTRIBUTION_KEYS,
+  useAssembleReliefPackage,
+  useCompleteReliefDelivery,
   useCreateDistributionPoint,
   useCreateReliefPackage,
   useDeleteDistributionPoint,
@@ -24,17 +31,22 @@ import {
   useDeleteReliefPackage,
   usePatchDistributionPoint,
   usePatchReliefHousehold,
+  usePatchReliefHouseholdStatus,
   usePatchReliefPackage,
+  usePackageAssemblyAvailability,
   useReliefChecklist,
   useDistributionPoints,
   useReliefHouseholds,
   useReliefPackages,
+  useReliefDeliveries,
+  useShortageRequests,
 } from '@/hooks/useReliefDistribution';
 import { CampaignStatus, CampaignType, DeliveryMode } from '@/enums/beEnums';
 import {
   reliefDistributionService,
   type CampaignHouseholdResponse,
   type DistributionPointResponse,
+  type HouseholdChecklistItemResponse,
   type ReliefPackageDefinitionResponse,
 } from '@/services/reliefDistributionService';
 import { CoordinatorReliefDistributionPageHeader } from './components/relief-distribution/CoordinatorReliefDistributionPageHeader';
@@ -58,9 +70,20 @@ import {
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ReliefStickySectionHeader } from './components/relief-distribution/ReliefStickySectionHeader';
 import { ReliefFilterBar } from './components/relief-distribution/ReliefFilterBar';
 import { ReliefPaginationBar } from './components/relief-distribution/ReliefPaginationBar';
+import { MobileShortageRequestReview } from './components/shortage-request/MobileShortageRequestReview';
+import { ReliefAdvancedFilters } from '@/components/shared/relief-distribution/ReliefAdvancedFilters';
+import type { ReliefAdvancedFiltersValue } from '@/components/shared/relief-distribution/types';
 
 const createDefaultDistributionPointForm = (station?: {
   address?: string | null;
@@ -81,6 +104,7 @@ const createDefaultDistributionPointForm = (station?: {
 const createDefaultPackageForm = (): CoordinatorPackageForm => ({
   name: '',
   description: '',
+  cashSupportAmount: '',
   isDefault: true,
   isActive: true,
   items: [{ supplyItemId: '', quantity: 1, unit: '' }],
@@ -102,6 +126,10 @@ const mapDistributionPointToForm = (
 const mapPackageToForm = (pkg: ReliefPackageDefinitionResponse): CoordinatorPackageForm => ({
   name: pkg.name || '',
   description: pkg.description || '',
+  cashSupportAmount:
+    pkg.cashSupportAmount && Number(pkg.cashSupportAmount) > 0
+      ? formatNumberInputVN(pkg.cashSupportAmount)
+      : '',
   isDefault: pkg.isDefault,
   isActive: pkg.isActive,
   items:
@@ -124,6 +152,20 @@ type HouseholdEditForm = {
   notes: string;
   latitude: number;
   longitude: number;
+};
+
+type BudgetExtractForm = {
+  sourceCampaignId: string;
+  amount: string;
+  note: string;
+};
+
+type CompleteDeliveryForm = {
+  notes: string;
+  proofNote: string;
+  proofFileUrl: string;
+  proofContentType: string;
+  cashSupportAmount: string;
 };
 
 const mapHouseholdToEditForm = (household: CampaignHouseholdResponse): HouseholdEditForm => ({
@@ -168,6 +210,13 @@ export default function ReliefDistributionPage() {
   const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>(
     'all',
   );
+  const [deliveryModeFilter, setDeliveryModeFilter] = useState<number | undefined>(undefined);
+  const [teamFilter, setTeamFilter] = useState<string | undefined>(undefined);
+  const [pointFilter, setPointFilter] = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<number | undefined>(undefined);
+  const [isIsolatedFilter, setIsIsolatedFilter] = useState<boolean | undefined>(undefined);
+  const [deliveriesPage, setDeliveriesPage] = useState(1);
+  const [shortageRequestsPage, setShortageRequestsPage] = useState(1);
   const [distributionPointForm, setDistributionPointForm] =
     useState<CoordinatorDistributionPointForm>(createDefaultDistributionPointForm());
   const [packageForm, setPackageForm] = useState<CoordinatorPackageForm>(
@@ -202,12 +251,79 @@ export default function ReliefDistributionPage() {
   const [householdEditForm, setHouseholdEditForm] = useState<HouseholdEditForm | null>(null);
   const [householdEditErrors, setHouseholdEditErrors] = useState<Record<string, string>>({});
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [budgetExtractOpen, setBudgetExtractOpen] = useState(false);
+  const [budgetExtractForm, setBudgetExtractForm] = useState<BudgetExtractForm>({
+    sourceCampaignId: '',
+    amount: '',
+    note: '',
+  });
+  const [budgetExtractErrors, setBudgetExtractErrors] = useState<Record<string, string>>({});
+  const [completeDeliveryTarget, setCompleteDeliveryTarget] =
+    useState<HouseholdChecklistItemResponse | null>(null);
+  const [completeDeliveryForm, setCompleteDeliveryForm] = useState<CompleteDeliveryForm>({
+    notes: '',
+    proofNote: '',
+    proofFileUrl: '',
+    proofContentType: '',
+    cashSupportAmount: '',
+  });
+  const [completeDeliveryErrors, setCompleteDeliveryErrors] = useState<Record<string, string>>({});
+  const [updateStatusTarget, setUpdateStatusTarget] = useState<CampaignHouseholdResponse | null>(
+    null,
+  );
+  const [updateStatusForm, setUpdateStatusForm] = useState<{ status: number; notes: string }>({
+    status: 0,
+    notes: '',
+  });
+  const [updateStatusErrors, setUpdateStatusErrors] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<
     | { type: 'household'; id: string; label: string }
     | { type: 'distribution-point'; id: string; label: string }
     | { type: 'package'; id: string; label: string }
     | null
   >(null);
+  const [showMobileShortageReview, setShowMobileShortageReview] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+
+  const resetAllPages = () => {
+    setCurrentPage(1);
+    setChecklistPage(1);
+    setDeliveriesPage(1);
+    setShortageRequestsPage(1);
+    setTeamActivityPage(1);
+  };
+
+  const filtersValue: ReliefAdvancedFiltersValue = {
+    search: householdSearch,
+    assignment: assignmentFilter,
+    deliveryMode: deliveryModeFilter,
+    teamId: teamFilter,
+    distributionPointId: pointFilter,
+    status: statusFilter,
+    isIsolated: isIsolatedFilter,
+  };
+
+  const handleFiltersChange = (next: ReliefAdvancedFiltersValue) => {
+    setHouseholdSearch(next.search);
+    setAssignmentFilter(next.assignment ?? 'all');
+    setDeliveryModeFilter(next.deliveryMode);
+    setTeamFilter(next.teamId);
+    setPointFilter(next.distributionPointId);
+    setStatusFilter(next.status);
+    setIsIsolatedFilter(next.isIsolated);
+    resetAllPages();
+  };
+
+  const resetFilters = () => {
+    setHouseholdSearch('');
+    setAssignmentFilter('all');
+    setDeliveryModeFilter(undefined);
+    setTeamFilter(undefined);
+    setPointFilter(undefined);
+    setStatusFilter(undefined);
+    setIsIsolatedFilter(undefined);
+    resetAllPages();
+  };
 
   const { station } = useMyReliefStation();
   const hasAssignedStation = !!station?.reliefStationId;
@@ -223,12 +339,9 @@ export default function ReliefDistributionPage() {
   const reliefCampaigns = useMemo(
     () =>
       campaigns.filter((campaign) =>
-        [
-          CampaignStatus.Draft,
-          CampaignStatus.Active,
-          CampaignStatus.ReadyToExecute,
-          CampaignStatus.InProgress,
-        ].some((status) => status === Number(campaign.status)),
+        [CampaignStatus.Draft, CampaignStatus.Active, CampaignStatus.Suspended].some(
+          (status) => status === Number(campaign.status),
+        ),
       ),
     [campaigns],
   );
@@ -246,27 +359,73 @@ export default function ReliefDistributionPage() {
 
     return '';
   }, [reliefCampaigns, selectedCampaignId]);
+  const { campaigns: fundraisingCampaigns } = useCampaigns(
+    {
+      pageIndex: 1,
+      pageSize: 200,
+      type: CampaignType.Fundraising,
+    },
+    { enabled: true },
+  );
 
   const { teams } = useCampaignTeams(effectiveSelectedCampaignId);
-  const { households } = useReliefHouseholds(effectiveSelectedCampaignId);
-  const { checklist } = useReliefChecklist(effectiveSelectedCampaignId);
-  const { distributionPoints } = useDistributionPoints(effectiveSelectedCampaignId);
-  const { packages } = useReliefPackages(effectiveSelectedCampaignId);
-  const { data: provinces = [] } = useProvinces();
-  const { data: inventoriesData } = useInventories(
+  const { households, pagination: householdsPagination } = useReliefHouseholds(
+    effectiveSelectedCampaignId,
     {
-      reliefStationId: station?.reliefStationId,
-      pageIndex: 1,
-      pageSize: 20,
+      pageIndex: currentPage,
+      pageSize: HOUSEHOLDS_PER_PAGE,
+      search: householdSearch || undefined,
+      isAssigned: assignmentFilter === 'all' ? undefined : assignmentFilter === 'assigned',
+      isIsolated: isIsolatedFilter,
+      campaignTeamId: teamFilter,
+      distributionPointId: pointFilter,
+      deliveryMode: deliveryModeFilter,
+      status: statusFilter,
     },
-    { enabled: hasAssignedStation },
   );
-  const selectedInventoryId = inventoriesData?.items?.[0]?.inventoryId || '';
-  const { data: inventoryStocksData } = useInventoryStocks(selectedInventoryId, {
-    pageIndex: 1,
-    pageSize: 200,
+  const { checklist, pagination: checklistPagination } = useReliefChecklist(
+    effectiveSelectedCampaignId,
+    {
+      pageIndex: checklistPage,
+      pageSize: CHECKLIST_ITEMS_PER_PAGE,
+      search: householdSearch || undefined,
+      campaignTeamId: teamFilter,
+      distributionPointId: pointFilter,
+      deliveryMode: deliveryModeFilter,
+    },
+  );
+  const { distributionPoints } = useDistributionPoints(effectiveSelectedCampaignId, {
+    campaignTeamId: teamFilter,
+    deliveryMode: deliveryModeFilter,
   });
-
+  const { packages } = useReliefPackages(effectiveSelectedCampaignId);
+  const {
+    inventoryBalance,
+    inventoryBalanceError,
+    isLoading: isLoadingInventoryBalance,
+  } = useCampaignInventoryBalance(effectiveSelectedCampaignId);
+  const { data: provinces = [] } = useProvinces();
+  const { deliveries, pagination: deliveriesPagination } = useReliefDeliveries(
+    effectiveSelectedCampaignId,
+    {
+      pageIndex: deliveriesPage,
+      pageSize: 10,
+      campaignTeamId: teamFilter,
+      distributionPointId: pointFilter,
+      deliveryMode: deliveryModeFilter,
+      status: statusFilter,
+    },
+  );
+  const { shortageRequests, pagination: shortageRequestsPagination } = useShortageRequests(
+    effectiveSelectedCampaignId,
+    {
+      pageIndex: shortageRequestsPage,
+      pageSize: 10,
+      status: 0, // Pending
+      campaignTeamId: teamFilter,
+      distributionPointId: pointFilter,
+    },
+  );
   const createPointMutation = useCreateDistributionPoint();
   const createPackageMutation = useCreateReliefPackage();
   const patchPointMutation = usePatchDistributionPoint();
@@ -274,19 +433,45 @@ export default function ReliefDistributionPage() {
   const patchPackageMutation = usePatchReliefPackage();
   const deletePackageMutation = useDeleteReliefPackage();
   const patchHouseholdMutation = usePatchReliefHousehold();
+  const patchHouseholdStatusMutation = usePatchReliefHouseholdStatus();
   const deleteHouseholdMutation = useDeleteReliefHousehold();
+  const assemblePackageMutation = useAssembleReliefPackage();
+  const extractBudgetMutation = useExtractCampaignBudget();
+  const completeDeliveryMutation = useCompleteReliefDelivery();
+  const {
+    data: packageAssemblyAvailability,
+    isLoading: isLoadingAssemblyAvailability,
+    error: packageAssemblyAvailabilityError,
+  } = usePackageAssemblyAvailability(
+    effectiveSelectedCampaignId,
+    assignForm.reliefPackageDefinitionId,
+    station?.reliefStationId && inventoryBalance?.campaignInventoryId
+      ? {
+          reliefStationId: station.reliefStationId,
+          campaignInventoryId: inventoryBalance.campaignInventoryId,
+        }
+      : undefined,
+  );
 
   const supplyItems = useMemo(
     () =>
-      (inventoryStocksData?.items ?? []).map((stock) => ({
-        id: stock.supplyItemId,
-        name: stock.supplyItemName,
-        unit: stock.supplyItemUnit,
-        categoryName: stock.supplyItemCategoryName,
-        category: stock.supplyItemCategoryName,
-        availableQuantity: stock.currentQuantity,
+      (inventoryBalance?.items ?? []).map((item) => ({
+        id: item.supplyItemId,
+        name: item.supplyItemName,
+        unit: item.supplyItemUnit,
+        categoryName: '',
+        category: '',
+        availableQuantity: item.quantity,
       })),
-    [inventoryStocksData?.items],
+    [inventoryBalance?.items],
+  );
+
+  const selectedPackageForAvailability = useMemo(
+    () =>
+      packages.find(
+        (pkg) => pkg.reliefPackageDefinitionId === assignForm.reliefPackageDefinitionId,
+      ) || null,
+    [packages, assignForm.reliefPackageDefinitionId],
   );
 
   const headerStationName = station?.name || '';
@@ -299,30 +484,7 @@ export default function ReliefDistributionPage() {
     [teams],
   );
 
-  const filteredHouseholds = useMemo(() => {
-    const normalizedSearch = householdSearch.trim().toLowerCase();
-
-    return households.filter((household) => {
-      const matchesSearch =
-        !normalizedSearch ||
-        household.householdCode.toLowerCase().includes(normalizedSearch) ||
-        household.headOfHouseholdName.toLowerCase().includes(normalizedSearch);
-
-      const isAssigned = Boolean(household.campaignTeamId);
-      const matchesAssignment =
-        assignmentFilter === 'all' ||
-        (assignmentFilter === 'assigned' && isAssigned) ||
-        (assignmentFilter === 'unassigned' && !isAssigned);
-
-      return matchesSearch && matchesAssignment;
-    });
-  }, [assignmentFilter, householdSearch, households]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredHouseholds.length / HOUSEHOLDS_PER_PAGE));
-  const paginatedHouseholds = useMemo(() => {
-    const start = (currentPage - 1) * HOUSEHOLDS_PER_PAGE;
-    return filteredHouseholds.slice(start, start + HOUSEHOLDS_PER_PAGE);
-  }, [currentPage, filteredHouseholds]);
+  const paginatedHouseholds = households;
 
   const selectedHouseholds = useMemo(
     () => households.filter((household) => selectedHouseholdIds.has(household.campaignHouseholdId)),
@@ -339,6 +501,7 @@ export default function ReliefDistributionPage() {
       selectedHouseholdIds.has(household.campaignHouseholdId),
     );
 
+  const totalPages = Math.max(1, householdsPagination?.totalPages ?? 1);
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const effectiveAssignForm = useMemo(
     () => ({
@@ -419,7 +582,7 @@ export default function ReliefDistributionPage() {
       clientErrors.address = 'Vui lòng chọn địa chỉ điểm phát.';
     if (!distributionPointForm.locationId.trim())
       clientErrors.locationId =
-        'Chưa map được locationId. Hãy chọn lại địa chỉ hoặc dùng vị trí trạm hiện tại.';
+        'Chưa xác định được mã khu vực. Hãy chọn lại địa chỉ hoặc dùng vị trí trạm hiện tại.';
     if (!distributionPointForm.startsAt) clientErrors.startsAt = 'Vui lòng chọn thời gian bắt đầu.';
     if (distributionPointForm.latitude < -90 || distributionPointForm.latitude > 90) {
       clientErrors.latitude = 'Vĩ độ phải nằm trong khoảng từ -90 đến 90.';
@@ -476,8 +639,13 @@ export default function ReliefDistributionPage() {
 
   const handleCreatePackage = async () => {
     const clientErrors: Record<string, string> = {};
+    const cashSupportAmount =
+      parseInt((packageForm.cashSupportAmount || '0').replace(/\D/g, ''), 10) || 0;
 
     if (!packageForm.name.trim()) clientErrors.name = 'Vui lòng nhập tên gói cứu trợ.';
+    if (cashSupportAmount < 0) {
+      clientErrors.cashSupportAmount = 'Số tiền hỗ trợ phải lớn hơn hoặc bằng 0.';
+    }
     const seenSupplyItems = new Set<string>();
     if (
       !packageForm.items.length ||
@@ -515,7 +683,7 @@ export default function ReliefDistributionPage() {
         campaignId: effectiveSelectedCampaignId,
         data: {
           ...packageForm,
-          outputSupplyItemId: packageForm.items[0]?.supplyItemId || '',
+          cashSupportAmount,
         },
       });
       setPackageForm(createDefaultPackageForm());
@@ -525,6 +693,11 @@ export default function ReliefDistributionPage() {
       const nextErrors: Record<string, string> = {
         name: pickFieldError(parsed.fieldErrors, 'Name', 'name'),
         description: pickFieldError(parsed.fieldErrors, 'Description', 'description'),
+        cashSupportAmount: pickFieldError(
+          parsed.fieldErrors,
+          'CashSupportAmount',
+          'cashSupportAmount',
+        ),
         items: pickFieldError(parsed.fieldErrors, 'Items', 'items'),
       };
 
@@ -588,7 +761,7 @@ export default function ReliefDistributionPage() {
       clientErrors.address = 'Vui lòng chọn địa chỉ điểm phát.';
     if (!distributionPointForm.locationId.trim())
       clientErrors.locationId =
-        'Chưa map được locationId. Hãy chọn lại địa chỉ hoặc dùng vị trí trạm hiện tại.';
+        'Chưa xác định được mã khu vực. Hãy chọn lại địa chỉ hoặc dùng vị trí trạm hiện tại.';
     if (!distributionPointForm.startsAt) clientErrors.startsAt = 'Vui lòng chọn thời gian bắt đầu.';
     if (distributionPointForm.latitude < -90 || distributionPointForm.latitude > 90) {
       clientErrors.latitude = 'Vĩ độ phải nằm trong khoảng từ -90 đến 90.';
@@ -658,8 +831,13 @@ export default function ReliefDistributionPage() {
   const handleUpdatePackage = async () => {
     if (!effectiveSelectedCampaignId || !editingPackage) return;
     const clientErrors: Record<string, string> = {};
+    const cashSupportAmount =
+      parseInt((packageForm.cashSupportAmount || '0').replace(/\D/g, ''), 10) || 0;
 
     if (!packageForm.name.trim()) clientErrors.name = 'Vui lòng nhập tên gói cứu trợ.';
+    if (cashSupportAmount < 0) {
+      clientErrors.cashSupportAmount = 'Số tiền hỗ trợ phải lớn hơn hoặc bằng 0.';
+    }
     const seenSupplyItems = new Set<string>();
     if (
       !packageForm.items.length ||
@@ -697,8 +875,7 @@ export default function ReliefDistributionPage() {
         reliefPackageDefinitionId: editingPackage.reliefPackageDefinitionId,
         data: {
           ...packageForm,
-          outputSupplyItemId:
-            packageForm.items[0]?.supplyItemId || editingPackage.outputSupplyItemId,
+          cashSupportAmount,
         },
       });
       handleCancelEditPackage();
@@ -707,8 +884,63 @@ export default function ReliefDistributionPage() {
       setPackageErrors({
         name: pickFieldError(parsed.fieldErrors, 'Name', 'name'),
         description: pickFieldError(parsed.fieldErrors, 'Description', 'description'),
+        cashSupportAmount: pickFieldError(
+          parsed.fieldErrors,
+          'CashSupportAmount',
+          'cashSupportAmount',
+        ),
         items: pickFieldError(parsed.fieldErrors, 'Items', 'items'),
       });
+    }
+  };
+
+  const handleAssembleSelectedPackage = async () => {
+    if (
+      !effectiveSelectedCampaignId ||
+      !assignForm.reliefPackageDefinitionId ||
+      !station?.reliefStationId ||
+      !inventoryBalance?.campaignInventoryId
+    ) {
+      toast.error('Chưa đủ thông tin tồn kho chiến dịch để đóng gói hỗ trợ.');
+      return;
+    }
+
+    if (!packageAssemblyAvailability || packageAssemblyAvailability.maxAssemblableQuantity <= 0) {
+      toast.error('Gói đang chọn chưa đủ thành phần trong tồn kho chiến dịch để đóng gói.');
+      return;
+    }
+
+    try {
+      await assemblePackageMutation.mutateAsync({
+        campaignId: effectiveSelectedCampaignId,
+        reliefPackageDefinitionId: assignForm.reliefPackageDefinitionId,
+        data: {
+          reliefStationId: station.reliefStationId,
+          campaignInventoryId: inventoryBalance.campaignInventoryId,
+          quantityToAssemble: 1,
+          notes: 'Assemble nhanh từ trang phân phối cứu trợ',
+        },
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: CAMPAIGN_QUERY_KEYS.inventoryBalance(effectiveSelectedCampaignId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: RELIEF_DISTRIBUTION_KEYS.assemblyAvailability(
+            effectiveSelectedCampaignId,
+            assignForm.reliefPackageDefinitionId,
+            {
+              reliefStationId: station.reliefStationId,
+              campaignInventoryId: inventoryBalance.campaignInventoryId,
+            },
+          ),
+        }),
+      ]);
+      toast.success('Đã đóng nhanh 1 gói hỗ trợ');
+    } catch (error) {
+      const parsed = parseApiError(error, 'Không thể đóng gói hỗ trợ');
+      toast.error(parsed.message);
     }
   };
 
@@ -759,10 +991,162 @@ export default function ReliefDistributionPage() {
     }
   };
 
+  const handleSubmitBudgetExtract = async () => {
+    if (!effectiveSelectedCampaignId) return;
+    const nextErrors: Record<string, string> = {};
+    const amount = parseInt((budgetExtractForm.amount || '0').replace(/\D/g, ''), 10) || 0;
+
+    if (!budgetExtractForm.sourceCampaignId) {
+      nextErrors.sourceCampaignId = 'Vui lòng chọn chiến dịch gây quỹ nguồn.';
+    }
+    if (amount <= 0) {
+      nextErrors.amount = 'Số tiền trích phải lớn hơn 0.';
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setBudgetExtractErrors(nextErrors);
+      toast.error(Object.values(nextErrors)[0]);
+      return;
+    }
+
+    try {
+      setBudgetExtractErrors({});
+      await extractBudgetMutation.mutateAsync({
+        id: budgetExtractForm.sourceCampaignId,
+        data: {
+          targetReliefCampaignId: effectiveSelectedCampaignId,
+          amount,
+          note: budgetExtractForm.note || undefined,
+        },
+      });
+      setBudgetExtractOpen(false);
+      setBudgetExtractForm({ sourceCampaignId: '', amount: '', note: '' });
+      await queryClient.invalidateQueries({
+        queryKey: CAMPAIGN_QUERY_KEYS.inventoryBalance(effectiveSelectedCampaignId),
+      });
+    } catch (error) {
+      const parsed = parseApiError(error, 'Không thể trích ngân sách');
+      setBudgetExtractErrors({
+        sourceCampaignId: pickFieldError(
+          parsed.fieldErrors,
+          'SourceCampaignId',
+          'sourceCampaignId',
+          'TargetReliefCampaignId',
+          'targetReliefCampaignId',
+        ),
+        amount: pickFieldError(parsed.fieldErrors, 'Amount', 'amount'),
+        note: pickFieldError(parsed.fieldErrors, 'Note', 'note'),
+        form: parsed.message,
+      });
+      toast.error(parsed.message);
+    }
+  };
+
+  const handleOpenCompleteDelivery = (item: HouseholdChecklistItemResponse) => {
+    setCompleteDeliveryTarget(item);
+    setCompleteDeliveryErrors({});
+    setCompleteDeliveryForm({
+      notes: item.notes || '',
+      proofNote: '',
+      proofFileUrl: '',
+      proofContentType: '',
+      cashSupportAmount: '',
+    });
+  };
+
+  const handleSubmitCompleteDelivery = async () => {
+    if (!effectiveSelectedCampaignId || !completeDeliveryTarget) return;
+    const nextErrors: Record<string, string> = {};
+    const cashSupportAmount =
+      parseInt((completeDeliveryForm.cashSupportAmount || '0').replace(/\D/g, ''), 10) || 0;
+
+    if (!completeDeliveryForm.proofFileUrl.trim()) {
+      nextErrors.proofFileUrl = 'Vui lòng nhập URL minh chứng.';
+    }
+    if (cashSupportAmount < 0) {
+      nextErrors.cashSupportAmount = 'Số tiền hỗ trợ phải lớn hơn hoặc bằng 0.';
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setCompleteDeliveryErrors(nextErrors);
+      toast.error(Object.values(nextErrors)[0]);
+      return;
+    }
+
+    try {
+      setCompleteDeliveryErrors({});
+      await completeDeliveryMutation.mutateAsync({
+        campaignId: effectiveSelectedCampaignId,
+        householdDeliveryId: completeDeliveryTarget.householdDeliveryId,
+        data: {
+          reliefPackageDefinitionId: completeDeliveryTarget.reliefPackageDefinitionId,
+          campaignTeamId: completeDeliveryTarget.campaignTeamId || undefined,
+          notes: completeDeliveryForm.notes || undefined,
+          proofNote: completeDeliveryForm.proofNote || undefined,
+          proofFileUrl: completeDeliveryForm.proofFileUrl,
+          proofContentType: completeDeliveryForm.proofContentType || undefined,
+          cashSupportAmount,
+        },
+      });
+      setCompleteDeliveryTarget(null);
+      setCompleteDeliveryErrors({});
+    } catch (error) {
+      const parsed = parseApiError(error, 'Không thể hoàn tất phát quà');
+      setCompleteDeliveryErrors({
+        proofFileUrl: pickFieldError(parsed.fieldErrors, 'ProofFileUrl', 'proofFileUrl'),
+        proofContentType: pickFieldError(
+          parsed.fieldErrors,
+          'ProofContentType',
+          'proofContentType',
+        ),
+        proofNote: pickFieldError(parsed.fieldErrors, 'ProofNote', 'proofNote'),
+        notes: pickFieldError(parsed.fieldErrors, 'Notes', 'notes'),
+        cashSupportAmount: pickFieldError(
+          parsed.fieldErrors,
+          'CashSupportAmount',
+          'cashSupportAmount',
+        ),
+        form: parsed.message,
+      });
+      toast.error(parsed.message);
+    }
+  };
+
   const handleEditHousehold = (household: CampaignHouseholdResponse) => {
     setEditingHousehold(household);
     setHouseholdEditForm(mapHouseholdToEditForm(household));
     setHouseholdEditErrors({});
+  };
+
+  const handleOpenUpdateStatus = (household: CampaignHouseholdResponse) => {
+    setUpdateStatusTarget(household);
+    setUpdateStatusForm({
+      status: Number(household.fulfillmentStatus ?? 0),
+      notes: household.notes || '',
+    });
+    setUpdateStatusErrors({});
+  };
+
+  const handleSubmitUpdateStatus = async () => {
+    if (!effectiveSelectedCampaignId || !updateStatusTarget) return;
+
+    try {
+      setUpdateStatusErrors({});
+      await patchHouseholdStatusMutation.mutateAsync({
+        campaignId: effectiveSelectedCampaignId,
+        campaignHouseholdId: updateStatusTarget.campaignHouseholdId,
+        data: {
+          status: updateStatusForm.status,
+          notes: updateStatusForm.notes || undefined,
+        },
+      });
+
+      setUpdateStatusTarget(null);
+    } catch (error) {
+      const parsed = parseApiError(error, 'Không thể cập nhật trạng thái hộ dân');
+      setUpdateStatusErrors({ form: parsed.message });
+      toast.error(parsed.message);
+    }
   };
 
   const handleSaveHousehold = async () => {
@@ -862,9 +1246,9 @@ export default function ReliefDistributionPage() {
   const handleAssignSelectedHouseholds = async () => {
     const nextErrors: Record<string, string> = {};
     if (!effectiveSelectedCampaignId) nextErrors.form = 'Vui lòng chọn chiến dịch cứu trợ.';
-    if (teams.length === 0) nextErrors.campaignTeamId = 'Chiến dịch chưa có team để phân công.';
+    if (teams.length === 0) nextErrors.campaignTeamId = 'Chiến dịch chưa có đội để phân công.';
     if (!effectiveAssignForm.campaignTeamId)
-      nextErrors.campaignTeamId = 'Vui lòng chọn team phụ trách.';
+      nextErrors.campaignTeamId = 'Vui lòng chọn đội phụ trách.';
     if (!effectiveAssignForm.reliefPackageDefinitionId)
       nextErrors.reliefPackageDefinitionId = 'Vui lòng chọn gói cứu trợ.';
     if (!effectiveAssignForm.scheduledAt)
@@ -934,31 +1318,19 @@ export default function ReliefDistributionPage() {
 
   const distributionPointSummaries = useMemo(
     () =>
-      distributionPoints.map((point) => {
-        const pointHouseholds = households.filter(
-          (household) => household.distributionPointId === point.distributionPointId,
-        );
-        const pointChecklist = checklist.filter(
-          (item) => item.distributionPointId === point.distributionPointId,
-        );
-        const pointTeamIds = Array.from(
-          new Set(pointChecklist.map((item) => item.campaignTeamId).filter(Boolean)),
-        );
-
-        return {
-          id: point.distributionPointId,
-          name: point.name,
-          address: point.address || '',
-          latitude: point.latitude,
-          longitude: point.longitude,
-          startsAt: point.startsAt,
-          endsAt: point.endsAt || undefined,
-          teamNames: pointTeamIds.map((teamId) => teamNameById[teamId as string]).filter(Boolean),
-          assignedHouseholdCount: pointHouseholds.length,
-          deliveredCount: pointChecklist.filter((item) => Number(item.status) === 2).length,
-        };
-      }),
-    [distributionPoints, households, checklist, teamNameById],
+      distributionPoints.map((point) => ({
+        id: point.distributionPointId,
+        name: point.name,
+        address: point.address || '',
+        latitude: point.latitude,
+        longitude: point.longitude,
+        startsAt: point.startsAt,
+        endsAt: point.endsAt || undefined,
+        teamNames: point.assignedTeams?.map((t) => t.campaignTeamName).filter(Boolean) ?? [],
+        assignedHouseholdCount: point.assignedHouseholdCount ?? 0,
+        deliveredCount: (point.totalDeliveryCount ?? 0) - (point.pendingDeliveryCount ?? 0),
+      })),
+    [distributionPoints],
   );
 
   const teamActivitySummary = useMemo(() => {
@@ -1081,11 +1453,14 @@ export default function ReliefDistributionPage() {
     return filteredPackageList.slice(start, start + PACKAGE_ITEMS_PER_PAGE);
   }, [filteredPackageList, packageListPage, totalPackageListPages]);
 
-  const totalChecklistPages = Math.max(1, Math.ceil(checklist.length / CHECKLIST_ITEMS_PER_PAGE));
-  const paginatedChecklist = useMemo(() => {
-    const start = (Math.min(checklistPage, totalChecklistPages) - 1) * CHECKLIST_ITEMS_PER_PAGE;
-    return checklist.slice(start, start + CHECKLIST_ITEMS_PER_PAGE);
-  }, [checklist, checklistPage, totalChecklistPages]);
+  const totalChecklistPages = Math.max(1, checklistPagination?.totalPages ?? 1);
+  const paginatedChecklist = checklist;
+
+  const totalDeliveriesPages = Math.max(1, deliveriesPagination?.totalPages ?? 1);
+  const paginatedDeliveries = deliveries;
+
+  const totalShortageRequestsPages = Math.max(1, shortageRequestsPagination?.totalPages ?? 1);
+  const paginatedShortageRequests = shortageRequests;
 
   const canAssign =
     !!effectiveSelectedCampaignId &&
@@ -1115,7 +1490,7 @@ export default function ReliefDistributionPage() {
             selectedCampaignId={selectedCampaignId}
             onCampaignChange={(value) => {
               setSelectedCampaignId(value);
-              setCurrentPage(1);
+              resetAllPages();
               setSelectedHouseholdIds(new Set());
             }}
             campaigns={reliefCampaigns}
@@ -1126,7 +1501,7 @@ export default function ReliefDistributionPage() {
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Hộ dân chờ gán"
-              value={households.length}
+              value={householdsPagination?.totalCount ?? households.length}
               note="Danh sách hộ dân cần sắp xếp phân phối"
               icon="groups"
               iconClass="bg-primary/10 text-primary"
@@ -1146,12 +1521,350 @@ export default function ReliefDistributionPage() {
               iconClass="bg-amber-500/10 text-amber-600 dark:text-amber-300"
             />
             <StatCard
+              label="Mặt hàng trong chiến dịch"
+              value={inventoryBalance?.distinctSupplyItemCount ?? 0}
+              note={
+                inventoryBalance?.campaignInventoryId
+                  ? 'Số loại hàng hiện có trong tồn kho chiến dịch'
+                  : 'Chiến dịch chưa có tồn kho hoặc chưa được cấp phát hàng'
+              }
+              icon="inventory"
+              iconClass="bg-violet-500/10 text-violet-600 dark:text-violet-300"
+            />
+            <StatCard
               label="Gói hỗ trợ đã tạo"
               value={packages.length}
               note="Dùng để gán cho hộ dân khi phân phối"
               icon="inventory_2"
               iconClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
             />
+          </div>
+
+          <ReliefAdvancedFilters
+            value={filtersValue}
+            onChange={handleFiltersChange}
+            onReset={resetFilters}
+            expanded={filtersExpanded}
+            onExpandedChange={setFiltersExpanded}
+            teams={teams.map((team) => ({ label: team.teamName, value: team.campaignTeamId }))}
+            distributionPoints={distributionPoints.map((point) => ({
+              label: point.name,
+              value: point.distributionPointId,
+            }))}
+            showIsolationFilter
+            title="Bộ lọc điều phối phân phối"
+          />
+
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+            <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">Tồn kho chiến dịch</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Đây là nguồn dữ liệu chính để đóng gói hỗ trợ và theo dõi lượng hàng thực tế của
+                    chiến dịch.
+                  </p>
+                </div>
+                <Badge
+                  variant={inventoryBalance?.campaignInventoryId ? 'success' : 'warning'}
+                  appearance="light"
+                >
+                  {inventoryBalance?.campaignInventoryId
+                    ? 'Sẵn sàng để đóng gói'
+                    : 'Chưa có tồn kho'}
+                </Badge>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Ngân sách tổng
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-foreground">
+                    {formatNumberVN(inventoryBalance?.budgetTotal ?? 0)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Đã chi</p>
+                  <p className="mt-2 text-lg font-semibold text-foreground">
+                    {formatNumberVN(inventoryBalance?.budgetSpent ?? 0)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Tổng số lượng
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-foreground">
+                    {formatNumberVN(inventoryBalance?.totalQuantity ?? 0)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-dashed border-border bg-muted/10 p-4 text-sm">
+                <p className="text-xs text-muted-foreground">Mã tồn kho chiến dịch</p>
+                <p className="mt-1 text-muted-foreground break-all">
+                  {inventoryBalance?.campaignInventoryId || 'Chưa phát sinh'}
+                </p>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                <div>
+                  <p className="font-medium text-blue-900">Duyệt yêu cầu thiếu hàng (Mobile)</p>
+                  <p className="text-sm text-blue-800/80">
+                    Xem và duyệt nhanh các yêu cầu thiếu hàng từ đội phát trực tiếp trên mobile.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2 border-blue-300 bg-white text-blue-700 hover:bg-blue-100"
+                  onClick={() => setShowMobileShortageReview(true)}
+                  disabled={!effectiveSelectedCampaignId}
+                >
+                  <span className="material-symbols-outlined text-[18px]">mobile_friendly</span>
+                  Duyệt thiếu hàng
+                </Button>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <div>
+                  <p className="font-medium text-emerald-900">Bổ sung quỹ chi cứu trợ</p>
+                  <p className="text-sm text-emerald-800/80">
+                    Trích ngân sách từ chiến dịch gây quỹ để bổ sung số dư cho campaign cứu trợ này.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2 border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-100"
+                  onClick={() => setBudgetExtractOpen(true)}
+                  disabled={!effectiveSelectedCampaignId}
+                >
+                  <span className="material-symbols-outlined text-[18px]">
+                    account_balance_wallet
+                  </span>
+                  Trích ngân sách
+                </Button>
+              </div>
+
+              {inventoryBalanceError ? (
+                <p className="mt-4 text-sm text-destructive">{inventoryBalanceError.message}</p>
+              ) : isLoadingInventoryBalance ? (
+                <p className="mt-4 text-sm text-muted-foreground">Đang tải tồn kho chiến dịch...</p>
+              ) : !inventoryBalance?.items?.length ? (
+                <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  <p className="font-medium">Tồn kho chiến dịch đang trống</p>
+                  <p className="mt-1">
+                    Cần duyệt cấp phát trước khi có thể đóng gói hỗ trợ từ tồn kho chiến dịch.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {inventoryBalance.items.slice(0, 6).map((item) => (
+                    <div
+                      key={item.supplyItemId}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3"
+                    >
+                      <div>
+                        <p className="font-medium text-foreground">{item.supplyItemName}</p>
+                        <p className="text-xs text-muted-foreground break-all">
+                          {item.supplyItemId}
+                        </p>
+                      </div>
+                      <Badge variant="outline" appearance="light">
+                        {formatNumberVN(item.quantity)} {item.supplyItemUnit}
+                      </Badge>
+                    </div>
+                  ))}
+                  {inventoryBalance.items.length > 6 && (
+                    <p className="text-xs text-muted-foreground">
+                      +{formatNumberVN(inventoryBalance.items.length - 6)} mặt hàng khác trong tồn
+                      kho chiến dịch.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">
+                    Khả năng đóng gói hỗ trợ
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Chọn gói ở bước gán hộ để biết hiện tại có thể đóng được bao nhiêu gói hỗ trợ.
+                  </p>
+                </div>
+                <Badge
+                  variant={
+                    packageAssemblyAvailability?.maxAssemblableQuantity
+                      ? 'success'
+                      : selectedPackageForAvailability
+                        ? 'warning'
+                        : 'info'
+                  }
+                  appearance="light"
+                >
+                  {selectedPackageForAvailability?.name || 'Chưa chọn gói'}
+                </Badge>
+              </div>
+
+              {!assignForm.reliefPackageDefinitionId ? (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Chọn gói ở bước gán hộ để tải dữ liệu khả năng đóng gói từ hệ thống.
+                </p>
+              ) : isLoadingAssemblyAvailability ? (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Đang kiểm tra khả năng đóng gói...
+                </p>
+              ) : packageAssemblyAvailabilityError ? (
+                <p className="mt-4 text-sm text-destructive">
+                  {
+                    parseApiError(
+                      packageAssemblyAvailabilityError,
+                      'Không tải được dữ liệu khả năng đóng gói',
+                    ).message
+                  }
+                </p>
+              ) : packageAssemblyAvailability ? (
+                <div className="mt-4 space-y-4">
+                  <div
+                    className={`rounded-2xl border px-4 py-4 ${
+                      packageAssemblyAvailability.maxAssemblableQuantity > 0
+                        ? 'border-emerald-300 bg-emerald-50'
+                        : 'border-amber-300 bg-amber-50'
+                    }`}
+                  >
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Kết quả đóng gói hiện tại
+                    </p>
+                    <div className="mt-2 flex items-end justify-between gap-3">
+                      <div>
+                        <p className="text-3xl font-black text-foreground">
+                          {formatNumberVN(packageAssemblyAvailability.maxAssemblableQuantity)}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {packageAssemblyAvailability.outputUnit} có thể đóng ngay
+                        </p>
+                      </div>
+                      <Badge
+                        variant={
+                          packageAssemblyAvailability.maxAssemblableQuantity > 0
+                            ? 'success'
+                            : 'warning'
+                        }
+                        appearance="light"
+                      >
+                        {packageAssemblyAvailability.maxAssemblableQuantity > 0
+                          ? 'Có thể đóng gói'
+                          : 'Đang thiếu hàng'}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-border bg-muted/20 p-4">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Vật phẩm đầu ra
+                      </p>
+                      <p className="mt-2 font-semibold text-foreground">
+                        {packageAssemblyAvailability.outputSupplyItemName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {packageAssemblyAvailability.outputUnit} · Mã tồn kho chiến dịch:{' '}
+                        {packageAssemblyAvailability.campaignInventoryId || '—'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-muted/20 p-4">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Số gói tối đa
+                      </p>
+                      <p className="mt-2 font-semibold text-foreground">
+                        {formatNumberVN(packageAssemblyAvailability.maxAssemblableQuantity)}{' '}
+                        {packageAssemblyAvailability.outputUnit}
+                      </p>
+                    </div>
+                  </div>
+
+                  {packageAssemblyAvailability.maxAssemblableQuantity <= 0 && (
+                    <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      <p className="font-medium">Chưa thể đóng gói này</p>
+                      <p className="mt-1">
+                        Hệ thống đang thiếu một hoặc nhiều thành phần trong tồn kho chiến dịch. Xem
+                        các dòng bên dưới để biết vật phẩm đang giới hạn số lượng gói.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    {packageAssemblyAvailability.components.map((component) => (
+                      <div
+                        key={component.supplyItemId}
+                        className={`rounded-xl border px-4 py-3 ${
+                          component.maxAssemblableByItem <=
+                          packageAssemblyAvailability.maxAssemblableQuantity
+                            ? 'border-amber-300 bg-amber-50'
+                            : 'border-border bg-muted/20'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-medium text-foreground">
+                                {component.supplyItemName}
+                              </p>
+                              {component.maxAssemblableByItem <=
+                                packageAssemblyAvailability.maxAssemblableQuantity && (
+                                <Badge variant="warning" appearance="light">
+                                  Vật phẩm giới hạn
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Cần {formatNumberVN(component.requiredPerPackage)} {component.unit} /
+                              gói
+                            </p>
+                          </div>
+                          <div className="text-right text-xs text-muted-foreground">
+                            <p>
+                              Tồn hiện có: {formatNumberVN(component.availableQuantity)}{' '}
+                              {component.unit}
+                            </p>
+                            <p>
+                              Tối đa theo vật phẩm: {formatNumberVN(component.maxAssemblableByItem)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button
+                    type="button"
+                    className="gap-2"
+                    disabled={
+                      assemblePackageMutation.isPending ||
+                      packageAssemblyAvailability.maxAssemblableQuantity <= 0
+                    }
+                    onClick={handleAssembleSelectedPackage}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">inventory_2</span>
+                    {packageAssemblyAvailability.maxAssemblableQuantity > 0
+                      ? 'Đóng ngay 1 gói'
+                      : 'Chưa thể đóng gói'}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Thao tác này sẽ tiêu hao ngay hàng trong tồn kho chiến dịch và cộng vật phẩm đầu
+                    ra vào tồn kho chiến dịch.
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Chưa có dữ liệu khả năng đóng gói.
+                </p>
+              )}
+            </div>
           </div>
 
           <CoordinatorReliefDistributionSetupSteps
@@ -1279,10 +1992,10 @@ export default function ReliefDistributionPage() {
             <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
               <div className="mb-4">
                 <ReliefStickySectionHeader
-                  title="Theo dõi hoạt động team"
-                  description="Tổng hợp nhanh số hộ đã được giao và đã hoàn tất theo từng team."
+                  title="Theo dõi hoạt động đội"
+                  description="Tổng hợp nhanh số hộ đã được giao và đã hoàn tất theo từng đội."
                   badgeIcon="groups"
-                  badgeLabel={`${formatNumberInputVN(filteredTeamActivitySummary.length)} team`}
+                  badgeLabel={`${formatNumberInputVN(filteredTeamActivitySummary.length)} đội`}
                 />
               </div>
               <div className="max-h-[292px] space-y-3 overflow-y-auto pr-1">
@@ -1318,8 +2031,8 @@ export default function ReliefDistributionPage() {
                     </span>
                     <p className="mt-3 font-medium text-foreground">
                       {teamActivitySummary.length === 0
-                        ? 'Chưa có hoạt động team để hiển thị.'
-                        : 'Không tìm thấy team phù hợp với bộ lọc hiện tại.'}
+                        ? 'Chưa có hoạt động đội để hiển thị.'
+                        : 'Không tìm thấy đội phù hợp với bộ lọc hiện tại.'}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {teamActivitySummary.length === 0
@@ -1529,11 +2242,18 @@ export default function ReliefDistributionPage() {
                             </span>
                             {formatNumberVN(pkg.items.length)} vật phẩm
                           </Badge>
+                          {/* <Badge variant="outline" appearance="light">
+                            Đầu ra: {pkg.outputSupplyItemName || 'Chưa rõ'}
+                            {pkg.outputUnit ? ` · ${pkg.outputUnit}` : ''}
+                          </Badge> */}
                           {pkg.isDefault && (
                             <Badge variant="success" appearance="light">
                               Mặc định
                             </Badge>
                           )}
+                          <Badge variant="info" appearance="light">
+                            Tiền mặt: {formatNumberVN(pkg.cashSupportAmount ?? 0) + ' VNĐ'}
+                          </Badge>
                         </div>
                       </div>
                       <Separator className="my-3" />
@@ -1629,9 +2349,7 @@ export default function ReliefDistributionPage() {
             assignedTeamNameByHouseholdId={Object.fromEntries(
               households.map((household) => [
                 household.campaignHouseholdId,
-                household.campaignTeamId
-                  ? teamNameById[household.campaignTeamId] || 'Đã gán team'
-                  : '',
+                household.campaignTeamName || (household.campaignTeamId ? 'Đã gán đội' : ''),
               ]),
             )}
             onToggleHousehold={handleToggleHousehold}
@@ -1652,8 +2370,6 @@ export default function ReliefDistributionPage() {
             hasDistributionPoint={!!defaultDistributionPointId}
             householdSearch={householdSearch}
             onChangeHouseholdSearch={setHouseholdSearch}
-            assignmentFilter={assignmentFilter}
-            onChangeAssignmentFilter={setAssignmentFilter}
             onJumpToCreateTeam={() => navigate('/portal/coordinator/teams')}
             onJumpToCreatePackage={() => scrollToSection(PACKAGE_SECTION_ID)}
             assignErrors={assignErrors}
@@ -1667,7 +2383,89 @@ export default function ReliefDistributionPage() {
                 label: household.householdCode,
               })
             }
+            onUpdateStatusHousehold={(household) =>
+              handleOpenUpdateStatus(household as CampaignHouseholdResponse)
+            }
           />
+
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm mt-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Danh sách giao hàng</h3>
+              <p className="text-sm text-muted-foreground">
+                Theo dõi tiến độ giao hàng theo thứ tự thực tế
+              </p>
+            </div>
+            {deliveries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Chưa có giao hàng nào.</p>
+            ) : (
+              <div className="space-y-3">
+                {paginatedDeliveries.map((delivery) => (
+                  <div
+                    key={delivery.householdDeliveryId}
+                    className="rounded-xl border bg-muted/20 p-4"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium">{delivery.householdCode}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {delivery.campaignTeamName || 'Chưa rõ đội'} ·{' '}
+                          {delivery.distributionPointName || 'Không có điểm'}
+                        </p>
+                      </div>
+                      <Badge variant={delivery.status === 2 ? 'success' : 'warning'}>
+                        {delivery.status === 2 ? 'Đã phát' : 'Chưa phát'}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm mt-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Yêu cầu thiếu hàng</h3>
+                <p className="text-sm text-muted-foreground">
+                  Các yêu cầu bổ sung hàng hóa từ đội phát
+                </p>
+              </div>
+              <Badge variant={shortageRequests.length > 0 ? 'warning' : 'success'}>
+                {shortageRequests.length} chờ duyệt
+              </Badge>
+            </div>
+            {shortageRequests.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Không có yêu cầu nào.</p>
+            ) : (
+              <div className="space-y-3">
+                {paginatedShortageRequests.map((request) => (
+                  <div
+                    key={request.supplyShortageRequestId}
+                    className="rounded-xl border bg-muted/20 p-4"
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="font-medium">
+                          {request.distributionPointName || 'Không có điểm'} ·{' '}
+                          {request.campaignTeamName || 'Không có team'}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {request.requestedByUserName}
+                        </p>
+                      </div>
+                      <Badge variant="warning">Chờ duyệt</Badge>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Vật phẩm:{' '}
+                      {request.items
+                        .map((i) => `${i.supplyItemName} (${i.quantityRequested})`)
+                        .join(', ')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="mb-4">
@@ -1675,7 +2473,7 @@ export default function ReliefDistributionPage() {
                 Bước 5. Rà soát checklist phân phối
               </h3>
               <p className="text-sm text-muted-foreground">
-                Kiểm tra danh sách hộ đã được gán, thời gian hẹn phát và trạng thái thực hiện.
+                Kiểm tra danh sách hộ đã được gán, thờ gian hẹn phát và trạng thái thực hiện.
               </p>
             </div>
             <div className="space-y-3">
@@ -1695,7 +2493,16 @@ export default function ReliefDistributionPage() {
                           {item.householdCode} · {item.headOfHouseholdName}
                         </p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          {teamNameById[item.campaignTeamId || ''] || 'Chưa rõ team'} · Hẹn phát{' '}
+                          {item.campaignTeamName ||
+                            teamNameById[item.campaignTeamId || ''] ||
+                            'Chưa rõ đội'}
+                          {item.distributionPointName
+                            ? ` · Điểm: ${item.distributionPointName}`
+                            : ''}
+                          {item.reliefPackageDefinitionName
+                            ? ` · Gói: ${item.reliefPackageDefinitionName}`
+                            : ''}
+                          {' · Hẹn phát '}
                           {formatDateTimeVN(item.scheduledAt)}
                         </p>
                       </div>
@@ -1704,8 +2511,46 @@ export default function ReliefDistributionPage() {
                         {item.deliveredAt ? formatDateTimeVN(item.deliveredAt) : 'Chưa phát'}
                       </div>
                     </div>
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        type="button"
+                        variant={item.deliveredAt ? 'outline' : 'primary'}
+                        className="gap-2"
+                        disabled={!!item.deliveredAt}
+                        onClick={() => handleOpenCompleteDelivery(item)}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">task_alt</span>
+                        {item.deliveredAt ? 'Đã hoàn tất' : 'Hoàn tất phát quà'}
+                      </Button>
+                    </div>
                   </div>
                 ))
+              )}
+              {totalShortageRequestsPages > 1 && (
+                <div className="mt-4">
+                  <ReliefPaginationBar
+                    currentPage={Math.min(shortageRequestsPage, totalShortageRequestsPages)}
+                    totalPages={totalShortageRequestsPages}
+                    onPrevious={() => setShortageRequestsPage((prev) => Math.max(1, prev - 1))}
+                    onNext={() =>
+                      setShortageRequestsPage((prev) =>
+                        Math.min(totalShortageRequestsPages, prev + 1),
+                      )
+                    }
+                  />
+                </div>
+              )}
+              {totalDeliveriesPages > 1 && (
+                <div className="mt-4">
+                  <ReliefPaginationBar
+                    currentPage={Math.min(deliveriesPage, totalDeliveriesPages)}
+                    totalPages={totalDeliveriesPages}
+                    onPrevious={() => setDeliveriesPage((prev) => Math.max(1, prev - 1))}
+                    onNext={() =>
+                      setDeliveriesPage((prev) => Math.min(totalDeliveriesPages, prev + 1))
+                    }
+                  />
+                </div>
               )}
             </div>
             {checklist.length > CHECKLIST_ITEMS_PER_PAGE && (
@@ -1717,6 +2562,69 @@ export default function ReliefDistributionPage() {
               />
             )}
           </div>
+
+          <Dialog
+            open={!!updateStatusTarget}
+            onOpenChange={(open) => {
+              if (!open) {
+                setUpdateStatusTarget(null);
+                setUpdateStatusErrors({});
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Cập nhật trạng thái hộ dân</DialogTitle>
+                <DialogDescription>
+                  Chuyển trạng thái xử lý của hộ dân theo tiến độ thực tế.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Trạng thái</p>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={updateStatusForm.status}
+                    onChange={(e) =>
+                      setUpdateStatusForm((prev) => ({ ...prev, status: Number(e.target.value) }))
+                    }
+                  >
+                    <option value={0}>Chờ xử lý</option>
+                    <option value={1}>Đang tiến hành</option>
+                    <option value={2}>Hoàn thành</option>
+                    <option value={3}>Bị kẹt</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Ghi chú</p>
+                  <Textarea
+                    value={updateStatusForm.notes}
+                    onChange={(e) =>
+                      setUpdateStatusForm((prev) => ({ ...prev, notes: e.target.value }))
+                    }
+                    placeholder="Nhập ghi chú tiến độ hoặc lý do bị kẹt"
+                    rows={4}
+                  />
+                </div>
+
+                {updateStatusErrors.form && (
+                  <p className="text-sm text-destructive">{updateStatusErrors.form}</p>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setUpdateStatusTarget(null)}>
+                  Hủy
+                </Button>
+                <Button type="button" className="gap-2" onClick={handleSubmitUpdateStatus}>
+                  <span className="material-symbols-outlined text-[18px]">sync_alt</span>
+                  Cập nhật trạng thái
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <Sheet
             open={!!editingHousehold}
@@ -1929,6 +2837,239 @@ export default function ReliefDistributionPage() {
             cancelText="Huỷ"
             variant="destructive"
             onConfirm={handleConfirmDelete}
+          />
+
+          <Dialog open={budgetExtractOpen} onOpenChange={setBudgetExtractOpen}>
+            <DialogContent className="sm:max-w-[560px]">
+              <DialogHeader>
+                <DialogTitle>Trích ngân sách sang chiến dịch cứu trợ</DialogTitle>
+                <DialogDescription>
+                  Chọn chiến dịch gây quỹ nguồn, số tiền và ghi chú để chuyển quỹ sang campaign này.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Chiến dịch gây quỹ nguồn</p>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={budgetExtractForm.sourceCampaignId}
+                    onChange={(e) =>
+                      setBudgetExtractForm((prev) => ({
+                        ...prev,
+                        sourceCampaignId: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Chọn chiến dịch gây quỹ</option>
+                    {fundraisingCampaigns.map((campaign) => (
+                      <option key={campaign.campaignId} value={campaign.campaignId}>
+                        {campaign.name}
+                      </option>
+                    ))}
+                  </select>
+                  {budgetExtractErrors.sourceCampaignId && (
+                    <p className="text-sm text-destructive">
+                      {budgetExtractErrors.sourceCampaignId}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Số tiền trích</p>
+                  <Input
+                    placeholder="Ví dụ: 10000000"
+                    value={budgetExtractForm.amount}
+                    onChange={(e) =>
+                      setBudgetExtractForm((prev) => ({
+                        ...prev,
+                        amount: formatNumberInputVN(e.target.value),
+                      }))
+                    }
+                  />
+                  {budgetExtractErrors.amount && (
+                    <p className="text-sm text-destructive">{budgetExtractErrors.amount}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Ghi chú</p>
+                  <Textarea
+                    placeholder="Ví dụ: Bổ sung ngân sách hỗ trợ tiền mặt"
+                    value={budgetExtractForm.note}
+                    onChange={(e) =>
+                      setBudgetExtractForm((prev) => ({ ...prev, note: e.target.value }))
+                    }
+                  />
+                  {budgetExtractErrors.note && (
+                    <p className="text-sm text-destructive">{budgetExtractErrors.note}</p>
+                  )}
+                </div>
+
+                {budgetExtractErrors.form && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                    {budgetExtractErrors.form}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setBudgetExtractOpen(false)}>
+                  Hủy
+                </Button>
+                <Button
+                  onClick={handleSubmitBudgetExtract}
+                  disabled={extractBudgetMutation.isPending}
+                >
+                  {extractBudgetMutation.isPending ? 'Đang trích...' : 'Xác nhận trích ngân sách'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={!!completeDeliveryTarget}
+            onOpenChange={(open) => {
+              if (!open) {
+                setCompleteDeliveryTarget(null);
+                setCompleteDeliveryErrors({});
+              }
+            }}
+          >
+            <DialogContent className="sm:max-w-[640px]">
+              <DialogHeader>
+                <DialogTitle>Hoàn tất phát quà</DialogTitle>
+                <DialogDescription>
+                  Bổ sung minh chứng và tiền mặt hỗ trợ thực tế cho lượt phát này.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                {completeDeliveryTarget && (
+                  <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm">
+                    <p className="font-medium text-foreground">
+                      {completeDeliveryTarget.householdCode} ·{' '}
+                      {completeDeliveryTarget.headOfHouseholdName}
+                    </p>
+                    <p className="mt-1 text-muted-foreground">
+                      Hẹn phát: {formatDateTimeVN(completeDeliveryTarget.scheduledAt)}
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">URL minh chứng</p>
+                  <Input
+                    placeholder="https://..."
+                    value={completeDeliveryForm.proofFileUrl}
+                    onChange={(e) =>
+                      setCompleteDeliveryForm((prev) => ({ ...prev, proofFileUrl: e.target.value }))
+                    }
+                  />
+                  {completeDeliveryErrors.proofFileUrl && (
+                    <p className="text-sm text-destructive">
+                      {completeDeliveryErrors.proofFileUrl}
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Loại file</p>
+                    <Input
+                      placeholder="image/jpeg"
+                      value={completeDeliveryForm.proofContentType}
+                      onChange={(e) =>
+                        setCompleteDeliveryForm((prev) => ({
+                          ...prev,
+                          proofContentType: e.target.value,
+                        }))
+                      }
+                    />
+                    {completeDeliveryErrors.proofContentType && (
+                      <p className="text-sm text-destructive">
+                        {completeDeliveryErrors.proofContentType}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Tiền hỗ trợ thực tế</p>
+                    <Input
+                      placeholder="Ví dụ: 200000"
+                      value={completeDeliveryForm.cashSupportAmount}
+                      onChange={(e) =>
+                        setCompleteDeliveryForm((prev) => ({
+                          ...prev,
+                          cashSupportAmount: formatNumberInputVN(e.target.value),
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Nếu không đủ quỹ, hãy trích thêm ngân sách từ chiến dịch gây quỹ.
+                    </p>
+                    {completeDeliveryErrors.cashSupportAmount && (
+                      <p className="text-sm text-destructive">
+                        {completeDeliveryErrors.cashSupportAmount}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Ghi chú minh chứng</p>
+                  <Textarea
+                    value={completeDeliveryForm.proofNote}
+                    onChange={(e) =>
+                      setCompleteDeliveryForm((prev) => ({ ...prev, proofNote: e.target.value }))
+                    }
+                  />
+                  {completeDeliveryErrors.proofNote && (
+                    <p className="text-sm text-destructive">{completeDeliveryErrors.proofNote}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Ghi chú giao hàng</p>
+                  <Textarea
+                    value={completeDeliveryForm.notes}
+                    onChange={(e) =>
+                      setCompleteDeliveryForm((prev) => ({ ...prev, notes: e.target.value }))
+                    }
+                  />
+                  {completeDeliveryErrors.notes && (
+                    <p className="text-sm text-destructive">{completeDeliveryErrors.notes}</p>
+                  )}
+                </div>
+
+                {completeDeliveryErrors.form && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                    {completeDeliveryErrors.form}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setCompleteDeliveryTarget(null)}
+                >
+                  Hủy
+                </Button>
+                <Button
+                  onClick={handleSubmitCompleteDelivery}
+                  disabled={completeDeliveryMutation.isPending}
+                >
+                  {completeDeliveryMutation.isPending ? 'Đang hoàn tất...' : 'Xác nhận hoàn tất'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <MobileShortageRequestReview
+            campaignId={effectiveSelectedCampaignId}
+            isOpen={showMobileShortageReview}
+            onClose={() => setShowMobileShortageReview(false)}
           />
         </div>
       )}

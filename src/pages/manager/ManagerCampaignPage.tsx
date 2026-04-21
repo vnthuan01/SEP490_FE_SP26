@@ -65,7 +65,10 @@ import {
   useUpdateCampaignStatus,
   useUpdateCampaignTeamStatus,
 } from '@/hooks/useCampaigns';
-import { useSupplyAllocationsByCampaign } from '@/hooks/useSupplies';
+import {
+  useSupplyAllocationsByCampaign,
+  useUpdateSupplyAllocationStatus,
+} from '@/hooks/useSupplies';
 import { useProvinces } from '@/hooks/useLocations';
 import {
   useProvincialStations,
@@ -95,6 +98,7 @@ import {
   CampaignResourceType,
   CampaignResourceTypeLabel,
   CampaignTeamStatus,
+  SupplyAllocationStatus,
   getCampaignStatusClass,
   getCampaignStatusLabel,
   getSupplyAllocationStatusClass,
@@ -285,6 +289,10 @@ export default function ManagerCampaignPage() {
     id: string;
     name: string;
   } | null>(null);
+  const [allocationUpdateState, setAllocationUpdateState] = useState<{
+    allocationId: string;
+    nextStatus: number;
+  } | null>(null);
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [stationToAttach, setStationToAttach] = useState<{
     campaignId: string;
@@ -326,6 +334,7 @@ export default function ManagerCampaignPage() {
   const { mutateAsync: removeStation, status: removeStationStatus } =
     useRemoveStationFromCampaign();
   const { mutateAsync: updateTeamStatus } = useUpdateCampaignTeamStatus();
+  const { mutateAsync: updateAllocationStatus } = useUpdateSupplyAllocationStatus();
   const { data: allocationsByCampaign = [], isLoading: isLoadingAllocations } =
     useSupplyAllocationsByCampaign(selectedCampaignForAllocations?.id || '');
   const {
@@ -377,6 +386,20 @@ export default function ManagerCampaignPage() {
     if (!value) return '—';
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('vi-VN');
+  };
+
+  const getNextAllocationStatusActions = (status: number) => {
+    switch (status) {
+      case SupplyAllocationStatus.Pending:
+        return [
+          { label: 'Duyệt allocation', value: SupplyAllocationStatus.Approved },
+          { label: 'Hủy allocation', value: SupplyAllocationStatus.Cancelled },
+        ];
+      case SupplyAllocationStatus.Approved:
+        return [{ label: 'Đánh dấu đã giao', value: SupplyAllocationStatus.Delivered }];
+      default:
+        return [];
+    }
   };
 
   const form = useForm<CreateCampaignFormValues>({
@@ -790,6 +813,20 @@ export default function ManagerCampaignPage() {
     },
     { totalAllocations: 0, totalItems: 0, totalQuantity: 0 },
   );
+
+  const handleUpdateAllocationStatus = async () => {
+    if (!allocationUpdateState) return;
+
+    try {
+      await updateAllocationStatus({
+        id: allocationUpdateState.allocationId,
+        data: { status: allocationUpdateState.nextStatus },
+      });
+      setAllocationUpdateState(null);
+    } catch {
+      // handled by hook
+    }
+  };
 
   return (
     <DashboardLayout navGroups={managerNavGroups}>
@@ -1820,14 +1857,45 @@ export default function ManagerCampaignPage() {
                   >
                     <CardHeader className="pb-3">
                       <div>
-                        <Badge
-                          variant="outline"
-                          appearance="outline"
-                          size="sm"
-                          className={`absolute top-4 right-10 border ${getSupplyAllocationStatusClass(allocation.status)}`}
-                        >
-                          {getSupplyAllocationStatusLabel(allocation.status)}
-                        </Badge>
+                        <div className="absolute top-4 right-10 flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            appearance="outline"
+                            size="sm"
+                            className={`border ${getSupplyAllocationStatusClass(allocation.status)}`}
+                          >
+                            {getSupplyAllocationStatusLabel(allocation.status)}
+                          </Badge>
+                          {getNextAllocationStatusActions(Number(allocation.status)).length > 0 && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="sm" variant="outline" className="gap-1">
+                                  <span className="material-symbols-outlined text-[16px]">
+                                    edit
+                                  </span>
+                                  Đổi trạng thái
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {getNextAllocationStatusActions(Number(allocation.status)).map(
+                                  (action) => (
+                                    <DropdownMenuItem
+                                      key={`${allocation.allocationId}-${action.value}`}
+                                      onClick={() =>
+                                        setAllocationUpdateState({
+                                          allocationId: allocation.allocationId,
+                                          nextStatus: action.value,
+                                        })
+                                      }
+                                    >
+                                      {action.label}
+                                    </DropdownMenuItem>
+                                  ),
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
                         <div>
                           <CardTitle className="text-base py-2">
                             Phiếu điều phối #{index + 1}
@@ -1873,6 +1941,16 @@ export default function ManagerCampaignPage() {
                           ))}
                         </TableBody>
                       </Table>
+                      <div className="mt-4 rounded-xl border border-dashed border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+                        {Number(allocation.status) === SupplyAllocationStatus.Pending &&
+                          'Allocation đang chờ manager duyệt để chuyển hàng vào Kho chiến dịch.'}
+                        {Number(allocation.status) === SupplyAllocationStatus.Approved &&
+                          'Allocation đã duyệt. Hãy kiểm tra Ngân sách chiến dịch và có thể đánh dấu đã giao khi hoàn tất.'}
+                        {Number(allocation.status) === SupplyAllocationStatus.Delivered &&
+                          'Allocation đã hoàn tất giao cho chiến dịch.'}
+                        {Number(allocation.status) === SupplyAllocationStatus.Cancelled &&
+                          'Allocation đã bị hủy và sẽ không tiếp tục cấp phát cho chiến dịch.'}
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
@@ -1888,6 +1966,22 @@ export default function ManagerCampaignPage() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <ConfirmDialog
+        open={!!allocationUpdateState}
+        onOpenChange={(open) => {
+          if (!open) setAllocationUpdateState(null);
+        }}
+        title="Cập nhật trạng thái allocation"
+        description="Thay đổi trạng thái allocation sẽ ảnh hưởng trực tiếp đến Kho chiến dịch và flow package assembly."
+        confirmText={
+          allocationUpdateState
+            ? getSupplyAllocationStatusLabel(allocationUpdateState.nextStatus)
+            : 'Xác nhận'
+        }
+        cancelText="Huỷ"
+        onConfirm={handleUpdateAllocationStatus}
+      />
 
       <Dialog
         open={openDetailModal}
@@ -2605,9 +2699,81 @@ export default function ManagerCampaignPage() {
                         </div>
 
                         {(selectedCampaignInventoryBalance?.stations || []).length === 0 ? (
-                          <p className="text-sm text-muted-foreground">
-                            Chưa có trạm nào có số liệu tồn kho trong chiến dịch này.
-                          </p>
+                          !(selectedCampaignInventoryBalance?.items || []).length ? (
+                            <p className="text-sm text-muted-foreground">
+                              Chưa có stock trong Kho chiến dịch của chiến dịch này.
+                            </p>
+                          ) : (
+                            <div className="space-y-3">
+                              <div className="rounded-xl border border-border p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold text-foreground">Kho chiến dịch</p>
+                                    <p className="text-xs text-muted-foreground break-all mt-1">
+                                      Mã kho:{' '}
+                                      {selectedCampaignInventoryBalance?.campaignInventoryId?.slice(
+                                        0,
+                                        6,
+                                      ) || '—'}
+                                    </p>
+                                  </div>
+                                  <Badge
+                                    variant={
+                                      selectedCampaignInventoryBalance?.campaignInventoryId
+                                        ? 'success'
+                                        : 'outline'
+                                    }
+                                    size="sm"
+                                  >
+                                    {selectedCampaignInventoryBalance?.campaignInventoryId
+                                      ? 'Kho chiến dịch đã được khởi tạo'
+                                      : 'Chưa có Kho chiến dịch'}
+                                  </Badge>
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                                  <span>
+                                    Danh mục có hàng:{' '}
+                                    <b className="text-foreground">
+                                      {formatNumberVN(
+                                        selectedCampaignInventoryBalance?.distinctSupplyItemCount ??
+                                          0,
+                                      )}
+                                    </b>
+                                  </span>
+                                  <span>
+                                    Tổng số lượng:{' '}
+                                    <b className="text-foreground">
+                                      {formatNumberVN(
+                                        selectedCampaignInventoryBalance?.totalQuantity ?? 0,
+                                      )}
+                                    </b>
+                                  </span>
+                                </div>
+                              </div>
+
+                              {(selectedCampaignInventoryBalance?.items || []).map((item) => (
+                                <div
+                                  key={item.supplyItemId}
+                                  className="rounded-xl border border-border p-4"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                      <p className="font-semibold text-foreground">
+                                        {item.supplyItemName}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground break-all mt-1">
+                                        Mã vật phẩm: {item.supplyItemId.slice(0, 6)}
+                                      </p>
+                                    </div>
+                                    <Badge variant="outline" size="sm">
+                                      {formatNumberVN(item.quantity)} {item.supplyItemUnit}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )
                         ) : (
                           <div className="space-y-3">
                             {(selectedCampaignInventoryBalance?.stations || []).map(

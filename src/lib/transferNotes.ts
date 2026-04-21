@@ -6,7 +6,22 @@ export type ParsedTransferNotes = {
   approvalAmount?: string;
   approvalAmountInWords?: string;
   approver?: string;
+  itemMetas?: Array<{
+    key: string;
+    supplyItemId: string;
+    sourceReference?: string;
+    totalAmount?: number;
+    expiryDate?: string | null;
+  }>;
   raw?: string;
+};
+
+export type TransferApprovalItemMeta = {
+  key: string;
+  supplyItemId: string;
+  sourceReference?: string;
+  totalAmount?: number;
+  expiryDate?: string | null;
 };
 
 /**
@@ -59,6 +74,36 @@ export function parseTransferNotes(note?: string | null): ParsedTransferNotes {
         .replace(/^Approver:/i, '')
         .replace(/^Người phê duyệt:/i, '')
         .trim();
+      return;
+    }
+    if (/^ItemMeta:/i.test(part)) {
+      const rawValue = part.replace(/^ItemMeta:/i, '').trim();
+      if (!rawValue) return;
+      try {
+        const decoded = decodeURIComponent(rawValue);
+        const parsedItems = JSON.parse(decoded);
+        if (Array.isArray(parsedItems)) {
+          parsed.itemMetas = parsedItems
+            .filter((item) => item && typeof item === 'object')
+            .map((item) => ({
+              key: String(item.key || ''),
+              supplyItemId: String(item.supplyItemId || ''),
+              sourceReference:
+                typeof item.sourceReference === 'string' ? item.sourceReference.trim() : undefined,
+              totalAmount:
+                item.totalAmount != null && Number.isFinite(Number(item.totalAmount))
+                  ? Number(item.totalAmount)
+                  : undefined,
+              expiryDate:
+                typeof item.expiryDate === 'string' || item.expiryDate == null
+                  ? (item.expiryDate ?? null)
+                  : null,
+            }))
+            .filter((item) => item.key && item.supplyItemId);
+        }
+      } catch {
+        // Ignore malformed metadata to preserve backward compatibility
+      }
       return;
     }
   });
@@ -125,6 +170,21 @@ export function convertNumberToVietnameseWords(value: number): string {
   return sentence ? `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)} đồng` : '';
 }
 
-export function formatTransferApprovalNotes(referenceAmount: number, approverName: string): string {
-  return `Đã phê duyệt | Số tiền: ${formatNumberVN(referenceAmount)} | Bằng chữ: ${convertNumberToVietnameseWords(referenceAmount)} | Người phê duyệt: ${approverName.trim()}`;
+export function formatTransferApprovalNotes(
+  referenceAmount: number,
+  approverName: string,
+  itemMetas: TransferApprovalItemMeta[] = [],
+): string {
+  const parts = [
+    'Đã phê duyệt',
+    `Số tiền: ${formatNumberVN(referenceAmount)}`,
+    `Bằng chữ: ${convertNumberToVietnameseWords(referenceAmount)}`,
+    `Người phê duyệt: ${approverName.trim()}`,
+  ];
+
+  if (itemMetas.length > 0) {
+    parts.push(`ItemMeta: ${encodeURIComponent(JSON.stringify(itemMetas))}`);
+  }
+
+  return parts.join(' | ');
 }

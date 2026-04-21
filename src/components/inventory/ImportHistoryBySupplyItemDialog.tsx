@@ -7,7 +7,9 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { formatNumberVN } from '@/lib/utils';
+import { TransactionReason } from '@/enums/beEnums';
 import type { InventoryTransaction } from '@/services/inventoryService';
+import type { SupplyTransfer } from '@/services/supplyTransferService';
 
 type SelectedSupplyItem = {
   supplyItemId: string;
@@ -20,6 +22,7 @@ interface ImportHistoryBySupplyItemDialogProps {
   onOpenChange: (open: boolean) => void;
   selectedSupplyItem: SelectedSupplyItem;
   transactions: InventoryTransaction[];
+  relatedTransferByTransactionId?: Record<string, SupplyTransfer | undefined>;
   isLoading?: boolean;
 }
 
@@ -28,6 +31,7 @@ export function ImportHistoryBySupplyItemDialog({
   onOpenChange,
   selectedSupplyItem,
   transactions,
+  relatedTransferByTransactionId = {},
   isLoading = false,
 }: ImportHistoryBySupplyItemDialogProps) {
   return (
@@ -51,11 +55,24 @@ export function ImportHistoryBySupplyItemDialog({
             </p>
           ) : (
             transactions.map((transaction) => {
+              const relatedTransfer = relatedTransferByTransactionId[transaction.transactionId];
               const lyDoTiengViet =
-                transaction.reasonName === 'Other'
-                  ? 'Nhập kho trực tiếp'
-                  : transaction.reasonName || 'Chưa xác định';
-              const nguonThamChieu = transaction.sourceReference?.trim() || 'Nhập từ bên ngoài';
+                transaction.reason === TransactionReason.SupplyTransferIn
+                  ? 'Nhập điều phối nội bộ'
+                  : transaction.reasonName === 'Other'
+                    ? 'Nhập kho trực tiếp'
+                    : transaction.reasonName || 'Chưa xác định';
+              const nguonThamChieu = transaction.sourceReference?.trim()
+                ? transaction.sourceReference.trim()
+                : transaction.reason === TransactionReason.SupplyTransferIn
+                  ? relatedTransfer?.sourceStationName ||
+                    relatedTransfer?.items?.find(
+                      (transferItem) =>
+                        transferItem.supplyItemId === selectedSupplyItem?.supplyItemId &&
+                        transferItem.sourceReference,
+                    )?.sourceReference ||
+                    'Điều phối nội bộ từ kho nguồn'
+                  : 'Nhập từ bên ngoài';
 
               return (
                 <div
@@ -118,47 +135,66 @@ export function ImportHistoryBySupplyItemDialog({
                     </div>
 
                     <div className="space-y-3">
-                      {(transaction.items || []).map((item, index) => (
-                        <div
-                          key={`${transaction.transactionId}-${item.supplyItemId}-${index}`}
-                          className="rounded-xl border border-border bg-muted/10 p-4"
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <p className="font-medium text-foreground">
-                              {item.supplyItemName || item.supplyItemId}
-                            </p>
-                            <p className="text-sm font-medium text-foreground">
-                              {formatNumberVN(item.quantity)}{' '}
-                              {item.supplyItemUnit || selectedSupplyItem?.unit || ''}
-                            </p>
-                          </div>
+                      {(transaction.items || []).map((item, index) => {
+                        const relatedTransferItem = relatedTransfer?.items?.find(
+                          (transferItem) => transferItem.supplyItemId === item.supplyItemId,
+                        );
+                        const displayUnitCost = item.unitCost ?? relatedTransferItem?.unitCost;
+                        const displayExpiryDate =
+                          item.expiryDate ?? relatedTransferItem?.expiryDate;
+                        const isInternalTransfer =
+                          transaction.reason === TransactionReason.SupplyTransferIn;
 
-                          <div className="mt-3 grid gap-3 md:grid-cols-3 text-sm text-muted-foreground">
-                            <p>
-                              Đơn giá:{' '}
-                              <span className="font-medium text-foreground">
-                                {item.unitCost != null
-                                  ? `${formatNumberVN(item.unitCost)} VNĐ`
-                                  : 'Chưa có'}
-                              </span>
-                            </p>
-                            <p>
-                              Hạn sử dụng:{' '}
-                              <span className="font-medium text-foreground">
-                                {item.expiryDate
-                                  ? new Date(item.expiryDate).toLocaleDateString('vi-VN')
-                                  : 'Chưa có'}
-                              </span>
-                            </p>
-                            <p>
-                              Ghi chú:{' '}
-                              <span className="font-medium text-foreground">
-                                {item.notes || transaction.notes || 'Không có'}
-                              </span>
-                            </p>
+                        return (
+                          <div
+                            key={`${transaction.transactionId}-${item.supplyItemId}-${index}`}
+                            className="rounded-xl border border-border bg-muted/10 p-4"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <p className="font-medium text-foreground">
+                                {item.supplyItemName || item.supplyItemId}
+                              </p>
+                              <p className="text-sm font-medium text-foreground">
+                                {formatNumberVN(item.quantity)}{' '}
+                                {item.supplyItemUnit || selectedSupplyItem?.unit || ''}
+                              </p>
+                            </div>
+
+                            <div
+                              className={`mt-3 grid gap-3 text-sm text-muted-foreground ${
+                                isInternalTransfer ? 'md:grid-cols-1' : 'md:grid-cols-3'
+                              }`}
+                            >
+                              {!isInternalTransfer && (
+                                <>
+                                  <p>
+                                    Đơn giá:{' '}
+                                    <span className="font-medium text-foreground">
+                                      {displayUnitCost != null
+                                        ? `${formatNumberVN(displayUnitCost)} VNĐ`
+                                        : 'Chưa có'}
+                                    </span>
+                                  </p>
+                                  <p>
+                                    Hạn sử dụng:{' '}
+                                    <span className="font-medium text-foreground">
+                                      {displayExpiryDate
+                                        ? new Date(displayExpiryDate).toLocaleDateString('vi-VN')
+                                        : 'Chưa có'}
+                                    </span>
+                                  </p>
+                                </>
+                              )}
+                              <p>
+                                Ghi chú:{' '}
+                                <span className="font-medium text-foreground">
+                                  {item.notes || transaction.notes || 'Không có'}
+                                </span>
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

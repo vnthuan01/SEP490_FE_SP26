@@ -1,11 +1,12 @@
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, rgb } from 'pdf-lib';
+import { convertNumberToVietnameseWords } from '@/lib/transferNotes';
 
 const regularFontUrl = '/fonts/BeVietnamPro-Regular.ttf';
 const boldFontUrl = '/fonts/BeVietnamPro-Bold.ttf';
 
 const PAGE_WIDTH = 595;
-const PAGE_HEIGHT = 842;
+const PAGE_HEIGHT = 880;
 const PAGE_MARGIN_X = 42;
 const TABLE_WIDTH = PAGE_WIDTH - PAGE_MARGIN_X * 2;
 const SIGN_BOX = {
@@ -20,6 +21,12 @@ const APPROVER_BOX = {
   width: 205,
   height: 92,
 };
+
+const SIGN_INFO_LABEL_OFFSET = 24;
+const SIGN_INFO_NAME_OFFSET = 38;
+const SIGN_INFO_DATE_OFFSET = 56;
+const SIGN_INFO_CLEAR_TOP_OFFSET = 56;
+const SIGN_INFO_CLEAR_HEIGHT = 40;
 
 export interface TransferPdfFillData {
   transferCode: string;
@@ -76,6 +83,39 @@ function splitTextIntoLines(text: string, maxWidth: number, font: any, size: num
   return lines.length > 0 ? lines : [''];
 }
 
+function truncateTextWithEllipsis(text: string, maxWidth: number, font: any, size: number) {
+  const safeText = sanitizePdfText(text);
+  if (!safeText) return '';
+
+  if (font.widthOfTextAtSize(safeText, size) <= maxWidth) {
+    return safeText;
+  }
+
+  const ellipsis = '...';
+  let truncated = safeText;
+
+  while (truncated.length > 0) {
+    const candidate = `${truncated}${ellipsis}`;
+    if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+      return candidate;
+    }
+    truncated = truncated.slice(0, -1);
+  }
+
+  return ellipsis;
+}
+
+function fitTextSize(text: string, width: number, font: any, preferredSize: number, minSize = 6.2) {
+  const safeText = sanitizePdfText(text);
+  if (!safeText) return preferredSize;
+
+  let size = preferredSize;
+  while (size > minSize && font.widthOfTextAtSize(safeText, size) > width - 8) {
+    size -= 0.2;
+  }
+  return Math.max(size, minSize);
+}
+
 function drawWrappedText(
   page: any,
   text: string,
@@ -114,11 +154,25 @@ function drawCellText(
   size = 8.5,
   align: 'left' | 'center' | 'right' = 'left',
   maxLines = 1,
+  options?: {
+    autoShrink?: boolean;
+    minSize?: number;
+    ellipsis?: boolean;
+  },
 ) {
-  const lines = splitTextIntoLines(text || '', width - 8, font, size).slice(0, maxLines);
+  const nextSize = options?.autoShrink
+    ? fitTextSize(text || '', width, font, size, options?.minSize)
+    : size;
+  let lines = splitTextIntoLines(text || '', width - 8, font, nextSize).slice(0, maxLines);
+
+  if (options?.ellipsis && lines.length > 0) {
+    const lastIndex = Math.min(lines.length, maxLines) - 1;
+    lines = lines.slice(0, maxLines);
+    lines[lastIndex] = truncateTextWithEllipsis(lines[lastIndex], width - 8, font, nextSize);
+  }
 
   lines.forEach((line, lineIndex) => {
-    const textWidth = font.widthOfTextAtSize(line, size);
+    const textWidth = font.widthOfTextAtSize(line, nextSize);
     let drawX = x + 4;
 
     if (align === 'center') {
@@ -129,8 +183,8 @@ function drawCellText(
 
     page.drawText(line, {
       x: drawX,
-      y: y - lineIndex * (size + 2),
-      size,
+      y: y - lineIndex * (nextSize + 2),
+      size: nextSize,
       font,
       color: rgb(0.12, 0.16, 0.24),
     });
@@ -215,10 +269,57 @@ function drawCenteredText(
   });
 }
 
+function clearArea(page: any, x: number, y: number, width: number, height: number) {
+  page.drawRectangle({
+    x,
+    y,
+    width,
+    height,
+    color: rgb(1, 1, 1),
+  });
+}
+
+function resolveReferenceAmount(data: TransferPdfFillData) {
+  const explicitAmount = Number(data.referenceAmount ?? 0);
+  const derivedAmount = data.items.reduce((sum, item) => {
+    const totalAmount = Number(item.totalAmount ?? 0);
+    if (Number.isFinite(totalAmount) && totalAmount > 0) return sum + totalAmount;
+
+    const unitPrice = Number(item.unitPrice ?? 0);
+    const quantity = Number(item.actualQuantity ?? item.quantity ?? 0);
+    if (Number.isFinite(unitPrice) && unitPrice > 0 && Number.isFinite(quantity) && quantity > 0) {
+      return sum + unitPrice * quantity;
+    }
+
+    return sum;
+  }, 0);
+
+  const amount = explicitAmount > 0 ? explicitAmount : derivedAmount;
+  const amountText =
+    sanitizePdfText(data.referenceAmountText) ||
+    (amount > 0 ? convertNumberToVietnameseWords(amount) : '');
+
+  return { amount, amountText };
+}
+
+function resolveLineAmount(item: TransferPdfFillData['items'][number]) {
+  const explicitTotal = Number(item.totalAmount ?? 0);
+  if (Number.isFinite(explicitTotal) && explicitTotal > 0) return explicitTotal;
+
+  const unitPrice = Number(item.unitPrice ?? 0);
+  const quantity = Number(item.actualQuantity ?? item.quantity ?? 0);
+  if (Number.isFinite(unitPrice) && unitPrice > 0 && Number.isFinite(quantity) && quantity > 0) {
+    return unitPrice * quantity;
+  }
+
+  return 0;
+}
+
 export async function buildTransferPdf(data: TransferPdfFillData) {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   const { regular: font, bold } = await loadVietnameseFonts(pdfDoc);
+  const resolvedReference = resolveReferenceAmount(data);
   page.drawRectangle({
     x: 0,
     y: PAGE_HEIGHT - 96,
@@ -251,7 +352,7 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
     font,
     color: rgb(0.24, 0.27, 0.34),
   });
-  drawCenteredText(page, 'BIÊN BẢN XÁC NHẬN ĐỀ NGHỊ ĐIỀU PHỐI', PAGE_WIDTH / 2, 778, bold, 16, {
+  drawCenteredText(page, 'BIÊN BẢN XÁC NHẬN ĐỀ NGHỊ ĐIỀU PHỐI', PAGE_WIDTH / 2, 768, bold, 16, {
     r: 0.11,
     g: 0.19,
     b: 0.38,
@@ -383,8 +484,16 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
 
   const tableTop = y - 18;
   const rowHeight = 34;
-  const colWidths = [28, 190, 56, 70, 76, 91];
-  const headers = ['STT', 'Tên vật tư / quy cách', 'ĐVT', 'SL đề nghị', 'SL thực tế', 'Ghi chú'];
+  const colWidths = [26, 132, 38, 56, 58, 138, 63];
+  const headers = [
+    'STT',
+    'Tên vật tư / quy cách',
+    'ĐVT',
+    'SL đề nghị',
+    'SL thực tế',
+    'Đơn giá',
+    'Ghi chú',
+  ];
 
   let currentX = PAGE_MARGIN_X;
   page.drawRectangle({
@@ -407,7 +516,18 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
       borderWidth: 1,
       borderColor: rgb(0.67, 0.76, 0.91),
     });
-    drawCellText(page, header, currentX, tableTop - 12, width, bold, 7.9, 'center', 2);
+    drawCellText(
+      page,
+      header,
+      currentX,
+      tableTop - 12,
+      width,
+      bold,
+      index === headers.length - 1 ? 7.6 : 7.9,
+      'center',
+      2,
+      index === headers.length - 1 ? { autoShrink: true, minSize: 6.6 } : undefined,
+    );
     currentX += width;
   });
 
@@ -423,6 +543,9 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
       sanitizePdfText(item.unit || 'Đơn vị'),
       new Intl.NumberFormat('vi-VN').format(item.quantity || 0),
       new Intl.NumberFormat('vi-VN').format(item.actualQuantity || 0),
+      resolveLineAmount(item) > 0
+        ? new Intl.NumberFormat('vi-VN').format(resolveLineAmount(item)) + ' VNĐ'
+        : '',
       sanitizePdfText(item.notes || ''),
     ];
 
@@ -444,8 +567,17 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
         width,
         font,
         8,
-        valueIndex === 1 || valueIndex === values.length - 1 ? 'left' : 'center',
+        valueIndex === 1 || valueIndex === values.length - 1
+          ? 'left'
+          : valueIndex === 5
+            ? 'right'
+            : 'center',
         valueIndex === 1 || valueIndex === values.length - 1 ? 2 : 1,
+        valueIndex === 5
+          ? { autoShrink: true, minSize: 6.1 }
+          : valueIndex === values.length - 1
+            ? { ellipsis: true }
+            : undefined,
       );
       cellX += width;
     });
@@ -479,7 +611,7 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
 
   page.drawRectangle({
     x: PAGE_MARGIN_X,
-    y: 190,
+    y: 210,
     width: TABLE_WIDTH,
     height: 130,
     color: rgb(0.988, 0.993, 1),
@@ -488,13 +620,13 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
   });
   page.drawText('QUY ĐỊNH / ĐIỀU KIỆN PHIẾU HỢP LỆ', {
     x: PAGE_MARGIN_X + 12,
-    y: 290,
+    y: 310,
     size: 12,
     font: bold,
     color: rgb(0.14, 0.24, 0.43),
   });
 
-  let clauseY = 272;
+  let clauseY = 292;
   clauses.forEach((clause, index) => {
     clauseY = drawWrappedText(page, `${index + 1}. ${clause}`, {
       x: PAGE_MARGIN_X + 12,
@@ -508,57 +640,55 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
     clauseY -= 10;
   });
 
+  page.drawText('Tổng số tiền tham chiếu:', {
+    x: PAGE_MARGIN_X,
+    y: 188,
+    size: 10,
+    font: bold,
+    color: rgb(0.14, 0.24, 0.43),
+  });
   page.drawText(
-    `Tổng số tiền tham chiếu: ${
-      sanitizePdfText(
-        data.referenceAmount != null
-          ? new Intl.NumberFormat('vi-VN').format(data.referenceAmount)
-          : '',
-      ) || '................'
-    }`,
+    sanitizePdfText(
+      resolvedReference.amount > 0
+        ? new Intl.NumberFormat('vi-VN').format(resolvedReference.amount)
+        : '',
+    ) || '................',
     {
-      x: PAGE_MARGIN_X,
-      y: 170,
+      x: PAGE_MARGIN_X + 126,
+      y: 188,
       size: 10,
-      font: bold,
+      font,
       color: rgb(0.14, 0.24, 0.43),
     },
   );
-  page.drawText(
-    `Bằng chữ: ${sanitizePdfText(data.referenceAmountText) || '...................................'}`,
+  drawWrappedText(
+    page,
+    `Bằng chữ: ${resolvedReference.amountText || '...................................'}`,
     {
       x: 280,
-      y: 170,
+      y: 188,
+      maxWidth: 258,
+      lineHeight: 11,
       size: 10,
       font,
-      color: rgb(0.24, 0.27, 0.34),
+      color: { r: 0.24, g: 0.27, b: 0.34 },
     },
   );
 
   page.drawText('Người lập phiếu', {
     x: 104,
-    y: 148,
+    y: 156,
     size: 11,
     font: bold,
     color: rgb(0.14, 0.24, 0.43),
   });
   page.drawText('Kế toán / Phê duyệt', {
     x: 352,
-    y: 148,
+    y: 156,
     size: 11,
     font: bold,
     color: rgb(0.14, 0.24, 0.43),
   });
-  page.drawText(
-    `Ngày ..... tháng ..... năm ${sanitizePdfText((data.signedDateLabel || '').split('/').pop() || '')}`,
-    {
-      x: 84,
-      y: 136,
-      size: 9,
-      font,
-      color: rgb(0.32, 0.35, 0.42),
-    },
-  );
 
   page.drawRectangle({
     x: SIGN_BOX.x,
@@ -588,14 +718,14 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
   });
   page.drawText('Họ và tên:', {
     x: SIGN_BOX.x,
-    y: SIGN_BOX.y - 14,
+    y: SIGN_BOX.y - SIGN_INFO_LABEL_OFFSET,
     size: 9,
-    font: bold,
+    font,
     color: rgb(0.28, 0.31, 0.38),
   });
   page.drawText(sanitizePdfText(data.creatorName) || '................................', {
     x: SIGN_BOX.x,
-    y: SIGN_BOX.y - 28,
+    y: SIGN_BOX.y - SIGN_INFO_NAME_OFFSET,
     size: 9,
     font,
     color: rgb(0.12, 0.16, 0.24),
@@ -609,14 +739,14 @@ export async function buildTransferPdf(data: TransferPdfFillData) {
   });
   page.drawText('Họ và tên:', {
     x: APPROVER_BOX.x,
-    y: APPROVER_BOX.y - 14,
+    y: APPROVER_BOX.y - SIGN_INFO_LABEL_OFFSET,
     size: 9,
-    font: bold,
+    font,
     color: rgb(0.28, 0.31, 0.38),
   });
   page.drawText(sanitizePdfText(data.approverName) || '................................', {
     x: APPROVER_BOX.x,
-    y: APPROVER_BOX.y - 28,
+    y: APPROVER_BOX.y - (SIGN_INFO_NAME_OFFSET - 6),
     size: 9,
     font,
     color: rgb(0.12, 0.16, 0.24),
@@ -633,6 +763,7 @@ export async function updateTransferPdfApprovalData(
   const pages = pdfDoc.getPages();
   const page = pages[pages.length - 1];
   const { regular: font, bold } = await loadVietnameseFonts(pdfDoc);
+  const resolvedReference = resolveReferenceAmount(data);
 
   const infoLeftX = 54;
   const infoRightX = 322;
@@ -678,10 +809,11 @@ export async function updateTransferPdfApprovalData(
 
   const tableTop = y - 18;
   const rowHeight = 34;
-  const colWidths = [28, 190, 56, 70, 76, 91];
+  const colWidths = [26, 132, 38, 56, 58, 138, 63];
   const visibleItems = data.items.slice(0, 6);
   const actualQuantityX = PAGE_MARGIN_X + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3];
-  const notesX = actualQuantityX + colWidths[4];
+  const unitPriceX = actualQuantityX + colWidths[4];
+  const notesX = unitPriceX + colWidths[5];
 
   visibleItems.forEach((item, index) => {
     const rowY = tableTop - rowHeight * (index + 2);
@@ -708,9 +840,33 @@ export async function updateTransferPdfApprovalData(
     );
 
     page.drawRectangle({
-      x: notesX,
+      x: unitPriceX,
       y: rowY,
       width: colWidths[5],
+      height: rowHeight,
+      color: rgb(1, 1, 1),
+      borderWidth: 1,
+      borderColor: rgb(0.82, 0.86, 0.92),
+    });
+    drawCellText(
+      page,
+      resolveLineAmount(item) > 0
+        ? new Intl.NumberFormat('vi-VN').format(resolveLineAmount(item)) + ' VNĐ'
+        : '',
+      unitPriceX,
+      rowY + 22,
+      colWidths[5],
+      font,
+      7.4,
+      'right',
+      1,
+      { autoShrink: true, minSize: 5.8 },
+    );
+
+    page.drawRectangle({
+      x: notesX,
+      y: rowY,
+      width: colWidths[6],
       height: rowHeight,
       color: rgb(1, 1, 1),
       borderWidth: 1,
@@ -721,52 +877,46 @@ export async function updateTransferPdfApprovalData(
       sanitizePdfText(item.notes || ''),
       notesX,
       rowY + 22,
-      colWidths[5],
+      colWidths[6],
       font,
       8,
       'left',
       2,
+      { ellipsis: true },
     );
   });
 
-  page.drawRectangle({
-    x: PAGE_MARGIN_X - 2,
-    y: 162,
-    width: 260,
-    height: 18,
-    color: rgb(1, 1, 1),
+  clearArea(page, PAGE_MARGIN_X - 4, 174, 232, 28);
+  page.drawText('Tổng số tiền tham chiếu:', {
+    x: PAGE_MARGIN_X,
+    y: 188,
+    size: 10,
+    font: bold,
+    color: rgb(0.14, 0.24, 0.43),
   });
   page.drawText(
-    `Tổng số tiền tham chiếu: ${
-      sanitizePdfText(
-        data.referenceAmount != null
-          ? `${new Intl.NumberFormat('vi-VN').format(data.referenceAmount)} VND`
-          : '',
-      ) || '................'
-    }`,
+    sanitizePdfText(
+      resolvedReference.amount > 0
+        ? `${new Intl.NumberFormat('vi-VN').format(resolvedReference.amount)} VNĐ`
+        : '',
+    ) || '................',
     {
-      x: PAGE_MARGIN_X,
-      y: 170,
+      x: PAGE_MARGIN_X + 126,
+      y: 188,
       size: 10,
-      font: bold,
+      font,
       color: rgb(0.14, 0.24, 0.43),
     },
   );
 
-  page.drawRectangle({
-    x: 278,
-    y: 156,
-    width: 275,
-    height: 28,
-    color: rgb(1, 1, 1),
-  });
+  clearArea(page, 268, 168, 285, 40);
   drawWrappedText(
     page,
-    `Bằng chữ: ${sanitizePdfText(data.referenceAmountText) || '...................................'}`,
+    `Bằng chữ: ${resolvedReference.amountText || '...................................'}`,
     {
       x: 280,
-      y: 170,
-      maxWidth: 260,
+      y: 188,
+      maxWidth: 258,
       lineHeight: 11,
       size: 10,
       font,
@@ -774,35 +924,38 @@ export async function updateTransferPdfApprovalData(
     },
   );
 
-  page.drawRectangle({
-    x: APPROVER_BOX.x - 2,
-    y: APPROVER_BOX.y - 34,
-    width: 195,
-    height: 40,
-    color: rgb(1, 1, 1),
-  });
+  clearArea(
+    page,
+    APPROVER_BOX.x - 2,
+    APPROVER_BOX.y - SIGN_INFO_CLEAR_TOP_OFFSET - 6,
+    200,
+    SIGN_INFO_CLEAR_HEIGHT + 18,
+  );
   page.drawText('Họ và tên:', {
     x: APPROVER_BOX.x,
-    y: APPROVER_BOX.y - 14,
+    y: APPROVER_BOX.y - SIGN_INFO_LABEL_OFFSET,
     size: 9,
-    font: bold,
+    font,
     color: rgb(0.28, 0.31, 0.38),
   });
   page.drawText(sanitizePdfText(data.approverName) || '................................', {
     x: APPROVER_BOX.x,
-    y: APPROVER_BOX.y - 28,
+    y: APPROVER_BOX.y - SIGN_INFO_NAME_OFFSET,
     size: 9,
     font,
     color: rgb(0.12, 0.16, 0.24),
   });
-  page.drawText(
+  drawWrappedText(
+    page,
     `Ngày ký: ${sanitizePdfText(data.signedDateTimeLabel || data.signedDateLabel || '................................')}`,
     {
       x: APPROVER_BOX.x,
-      y: APPROVER_BOX.y - 40,
+      y: APPROVER_BOX.y - (SIGN_INFO_DATE_OFFSET - 10),
+      maxWidth: 190,
+      lineHeight: 10,
       size: 8,
       font,
-      color: rgb(0.32, 0.35, 0.42),
+      color: { r: 0.32, g: 0.35, b: 0.42 },
     },
   );
 
@@ -840,33 +993,35 @@ export async function attachSignatureToPdf(
   });
 
   if (options?.signerName) {
-    lastPage.drawRectangle({
-      x: targetBox.x,
-      y: targetBox.y - 34,
-      width: 195,
-      height: 40,
-      color: rgb(1, 1, 1),
-    });
+    clearArea(
+      lastPage,
+      targetBox.x,
+      targetBox.y - SIGN_INFO_CLEAR_TOP_OFFSET - 6,
+      198,
+      SIGN_INFO_CLEAR_HEIGHT + 18,
+    );
     lastPage.drawText('Họ và tên:', {
       x: targetBox.x,
-      y: targetBox.y - 14,
+      y: targetBox.y - SIGN_INFO_LABEL_OFFSET,
       size: 9,
       font,
       color: rgb(0.28, 0.31, 0.38),
     });
     lastPage.drawText(sanitizePdfText(options.signerName), {
       x: targetBox.x,
-      y: targetBox.y - 28,
+      y: targetBox.y - (SIGN_INFO_NAME_OFFSET - 6),
       size: 9,
       font,
       color: rgb(0.12, 0.16, 0.24),
     });
-    lastPage.drawText(`Ngày ký: ${sanitizePdfText(new Date().toLocaleString('vi-VN'))}`, {
+    drawWrappedText(lastPage, `Ngày ký: ${sanitizePdfText(new Date().toLocaleString('vi-VN'))}`, {
       x: targetBox.x,
-      y: targetBox.y - 40,
+      y: targetBox.y - (SIGN_INFO_DATE_OFFSET - 10),
+      maxWidth: 190,
+      lineHeight: 10,
       size: 8,
       font,
-      color: rgb(0.32, 0.35, 0.42),
+      color: { r: 0.32, g: 0.35, b: 0.42 },
     });
   }
 

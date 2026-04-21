@@ -7,7 +7,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useNavigate } from 'react-router-dom';
 import { useTeamMembers, useTeams, useTeamsInStation } from '@/hooks/useTeams';
-import { useAssignTeamToCampaign, useCampaignTeams, useCampaigns } from '@/hooks/useCampaigns';
+import {
+  useAssignTeamToCampaign,
+  useCampaignTeams,
+  useCampaigns,
+  useUpdateCampaignStatus,
+} from '@/hooks/useCampaigns';
 import { campaignService } from '@/services/campaignService';
 import {
   Dialog,
@@ -167,6 +172,7 @@ export default function CoordinatorTeamManagementPage() {
       memberCount: number;
     }>
   >([]);
+  const [assignedReliefCampaignsVersion, setAssignedReliefCampaignsVersion] = useState(0);
   const navigate = useNavigate();
 
   const isLoading = isLoadingStation || isLoadingTeamList;
@@ -212,7 +218,7 @@ export default function CoordinatorTeamManagementPage() {
     },
     { enabled: hasAssignedStation },
   );
-  const { campaigns } = useCampaigns(
+  const { campaigns, refetch: refetchCampaigns } = useCampaigns(
     {
       pageIndex: 1,
       pageSize: 200,
@@ -226,6 +232,7 @@ export default function CoordinatorTeamManagementPage() {
   );
   const { mutateAsync: assignTeamToCampaign, status: assignTeamToCampaignStatus } =
     useAssignTeamToCampaign();
+  const { mutateAsync: updateCampaignStatus } = useUpdateCampaignStatus();
 
   const filteredTeams = useMemo(() => {
     return teams.filter((t) => {
@@ -394,7 +401,7 @@ export default function CoordinatorTeamManagementPage() {
     return () => {
       active = false;
     };
-  }, [reliefCampaigns, selectedTeam?.teamType, selectedTeamId]);
+  }, [assignedReliefCampaignsVersion, reliefCampaigns, selectedTeam?.teamType, selectedTeamId]);
 
   const handleCreateTeam = async () => {
     if (!reliefStationId) {
@@ -532,8 +539,19 @@ export default function CoordinatorTeamManagementPage() {
           initialStatus: CampaignTeamStatus.Active,
         },
       });
+
+      await updateCampaignStatus({
+        id: selectedReliefCampaignId,
+        data: {
+          status: 1,
+        },
+      });
+
+      await Promise.all([refetchCampaigns(), refetch()]);
+      setAssignedReliefCampaignsVersion((prev) => prev + 1);
       setIsReliefCampaignAssignOpen(false);
       setSelectedReliefCampaignId('');
+      toast.success('Đã gán team vào chiến dịch cứu trợ và kích hoạt chiến dịch.');
     } catch (error) {
       setReliefCampaignAssignError(
         parseApiError(error, 'Không thể gán team vào chiến dịch cứu trợ.').message,
@@ -554,7 +572,7 @@ export default function CoordinatorTeamManagementPage() {
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => {
-              navigate('/portal/coordinator/team-allocation');
+              navigate('/portal/coordinator/volunteer-allocation');
             }}
             variant="outline"
             className="gap-2 text-base px-6 h-12"
@@ -1084,7 +1102,7 @@ export default function CoordinatorTeamManagementPage() {
                                 {campaign.campaignTeamId.slice(0, 8)}
                               </p>
                             </div>
-                            <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-500/10 px-2.5 py-1 text-[11px] font-medium text-blue-700 dark:border-blue-900/40 dark:text-blue-300">
+                            <span className="inline-flex max-w-full shrink-0 items-center truncate whitespace-nowrap rounded-full border border-blue-200 bg-blue-500/10 px-2.5 py-1 text-[11px] font-medium text-blue-700 dark:border-blue-900/40 dark:text-blue-300">
                               {CAMPAIGN_TEAM_STATUS_LABEL[campaign.status] ||
                                 `Trạng thái ${campaign.status}`}
                             </span>
@@ -1122,7 +1140,7 @@ export default function CoordinatorTeamManagementPage() {
                     Quản lý
                   </button>
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 max-h-[230px] overflow-y-auto pr-2 custom-scrollbar">
                   {members && members.length > 0 ? (
                     members.map((member: any) => (
                       <div
@@ -1355,7 +1373,7 @@ export default function CoordinatorTeamManagementPage() {
               </div>
             ) : null}
 
-            <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+            <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3 max-h-[320px] overflow-y-auto custom-scrollbar">
               <p className="text-sm font-semibold text-foreground">Thành viên hiện tại</p>
               {members?.length ? (
                 members.map((member: any) => (

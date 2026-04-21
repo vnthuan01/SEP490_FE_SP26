@@ -111,4 +111,39 @@ export const BACKEND_LITERAL_MESSAGE_MAP: Array<[RegExp, string]> = [
     'Cần ít nhất một file minh chứng hợp lệ khi đánh dấu đã phát.',
   ],
   [/^Delivery already completed\.?$/i, 'Lượt phát quà này đã được hoàn tất trước đó.'],
+  [
+    /^Insufficient remaining budget in source campaign\.?$/i,
+    'Ngân sách còn lại của chiến dịch nguồn không đủ để thực hiện giao dịch này.',
+  ],
+  [
+    /^Source campaign does not have enough remaining budget\.?$/i,
+    'Chiến dịch nguồn không còn đủ ngân sách khả dụng.',
+  ],
+  [
+    /^Target campaign must be a relief campaign\.?$/i,
+    'Chiến dịch đích phải là chiến dịch cứu trợ.',
+  ],
+  [
+    /^Source campaign must be a fundraising campaign\.?$/i,
+    'Chiến dịch nguồn phải là chiến dịch gây quỹ.',
+  ],
+  [/^Cash support amount cannot be negative\.?$/i, 'Tiền hỗ trợ không được là số âm.'],
+  [
+    /^Cash support amount exceeds remaining budget\.?$/i,
+    'Số tiền hỗ trợ vượt quá ngân sách còn lại của chiến dịch.',
+  ],
+  [/^Proof content type is invalid\.?$/i, 'Loại tệp minh chứng không hợp lệ.'],
+  [/^Proof file URL is invalid\.?$/i, 'Đường dẫn minh chứng không hợp lệ.'],
+  [
+    /^ScheduledAt must be in the future\.?$/i,
+    'Thời gian hẹn phát phải lớn hơn thời điểm hiện tại.',
+  ],
+  [
+    /^Campaign team does not belong to campaign\.?$/i,
+    'Đội phụ trách này không thuộc chiến dịch hiện tại.',
+  ],
+  [
+    /^Source and target campaign cannot be the same\.?$/i,
+    'Chiến dịch nguồn và chiến dịch đích không được trùng nhau.',
+  ],
 ];

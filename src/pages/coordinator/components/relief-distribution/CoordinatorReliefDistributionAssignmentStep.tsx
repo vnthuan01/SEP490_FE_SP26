@@ -86,13 +86,12 @@ export function CoordinatorReliefDistributionAssignmentStep({
   hasDistributionPoint,
   householdSearch,
   onChangeHouseholdSearch,
-  assignmentFilter,
-  onChangeAssignmentFilter,
   onJumpToCreateTeam,
   onJumpToCreatePackage,
   assignErrors,
   onEditHousehold,
   onDeleteHousehold,
+  onUpdateStatusHousehold,
 }: {
   sectionId: string;
   assignForm: CoordinatorAssignForm;
@@ -116,13 +115,12 @@ export function CoordinatorReliefDistributionAssignmentStep({
   hasDistributionPoint: boolean;
   householdSearch: string;
   onChangeHouseholdSearch: (value: string) => void;
-  assignmentFilter: 'all' | 'assigned' | 'unassigned';
-  onChangeAssignmentFilter: (value: 'all' | 'assigned' | 'unassigned') => void;
   onJumpToCreateTeam: () => void;
   onJumpToCreatePackage: () => void;
   assignErrors: Record<string, string>;
   onEditHousehold: (household: HouseholdRow) => void;
   onDeleteHousehold: (household: HouseholdRow) => void;
+  onUpdateStatusHousehold: (household: HouseholdRow) => void;
 }) {
   const hasTeams = teams.length > 0;
   const [openScheduleCalendar, setOpenScheduleCalendar] = useState(false);
@@ -142,7 +140,7 @@ export function CoordinatorReliefDistributionAssignmentStep({
             <div>
               <p className="font-medium">Chiến dịch chưa có đội phụ trách</p>
               <p className="text-sm text-muted-foreground">
-                Bước gán hộ đang tạm khóa. Hãy sang Team Management để tạo đội hoặc gắn đội vào
+                Bước gán hộ đang tạm khóa. Hãy sang trang Quản lý đội để tạo đội hoặc gắn đội vào
                 chiến dịch, sau đó quay lại để phân công hộ dân.
               </p>
             </div>
@@ -186,8 +184,8 @@ export function CoordinatorReliefDistributionAssignmentStep({
           <div>
             <p className="font-medium text-foreground">Thiết lập gán hộ</p>
             <p className="text-sm text-muted-foreground">
-              Gom toàn bộ chọn đội, gói hỗ trợ, lịch phát và ghi chú vào một sheet để giao diện gọn
-              hơn.
+              Gom toàn bộ chọn đội, gói hỗ trợ, lịch phát và ghi chú vào một bảng thiết lập để giao
+              diện gọn hơn.
             </p>
           </div>
           <Sheet open={openActionSheet} onOpenChange={setOpenActionSheet}>
@@ -218,7 +216,7 @@ export function CoordinatorReliefDistributionAssignmentStep({
                     }
                   >
                     <SelectTrigger disabled={!hasTeams}>
-                      <SelectValue placeholder="Chọn team phụ trách" />
+                      <SelectValue placeholder="Chọn đội phụ trách" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Không chọn</SelectItem>
@@ -371,32 +369,14 @@ export function CoordinatorReliefDistributionAssignmentStep({
           </Sheet>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <div className="space-y-2 xl:col-span-2">
+        <div className="grid gap-3">
+          <div className="space-y-2">
             <p className="text-sm font-medium">Tìm kiếm hộ dân</p>
             <Input
               placeholder="Tìm theo mã hộ hoặc tên chủ hộ"
               value={householdSearch}
               onChange={(e) => onChangeHouseholdSearch(e.target.value)}
             />
-          </div>
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Lọc theo trạng thái gán</p>
-            <Select
-              value={assignmentFilter}
-              onValueChange={(value: 'all' | 'assigned' | 'unassigned') =>
-                onChangeAssignmentFilter(value)
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Lọc theo phân công" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả</SelectItem>
-                <SelectItem value="assigned">Đã gán team</SelectItem>
-                <SelectItem value="unassigned">Chưa gán team</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
@@ -422,7 +402,7 @@ export function CoordinatorReliefDistributionAssignmentStep({
                 <TableHead>Chủ hộ</TableHead>
                 <TableHead>Hình thức nhận</TableHead>
                 <TableHead>Trạng thái</TableHead>
-                <TableHead>Team hiện tại</TableHead>
+                <TableHead>Đội hiện tại</TableHead>
                 <TableHead className="text-right">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
@@ -473,11 +453,21 @@ export function CoordinatorReliefDistributionAssignmentStep({
                         appearance="light"
                       >
                         {assignedTeamNameByHouseholdId[household.campaignHouseholdId] ||
-                          'Chưa gán team'}
+                          'Chưa gán đội'}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => onUpdateStatusHousehold(household)}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">sync_alt</span>
+                          Trạng thái
+                        </Button>
                         <Button
                           type="button"
                           variant="outline"

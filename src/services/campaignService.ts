@@ -150,21 +150,46 @@ export interface CampaignSummary {
   overallProgressPercent: number;
 }
 
-export interface CampaignInventoryBalanceStation {
-  reliefStationId: string;
-  reliefStationName: string;
-  inventoryId: string;
-  hasActiveInventory: boolean;
-  distinctSupplyItemCount: number;
-  totalQuantity: number;
-}
-
 export interface CampaignInventoryBalance {
   campaignId: string;
+  campaignInventoryId?: string | null;
   budgetTotal: number;
   budgetSpent: number;
   remainingBudget: number;
-  stations: CampaignInventoryBalanceStation[];
+  distinctSupplyItemCount?: number;
+  totalQuantity?: number;
+  items?: Array<{
+    supplyItemId: string;
+    supplyItemName: string;
+    supplyItemUnit: string;
+    quantity: number;
+  }>;
+  stations?: Array<{
+    reliefStationId: string;
+    reliefStationName: string;
+    inventoryId: string;
+    hasActiveInventory: boolean;
+    distinctSupplyItemCount: number;
+    totalQuantity: number;
+  }>;
+}
+
+export interface ExtractCampaignBudgetRequest {
+  targetReliefCampaignId: string;
+  amount: number;
+  note?: string | null;
+}
+
+export interface CampaignBudgetTransferResponse {
+  campaignBudgetTransferId: string;
+  sourceCampaignId: string;
+  targetCampaignId: string;
+  amount: number;
+  transferredByUserId?: string | null;
+  transferredAt: string;
+  note?: string | null;
+  sourceRemainingBudget: number;
+  targetRemainingBudget: number;
 }
 
 export const campaignService = {
@@ -188,6 +213,10 @@ export const campaignService = {
   // Get campaign inventory balance
   getInventoryBalance: (id: string) =>
     apiClient.get<CampaignInventoryBalance>(`/campaigns/${id}/inventory-balance`),
+
+  // Extract budget to relief campaign
+  extractBudget: (id: string, data: ExtractCampaignBudgetRequest) =>
+    apiClient.post<CampaignBudgetTransferResponse>(`/campaigns/${id}/extract-budget`, data),
 
   // Update campaign status
   updateStatus: (id: string, data: UpdateStatusPayload) =>
