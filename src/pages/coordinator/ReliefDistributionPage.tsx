@@ -1289,7 +1289,7 @@ export default function ReliefDistributionPage() {
       );
 
       await queryClient.invalidateQueries({
-        queryKey: RELIEF_DISTRIBUTION_KEYS.households(effectiveSelectedCampaignId),
+        queryKey: RELIEF_DISTRIBUTION_KEYS.all,
       });
 
       setSelectedHouseholdIds(new Set());
