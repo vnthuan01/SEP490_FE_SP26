@@ -31,12 +31,15 @@ import {
   useDeleteReliefPackage,
   usePatchDistributionPoint,
   usePatchReliefHousehold,
+  usePatchReliefHouseholdStatus,
   usePatchReliefPackage,
   usePackageAssemblyAvailability,
   useReliefChecklist,
   useDistributionPoints,
   useReliefHouseholds,
   useReliefPackages,
+  useReliefDeliveries,
+  useShortageRequests,
 } from '@/hooks/useReliefDistribution';
 import { CampaignStatus, CampaignType, DeliveryMode } from '@/enums/beEnums';
 import {
@@ -78,6 +81,9 @@ import {
 import { ReliefStickySectionHeader } from './components/relief-distribution/ReliefStickySectionHeader';
 import { ReliefFilterBar } from './components/relief-distribution/ReliefFilterBar';
 import { ReliefPaginationBar } from './components/relief-distribution/ReliefPaginationBar';
+import { MobileShortageRequestReview } from './components/shortage-request/MobileShortageRequestReview';
+import { ReliefAdvancedFilters } from '@/components/shared/relief-distribution/ReliefAdvancedFilters';
+import type { ReliefAdvancedFiltersValue } from '@/components/shared/relief-distribution/types';
 
 const createDefaultDistributionPointForm = (station?: {
   address?: string | null;
@@ -204,6 +210,13 @@ export default function ReliefDistributionPage() {
   const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>(
     'all',
   );
+  const [deliveryModeFilter, setDeliveryModeFilter] = useState<number | undefined>(undefined);
+  const [teamFilter, setTeamFilter] = useState<string | undefined>(undefined);
+  const [pointFilter, setPointFilter] = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<number | undefined>(undefined);
+  const [isIsolatedFilter, setIsIsolatedFilter] = useState<boolean | undefined>(undefined);
+  const [deliveriesPage, setDeliveriesPage] = useState(1);
+  const [shortageRequestsPage, setShortageRequestsPage] = useState(1);
   const [distributionPointForm, setDistributionPointForm] =
     useState<CoordinatorDistributionPointForm>(createDefaultDistributionPointForm());
   const [packageForm, setPackageForm] = useState<CoordinatorPackageForm>(
@@ -255,12 +268,62 @@ export default function ReliefDistributionPage() {
     cashSupportAmount: '',
   });
   const [completeDeliveryErrors, setCompleteDeliveryErrors] = useState<Record<string, string>>({});
+  const [updateStatusTarget, setUpdateStatusTarget] = useState<CampaignHouseholdResponse | null>(
+    null,
+  );
+  const [updateStatusForm, setUpdateStatusForm] = useState<{ status: number; notes: string }>({
+    status: 0,
+    notes: '',
+  });
+  const [updateStatusErrors, setUpdateStatusErrors] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<
     | { type: 'household'; id: string; label: string }
     | { type: 'distribution-point'; id: string; label: string }
     | { type: 'package'; id: string; label: string }
     | null
   >(null);
+  const [showMobileShortageReview, setShowMobileShortageReview] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+
+  const resetAllPages = () => {
+    setCurrentPage(1);
+    setChecklistPage(1);
+    setDeliveriesPage(1);
+    setShortageRequestsPage(1);
+    setTeamActivityPage(1);
+  };
+
+  const filtersValue: ReliefAdvancedFiltersValue = {
+    search: householdSearch,
+    assignment: assignmentFilter,
+    deliveryMode: deliveryModeFilter,
+    teamId: teamFilter,
+    distributionPointId: pointFilter,
+    status: statusFilter,
+    isIsolated: isIsolatedFilter,
+  };
+
+  const handleFiltersChange = (next: ReliefAdvancedFiltersValue) => {
+    setHouseholdSearch(next.search);
+    setAssignmentFilter(next.assignment ?? 'all');
+    setDeliveryModeFilter(next.deliveryMode);
+    setTeamFilter(next.teamId);
+    setPointFilter(next.distributionPointId);
+    setStatusFilter(next.status);
+    setIsIsolatedFilter(next.isIsolated);
+    resetAllPages();
+  };
+
+  const resetFilters = () => {
+    setHouseholdSearch('');
+    setAssignmentFilter('all');
+    setDeliveryModeFilter(undefined);
+    setTeamFilter(undefined);
+    setPointFilter(undefined);
+    setStatusFilter(undefined);
+    setIsIsolatedFilter(undefined);
+    resetAllPages();
+  };
 
   const { station } = useMyReliefStation();
   const hasAssignedStation = !!station?.reliefStationId;
@@ -306,9 +369,35 @@ export default function ReliefDistributionPage() {
   );
 
   const { teams } = useCampaignTeams(effectiveSelectedCampaignId);
-  const { households } = useReliefHouseholds(effectiveSelectedCampaignId);
-  const { checklist } = useReliefChecklist(effectiveSelectedCampaignId);
-  const { distributionPoints } = useDistributionPoints(effectiveSelectedCampaignId);
+  const { households, pagination: householdsPagination } = useReliefHouseholds(
+    effectiveSelectedCampaignId,
+    {
+      pageIndex: currentPage,
+      pageSize: HOUSEHOLDS_PER_PAGE,
+      search: householdSearch || undefined,
+      isAssigned: assignmentFilter === 'all' ? undefined : assignmentFilter === 'assigned',
+      isIsolated: isIsolatedFilter,
+      campaignTeamId: teamFilter,
+      distributionPointId: pointFilter,
+      deliveryMode: deliveryModeFilter,
+      status: statusFilter,
+    },
+  );
+  const { checklist, pagination: checklistPagination } = useReliefChecklist(
+    effectiveSelectedCampaignId,
+    {
+      pageIndex: checklistPage,
+      pageSize: CHECKLIST_ITEMS_PER_PAGE,
+      search: householdSearch || undefined,
+      campaignTeamId: teamFilter,
+      distributionPointId: pointFilter,
+      deliveryMode: deliveryModeFilter,
+    },
+  );
+  const { distributionPoints } = useDistributionPoints(effectiveSelectedCampaignId, {
+    campaignTeamId: teamFilter,
+    deliveryMode: deliveryModeFilter,
+  });
   const { packages } = useReliefPackages(effectiveSelectedCampaignId);
   const {
     inventoryBalance,
@@ -316,6 +405,27 @@ export default function ReliefDistributionPage() {
     isLoading: isLoadingInventoryBalance,
   } = useCampaignInventoryBalance(effectiveSelectedCampaignId);
   const { data: provinces = [] } = useProvinces();
+  const { deliveries, pagination: deliveriesPagination } = useReliefDeliveries(
+    effectiveSelectedCampaignId,
+    {
+      pageIndex: deliveriesPage,
+      pageSize: 10,
+      campaignTeamId: teamFilter,
+      distributionPointId: pointFilter,
+      deliveryMode: deliveryModeFilter,
+      status: statusFilter,
+    },
+  );
+  const { shortageRequests, pagination: shortageRequestsPagination } = useShortageRequests(
+    effectiveSelectedCampaignId,
+    {
+      pageIndex: shortageRequestsPage,
+      pageSize: 10,
+      status: 0, // Pending
+      campaignTeamId: teamFilter,
+      distributionPointId: pointFilter,
+    },
+  );
   const createPointMutation = useCreateDistributionPoint();
   const createPackageMutation = useCreateReliefPackage();
   const patchPointMutation = usePatchDistributionPoint();
@@ -323,6 +433,7 @@ export default function ReliefDistributionPage() {
   const patchPackageMutation = usePatchReliefPackage();
   const deletePackageMutation = useDeleteReliefPackage();
   const patchHouseholdMutation = usePatchReliefHousehold();
+  const patchHouseholdStatusMutation = usePatchReliefHouseholdStatus();
   const deleteHouseholdMutation = useDeleteReliefHousehold();
   const assemblePackageMutation = useAssembleReliefPackage();
   const extractBudgetMutation = useExtractCampaignBudget();
@@ -373,30 +484,7 @@ export default function ReliefDistributionPage() {
     [teams],
   );
 
-  const filteredHouseholds = useMemo(() => {
-    const normalizedSearch = householdSearch.trim().toLowerCase();
-
-    return households.filter((household) => {
-      const matchesSearch =
-        !normalizedSearch ||
-        household.householdCode.toLowerCase().includes(normalizedSearch) ||
-        household.headOfHouseholdName.toLowerCase().includes(normalizedSearch);
-
-      const isAssigned = Boolean(household.campaignTeamId);
-      const matchesAssignment =
-        assignmentFilter === 'all' ||
-        (assignmentFilter === 'assigned' && isAssigned) ||
-        (assignmentFilter === 'unassigned' && !isAssigned);
-
-      return matchesSearch && matchesAssignment;
-    });
-  }, [assignmentFilter, householdSearch, households]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredHouseholds.length / HOUSEHOLDS_PER_PAGE));
-  const paginatedHouseholds = useMemo(() => {
-    const start = (currentPage - 1) * HOUSEHOLDS_PER_PAGE;
-    return filteredHouseholds.slice(start, start + HOUSEHOLDS_PER_PAGE);
-  }, [currentPage, filteredHouseholds]);
+  const paginatedHouseholds = households;
 
   const selectedHouseholds = useMemo(
     () => households.filter((household) => selectedHouseholdIds.has(household.campaignHouseholdId)),
@@ -413,6 +501,7 @@ export default function ReliefDistributionPage() {
       selectedHouseholdIds.has(household.campaignHouseholdId),
     );
 
+  const totalPages = Math.max(1, householdsPagination?.totalPages ?? 1);
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const effectiveAssignForm = useMemo(
     () => ({
@@ -1029,6 +1118,37 @@ export default function ReliefDistributionPage() {
     setHouseholdEditErrors({});
   };
 
+  const handleOpenUpdateStatus = (household: CampaignHouseholdResponse) => {
+    setUpdateStatusTarget(household);
+    setUpdateStatusForm({
+      status: Number(household.fulfillmentStatus ?? 0),
+      notes: household.notes || '',
+    });
+    setUpdateStatusErrors({});
+  };
+
+  const handleSubmitUpdateStatus = async () => {
+    if (!effectiveSelectedCampaignId || !updateStatusTarget) return;
+
+    try {
+      setUpdateStatusErrors({});
+      await patchHouseholdStatusMutation.mutateAsync({
+        campaignId: effectiveSelectedCampaignId,
+        campaignHouseholdId: updateStatusTarget.campaignHouseholdId,
+        data: {
+          status: updateStatusForm.status,
+          notes: updateStatusForm.notes || undefined,
+        },
+      });
+
+      setUpdateStatusTarget(null);
+    } catch (error) {
+      const parsed = parseApiError(error, 'Không thể cập nhật trạng thái hộ dân');
+      setUpdateStatusErrors({ form: parsed.message });
+      toast.error(parsed.message);
+    }
+  };
+
   const handleSaveHousehold = async () => {
     if (!effectiveSelectedCampaignId || !editingHousehold || !householdEditForm) return;
     const nextErrors: Record<string, string> = {};
@@ -1198,31 +1318,19 @@ export default function ReliefDistributionPage() {
 
   const distributionPointSummaries = useMemo(
     () =>
-      distributionPoints.map((point) => {
-        const pointHouseholds = households.filter(
-          (household) => household.distributionPointId === point.distributionPointId,
-        );
-        const pointChecklist = checklist.filter(
-          (item) => item.distributionPointId === point.distributionPointId,
-        );
-        const pointTeamIds = Array.from(
-          new Set(pointChecklist.map((item) => item.campaignTeamId).filter(Boolean)),
-        );
-
-        return {
-          id: point.distributionPointId,
-          name: point.name,
-          address: point.address || '',
-          latitude: point.latitude,
-          longitude: point.longitude,
-          startsAt: point.startsAt,
-          endsAt: point.endsAt || undefined,
-          teamNames: pointTeamIds.map((teamId) => teamNameById[teamId as string]).filter(Boolean),
-          assignedHouseholdCount: pointHouseholds.length,
-          deliveredCount: pointChecklist.filter((item) => Number(item.status) === 2).length,
-        };
-      }),
-    [distributionPoints, households, checklist, teamNameById],
+      distributionPoints.map((point) => ({
+        id: point.distributionPointId,
+        name: point.name,
+        address: point.address || '',
+        latitude: point.latitude,
+        longitude: point.longitude,
+        startsAt: point.startsAt,
+        endsAt: point.endsAt || undefined,
+        teamNames: point.assignedTeams?.map((t) => t.campaignTeamName).filter(Boolean) ?? [],
+        assignedHouseholdCount: point.assignedHouseholdCount ?? 0,
+        deliveredCount: (point.totalDeliveryCount ?? 0) - (point.pendingDeliveryCount ?? 0),
+      })),
+    [distributionPoints],
   );
 
   const teamActivitySummary = useMemo(() => {
@@ -1345,11 +1453,14 @@ export default function ReliefDistributionPage() {
     return filteredPackageList.slice(start, start + PACKAGE_ITEMS_PER_PAGE);
   }, [filteredPackageList, packageListPage, totalPackageListPages]);
 
-  const totalChecklistPages = Math.max(1, Math.ceil(checklist.length / CHECKLIST_ITEMS_PER_PAGE));
-  const paginatedChecklist = useMemo(() => {
-    const start = (Math.min(checklistPage, totalChecklistPages) - 1) * CHECKLIST_ITEMS_PER_PAGE;
-    return checklist.slice(start, start + CHECKLIST_ITEMS_PER_PAGE);
-  }, [checklist, checklistPage, totalChecklistPages]);
+  const totalChecklistPages = Math.max(1, checklistPagination?.totalPages ?? 1);
+  const paginatedChecklist = checklist;
+
+  const totalDeliveriesPages = Math.max(1, deliveriesPagination?.totalPages ?? 1);
+  const paginatedDeliveries = deliveries;
+
+  const totalShortageRequestsPages = Math.max(1, shortageRequestsPagination?.totalPages ?? 1);
+  const paginatedShortageRequests = shortageRequests;
 
   const canAssign =
     !!effectiveSelectedCampaignId &&
@@ -1379,7 +1490,7 @@ export default function ReliefDistributionPage() {
             selectedCampaignId={selectedCampaignId}
             onCampaignChange={(value) => {
               setSelectedCampaignId(value);
-              setCurrentPage(1);
+              resetAllPages();
               setSelectedHouseholdIds(new Set());
             }}
             campaigns={reliefCampaigns}
@@ -1390,7 +1501,7 @@ export default function ReliefDistributionPage() {
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Hộ dân chờ gán"
-              value={households.length}
+              value={householdsPagination?.totalCount ?? households.length}
               note="Danh sách hộ dân cần sắp xếp phân phối"
               icon="groups"
               iconClass="bg-primary/10 text-primary"
@@ -1428,6 +1539,21 @@ export default function ReliefDistributionPage() {
               iconClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
             />
           </div>
+
+          <ReliefAdvancedFilters
+            value={filtersValue}
+            onChange={handleFiltersChange}
+            onReset={resetFilters}
+            expanded={filtersExpanded}
+            onExpandedChange={setFiltersExpanded}
+            teams={teams.map((team) => ({ label: team.teamName, value: team.campaignTeamId }))}
+            distributionPoints={distributionPoints.map((point) => ({
+              label: point.name,
+              value: point.distributionPointId,
+            }))}
+            showIsolationFilter
+            title="Bộ lọc điều phối phân phối"
+          />
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
             <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -1479,6 +1605,25 @@ export default function ReliefDistributionPage() {
                 <p className="mt-1 text-muted-foreground break-all">
                   {inventoryBalance?.campaignInventoryId || 'Chưa phát sinh'}
                 </p>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                <div>
+                  <p className="font-medium text-blue-900">Duyệt yêu cầu thiếu hàng (Mobile)</p>
+                  <p className="text-sm text-blue-800/80">
+                    Xem và duyệt nhanh các yêu cầu thiếu hàng từ đội phát trực tiếp trên mobile.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2 border-blue-300 bg-white text-blue-700 hover:bg-blue-100"
+                  onClick={() => setShowMobileShortageReview(true)}
+                  disabled={!effectiveSelectedCampaignId}
+                >
+                  <span className="material-symbols-outlined text-[18px]">mobile_friendly</span>
+                  Duyệt thiếu hàng
+                </Button>
               </div>
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
@@ -2097,17 +2242,17 @@ export default function ReliefDistributionPage() {
                             </span>
                             {formatNumberVN(pkg.items.length)} vật phẩm
                           </Badge>
-                          <Badge variant="outline" appearance="light">
+                          {/* <Badge variant="outline" appearance="light">
                             Đầu ra: {pkg.outputSupplyItemName || 'Chưa rõ'}
                             {pkg.outputUnit ? ` · ${pkg.outputUnit}` : ''}
-                          </Badge>
+                          </Badge> */}
                           {pkg.isDefault && (
                             <Badge variant="success" appearance="light">
                               Mặc định
                             </Badge>
                           )}
                           <Badge variant="info" appearance="light">
-                            Tiền mặt: {formatNumberVN(pkg.cashSupportAmount ?? 0)}
+                            Tiền mặt: {formatNumberVN(pkg.cashSupportAmount ?? 0) + ' VNĐ'}
                           </Badge>
                         </div>
                       </div>
@@ -2204,9 +2349,7 @@ export default function ReliefDistributionPage() {
             assignedTeamNameByHouseholdId={Object.fromEntries(
               households.map((household) => [
                 household.campaignHouseholdId,
-                household.campaignTeamId
-                  ? teamNameById[household.campaignTeamId] || 'Đã gán đội'
-                  : '',
+                household.campaignTeamName || (household.campaignTeamId ? 'Đã gán đội' : ''),
               ]),
             )}
             onToggleHousehold={handleToggleHousehold}
@@ -2227,8 +2370,6 @@ export default function ReliefDistributionPage() {
             hasDistributionPoint={!!defaultDistributionPointId}
             householdSearch={householdSearch}
             onChangeHouseholdSearch={setHouseholdSearch}
-            assignmentFilter={assignmentFilter}
-            onChangeAssignmentFilter={setAssignmentFilter}
             onJumpToCreateTeam={() => navigate('/portal/coordinator/teams')}
             onJumpToCreatePackage={() => scrollToSection(PACKAGE_SECTION_ID)}
             assignErrors={assignErrors}
@@ -2242,7 +2383,89 @@ export default function ReliefDistributionPage() {
                 label: household.householdCode,
               })
             }
+            onUpdateStatusHousehold={(household) =>
+              handleOpenUpdateStatus(household as CampaignHouseholdResponse)
+            }
           />
+
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm mt-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Danh sách giao hàng</h3>
+              <p className="text-sm text-muted-foreground">
+                Theo dõi tiến độ giao hàng theo thứ tự thực tế
+              </p>
+            </div>
+            {deliveries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Chưa có giao hàng nào.</p>
+            ) : (
+              <div className="space-y-3">
+                {paginatedDeliveries.map((delivery) => (
+                  <div
+                    key={delivery.householdDeliveryId}
+                    className="rounded-xl border bg-muted/20 p-4"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium">{delivery.householdCode}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {delivery.campaignTeamName || 'Chưa rõ đội'} ·{' '}
+                          {delivery.distributionPointName || 'Không có điểm'}
+                        </p>
+                      </div>
+                      <Badge variant={delivery.status === 2 ? 'success' : 'warning'}>
+                        {delivery.status === 2 ? 'Đã phát' : 'Chưa phát'}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm mt-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Yêu cầu thiếu hàng</h3>
+                <p className="text-sm text-muted-foreground">
+                  Các yêu cầu bổ sung hàng hóa từ đội phát
+                </p>
+              </div>
+              <Badge variant={shortageRequests.length > 0 ? 'warning' : 'success'}>
+                {shortageRequests.length} chờ duyệt
+              </Badge>
+            </div>
+            {shortageRequests.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Không có yêu cầu nào.</p>
+            ) : (
+              <div className="space-y-3">
+                {paginatedShortageRequests.map((request) => (
+                  <div
+                    key={request.supplyShortageRequestId}
+                    className="rounded-xl border bg-muted/20 p-4"
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="font-medium">
+                          {request.distributionPointName || 'Không có điểm'} ·{' '}
+                          {request.campaignTeamName || 'Không có team'}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {request.requestedByUserName}
+                        </p>
+                      </div>
+                      <Badge variant="warning">Chờ duyệt</Badge>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Vật phẩm:{' '}
+                      {request.items
+                        .map((i) => `${i.supplyItemName} (${i.quantityRequested})`)
+                        .join(', ')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="mb-4">
@@ -2250,7 +2473,7 @@ export default function ReliefDistributionPage() {
                 Bước 5. Rà soát checklist phân phối
               </h3>
               <p className="text-sm text-muted-foreground">
-                Kiểm tra danh sách hộ đã được gán, thời gian hẹn phát và trạng thái thực hiện.
+                Kiểm tra danh sách hộ đã được gán, thờ gian hẹn phát và trạng thái thực hiện.
               </p>
             </div>
             <div className="space-y-3">
@@ -2270,7 +2493,16 @@ export default function ReliefDistributionPage() {
                           {item.householdCode} · {item.headOfHouseholdName}
                         </p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          {teamNameById[item.campaignTeamId || ''] || 'Chưa rõ đội'} · Hẹn phát{' '}
+                          {item.campaignTeamName ||
+                            teamNameById[item.campaignTeamId || ''] ||
+                            'Chưa rõ đội'}
+                          {item.distributionPointName
+                            ? ` · Điểm: ${item.distributionPointName}`
+                            : ''}
+                          {item.reliefPackageDefinitionName
+                            ? ` · Gói: ${item.reliefPackageDefinitionName}`
+                            : ''}
+                          {' · Hẹn phát '}
                           {formatDateTimeVN(item.scheduledAt)}
                         </p>
                       </div>
@@ -2294,6 +2526,32 @@ export default function ReliefDistributionPage() {
                   </div>
                 ))
               )}
+              {totalShortageRequestsPages > 1 && (
+                <div className="mt-4">
+                  <ReliefPaginationBar
+                    currentPage={Math.min(shortageRequestsPage, totalShortageRequestsPages)}
+                    totalPages={totalShortageRequestsPages}
+                    onPrevious={() => setShortageRequestsPage((prev) => Math.max(1, prev - 1))}
+                    onNext={() =>
+                      setShortageRequestsPage((prev) =>
+                        Math.min(totalShortageRequestsPages, prev + 1),
+                      )
+                    }
+                  />
+                </div>
+              )}
+              {totalDeliveriesPages > 1 && (
+                <div className="mt-4">
+                  <ReliefPaginationBar
+                    currentPage={Math.min(deliveriesPage, totalDeliveriesPages)}
+                    totalPages={totalDeliveriesPages}
+                    onPrevious={() => setDeliveriesPage((prev) => Math.max(1, prev - 1))}
+                    onNext={() =>
+                      setDeliveriesPage((prev) => Math.min(totalDeliveriesPages, prev + 1))
+                    }
+                  />
+                </div>
+              )}
             </div>
             {checklist.length > CHECKLIST_ITEMS_PER_PAGE && (
               <ReliefPaginationBar
@@ -2304,6 +2562,69 @@ export default function ReliefDistributionPage() {
               />
             )}
           </div>
+
+          <Dialog
+            open={!!updateStatusTarget}
+            onOpenChange={(open) => {
+              if (!open) {
+                setUpdateStatusTarget(null);
+                setUpdateStatusErrors({});
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Cập nhật trạng thái hộ dân</DialogTitle>
+                <DialogDescription>
+                  Chuyển trạng thái xử lý của hộ dân theo tiến độ thực tế.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Trạng thái</p>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={updateStatusForm.status}
+                    onChange={(e) =>
+                      setUpdateStatusForm((prev) => ({ ...prev, status: Number(e.target.value) }))
+                    }
+                  >
+                    <option value={0}>Chờ xử lý</option>
+                    <option value={1}>Đang tiến hành</option>
+                    <option value={2}>Hoàn thành</option>
+                    <option value={3}>Bị kẹt</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Ghi chú</p>
+                  <Textarea
+                    value={updateStatusForm.notes}
+                    onChange={(e) =>
+                      setUpdateStatusForm((prev) => ({ ...prev, notes: e.target.value }))
+                    }
+                    placeholder="Nhập ghi chú tiến độ hoặc lý do bị kẹt"
+                    rows={4}
+                  />
+                </div>
+
+                {updateStatusErrors.form && (
+                  <p className="text-sm text-destructive">{updateStatusErrors.form}</p>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setUpdateStatusTarget(null)}>
+                  Hủy
+                </Button>
+                <Button type="button" className="gap-2" onClick={handleSubmitUpdateStatus}>
+                  <span className="material-symbols-outlined text-[18px]">sync_alt</span>
+                  Cập nhật trạng thái
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <Sheet
             open={!!editingHousehold}
@@ -2744,6 +3065,12 @@ export default function ReliefDistributionPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          <MobileShortageRequestReview
+            campaignId={effectiveSelectedCampaignId}
+            isOpen={showMobileShortageReview}
+            onClose={() => setShowMobileShortageReview(false)}
+          />
         </div>
       )}
     </DashboardLayout>

@@ -1943,9 +1943,9 @@ export default function ManagerCampaignPage() {
                       </Table>
                       <div className="mt-4 rounded-xl border border-dashed border-border bg-muted/20 p-3 text-xs text-muted-foreground">
                         {Number(allocation.status) === SupplyAllocationStatus.Pending &&
-                          'Allocation đang chờ manager duyệt để chuyển hàng vào campaign inventory.'}
+                          'Allocation đang chờ manager duyệt để chuyển hàng vào Kho chiến dịch.'}
                         {Number(allocation.status) === SupplyAllocationStatus.Approved &&
-                          'Allocation đã duyệt. Hãy kiểm tra campaign inventory balance và có thể đánh dấu đã giao khi hoàn tất.'}
+                          'Allocation đã duyệt. Hãy kiểm tra Ngân sách chiến dịch và có thể đánh dấu đã giao khi hoàn tất.'}
                         {Number(allocation.status) === SupplyAllocationStatus.Delivered &&
                           'Allocation đã hoàn tất giao cho chiến dịch.'}
                         {Number(allocation.status) === SupplyAllocationStatus.Cancelled &&
@@ -1973,7 +1973,7 @@ export default function ManagerCampaignPage() {
           if (!open) setAllocationUpdateState(null);
         }}
         title="Cập nhật trạng thái allocation"
-        description="Thay đổi trạng thái allocation sẽ ảnh hưởng trực tiếp đến campaign inventory và flow package assembly."
+        description="Thay đổi trạng thái allocation sẽ ảnh hưởng trực tiếp đến Kho chiến dịch và flow package assembly."
         confirmText={
           allocationUpdateState
             ? getSupplyAllocationStatusLabel(allocationUpdateState.nextStatus)
@@ -2701,19 +2701,20 @@ export default function ManagerCampaignPage() {
                         {(selectedCampaignInventoryBalance?.stations || []).length === 0 ? (
                           !(selectedCampaignInventoryBalance?.items || []).length ? (
                             <p className="text-sm text-muted-foreground">
-                              Chưa có stock trong campaign inventory của chiến dịch này.
+                              Chưa có stock trong Kho chiến dịch của chiến dịch này.
                             </p>
                           ) : (
                             <div className="space-y-3">
                               <div className="rounded-xl border border-border p-4">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                   <div>
-                                    <p className="font-semibold text-foreground">
-                                      Campaign inventory
-                                    </p>
+                                    <p className="font-semibold text-foreground">Kho chiến dịch</p>
                                     <p className="text-xs text-muted-foreground break-all mt-1">
-                                      Inventory ID:{' '}
-                                      {selectedCampaignInventoryBalance?.campaignInventoryId || '—'}
+                                      Mã kho:{' '}
+                                      {selectedCampaignInventoryBalance?.campaignInventoryId?.slice(
+                                        0,
+                                        6,
+                                      ) || '—'}
                                     </p>
                                   </div>
                                   <Badge
@@ -2725,8 +2726,8 @@ export default function ManagerCampaignPage() {
                                     size="sm"
                                   >
                                     {selectedCampaignInventoryBalance?.campaignInventoryId
-                                      ? 'Campaign inventory đã khởi tạo'
-                                      : 'Chưa có campaign inventory'}
+                                      ? 'Kho chiến dịch đã được khởi tạo'
+                                      : 'Chưa có Kho chiến dịch'}
                                   </Badge>
                                 </div>
 
@@ -2762,7 +2763,7 @@ export default function ManagerCampaignPage() {
                                         {item.supplyItemName}
                                       </p>
                                       <p className="text-xs text-muted-foreground break-all mt-1">
-                                        {item.supplyItemId}
+                                        Mã vật phẩm: {item.supplyItemId.slice(0, 6)}
                                       </p>
                                     </div>
                                     <Badge variant="outline" size="sm">

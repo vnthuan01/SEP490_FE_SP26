@@ -86,13 +86,12 @@ export function CoordinatorReliefDistributionAssignmentStep({
   hasDistributionPoint,
   householdSearch,
   onChangeHouseholdSearch,
-  assignmentFilter,
-  onChangeAssignmentFilter,
   onJumpToCreateTeam,
   onJumpToCreatePackage,
   assignErrors,
   onEditHousehold,
   onDeleteHousehold,
+  onUpdateStatusHousehold,
 }: {
   sectionId: string;
   assignForm: CoordinatorAssignForm;
@@ -116,13 +115,12 @@ export function CoordinatorReliefDistributionAssignmentStep({
   hasDistributionPoint: boolean;
   householdSearch: string;
   onChangeHouseholdSearch: (value: string) => void;
-  assignmentFilter: 'all' | 'assigned' | 'unassigned';
-  onChangeAssignmentFilter: (value: 'all' | 'assigned' | 'unassigned') => void;
   onJumpToCreateTeam: () => void;
   onJumpToCreatePackage: () => void;
   assignErrors: Record<string, string>;
   onEditHousehold: (household: HouseholdRow) => void;
   onDeleteHousehold: (household: HouseholdRow) => void;
+  onUpdateStatusHousehold: (household: HouseholdRow) => void;
 }) {
   const hasTeams = teams.length > 0;
   const [openScheduleCalendar, setOpenScheduleCalendar] = useState(false);
@@ -371,32 +369,14 @@ export function CoordinatorReliefDistributionAssignmentStep({
           </Sheet>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <div className="space-y-2 xl:col-span-2">
+        <div className="grid gap-3">
+          <div className="space-y-2">
             <p className="text-sm font-medium">Tìm kiếm hộ dân</p>
             <Input
               placeholder="Tìm theo mã hộ hoặc tên chủ hộ"
               value={householdSearch}
               onChange={(e) => onChangeHouseholdSearch(e.target.value)}
             />
-          </div>
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Lọc theo trạng thái gán</p>
-            <Select
-              value={assignmentFilter}
-              onValueChange={(value: 'all' | 'assigned' | 'unassigned') =>
-                onChangeAssignmentFilter(value)
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Lọc theo phân công" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả</SelectItem>
-                <SelectItem value="assigned">Đã gán đội</SelectItem>
-                <SelectItem value="unassigned">Chưa gán đội</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
@@ -478,6 +458,16 @@ export function CoordinatorReliefDistributionAssignmentStep({
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => onUpdateStatusHousehold(household)}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">sync_alt</span>
+                          Trạng thái
+                        </Button>
                         <Button
                           type="button"
                           variant="outline"
