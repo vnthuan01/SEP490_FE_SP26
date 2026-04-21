@@ -370,13 +370,17 @@ export function CoordinatorReliefDistributionAssignmentStep({
         </div>
 
         <div className="grid gap-3">
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Tìm kiếm hộ dân</p>
-            <Input
-              placeholder="Tìm theo mã hộ hoặc tên chủ hộ"
-              value={householdSearch}
-              onChange={(e) => onChangeHouseholdSearch(e.target.value)}
-            />
+          <div className="space-y-4">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between w-full">
+              <div className="space-y-2 flex-grow max-w-sm">
+                <p className="text-sm font-medium">Tìm kiếm hộ dân</p>
+                <Input
+                  placeholder="Tìm theo mã hộ hoặc tên chủ hộ"
+                  value={householdSearch}
+                  onChange={(e) => onChangeHouseholdSearch(e.target.value)}
+                />
+              </div>
+            </div>
           </div>
         </div>
 

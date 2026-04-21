@@ -987,6 +987,7 @@ export default function ReliefStationPage() {
                     onSelectCampaign={setSelectedCampaignId}
                     onSelectStation={openLargeMapForStation}
                     showOpenLargeMapButton
+                    heightClass="h-[600px]"
                     onOpenLargeMap={() =>
                       effectiveSelectedCampaignId
                         ? openLargeMapForCampaign(effectiveSelectedCampaignId)
@@ -1004,7 +1005,7 @@ export default function ReliefStationPage() {
                       Chiến dịch đang quản lý
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="p-0 pb-6 pr-2 pl-6">
                     {campaignMapLoading ? (
                       <div className="space-y-3">
                         {[1, 2, 3].map((item) => (
@@ -1020,12 +1021,11 @@ export default function ReliefStationPage() {
                           Chưa có chiến dịch nào gắn với trạm này
                         </p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          Khi trạm được gán vào chiến dịch, danh sách sẽ hiển thị tại đây bằng tiếng
-                          Việt.
+                          Khi trạm được gán vào chiến dịch, danh sách sẽ hiển thị tại đây.
                         </p>
                       </div>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-3 pr-4 max-h-[640px] overflow-y-auto">
                         {managedCampaigns.map((campaign) => {
                           const isSelected = campaign.campaignId === effectiveSelectedCampaignId;
                           const activeAssignment = (campaign.stations || []).find(
@@ -1158,7 +1158,7 @@ export default function ReliefStationPage() {
                   </CardContent>
                 </Card>
 
-                {selectedCampaign && (
+                {/* {selectedCampaign && (
                   <Card className="border-border bg-card">
                     <CardHeader className="pb-3">
                       <CardTitle className="flex items-center gap-2 text-lg">
@@ -1206,14 +1206,14 @@ export default function ReliefStationPage() {
                       </div>
                     </CardContent>
                   </Card>
-                )}
+                )} */}
               </div>
             </div>
 
             <Sheet open={openMapSheet} onOpenChange={setOpenMapSheet}>
               <SheetContent side="right" className="w-full sm:max-w-[96vw] p-0 overflow-hidden">
                 <div className="h-full min-h-0 grid grid-cols-1 lg:grid-cols-[minmax(0,1.7fr)_420px] xl:grid-cols-[minmax(0,1.8fr)_480px]">
-                  <div className="min-h-[46vh] lg:min-h-0 border-b lg:border-b-0 lg:border-r border-border p-4 lg:p-5 bg-background">
+                  <div className="min-h-[40vh] lg:min-h-0 border-b lg:border-b-0 lg:border-r border-border p-4 lg:p-5 bg-background">
                     <StationCampaignMap
                       station={station}
                       campaigns={managedCampaigns}
@@ -1225,7 +1225,7 @@ export default function ReliefStationPage() {
                         setMapFocusTarget('campaign');
                       }}
                       onSelectStation={() => setMapFocusTarget('station')}
-                      heightClass="h-full min-h-[520px] lg:min-h-0"
+                      heightClass="h-full min-h-[480px] lg:min-h-0"
                     />
                   </div>
 

@@ -1,8 +1,6 @@
 import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 function useReturnParams() {
   const [searchParams] = useSearchParams();
@@ -17,81 +15,77 @@ function useReturnParams() {
   };
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  PAID: 'Thành công',
+  SUCCESS: 'Thành công',
+  PENDING: 'Đang xử lý',
+  PROCESSING: 'Đang xử lý',
+  CANCELLED: 'Đã huỷ',
+};
+
 export default function DonationReturnPage() {
-  const { code, paymentId, cancel, status, orderCode, campaignId } = useReturnParams();
+  const { status, orderCode, campaignId } = useReturnParams();
 
   const normalizedStatus = useMemo(() => status.toUpperCase(), [status]);
   const isPaid = normalizedStatus === 'PAID' || normalizedStatus === 'SUCCESS';
+  const statusText = STATUS_LABEL[normalizedStatus] || normalizedStatus;
 
   return (
-    <div className="min-h-screen bg-background px-4 py-10 text-foreground">
-      <div className="mx-auto max-w-2xl">
-        <Card className="border-border">
-          <CardHeader className="space-y-3">
-            <Badge
-              variant={isPaid ? 'success' : 'info'}
-              appearance="outline"
-              size="sm"
-              className="w-fit gap-2"
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-16">
+      <div className="w-full max-w-md text-center">
+        {/* Icon */}
+        <div
+          className={`mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full ${
+            isPaid ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[44px]">
+            {isPaid ? 'check' : 'schedule'}
+          </span>
+        </div>
+
+        {/* Heading */}
+        <h1 className="text-2xl font-bold text-foreground mb-2">
+          {isPaid ? 'Thanh toán thành công!' : 'Giao dịch đang được xử lý'}
+        </h1>
+        <p className="text-muted-foreground text-sm mb-8 max-w-sm mx-auto">
+          {isPaid
+            ? 'Cảm ơn bạn đã quyên góp! Khoản đóng góp của bạn đã được hệ thống ghi nhận thành công.'
+            : 'Chúng tôi đang chờ xác nhận từ ngân hàng. Vui lòng kiểm tra lại sau ít phút.'}
+        </p>
+
+        {/* Info table */}
+        <div className="rounded-lg border border-border bg-card text-left mb-8">
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+            <span className="text-sm text-muted-foreground">Trạng thái</span>
+            <span
+              className={`text-sm font-semibold ${isPaid ? 'text-emerald-600' : 'text-amber-600'}`}
             >
-              <span className="material-symbols-outlined text-sm">
-                {isPaid ? 'check_circle' : 'hourglass_top'}
-              </span>
-              {isPaid ? 'Thanh toán thành công' : 'Đã quay lại từ cổng thanh toán'}
-            </Badge>
-            <CardTitle className="text-2xl font-black text-primary">
-              Kết quả thanh toán quyên góp
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Hệ thống đã nhận được thông tin trả về từ cổng thanh toán. Nếu giao dịch vừa hoàn tất,
-              backend vẫn có thể cần thêm vài giây để cập nhật trạng thái cuối cùng qua webhook.
-            </p>
-          </CardHeader>
+              {statusText}
+            </span>
+          </div>
+          <div className="flex items-center justify-between px-5 py-3.5">
+            <span className="text-sm text-muted-foreground">Mã đơn hàng</span>
+            <span className="text-sm font-medium text-foreground">{orderCode}</span>
+          </div>
+        </div>
 
-          <CardContent className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="rounded-xl border border-border bg-muted/20 p-4">
-                <p className="text-xs font-semibold uppercase text-muted-foreground">
-                  Trạng thái PayOS
-                </p>
-                <p className="mt-2 font-semibold text-foreground">{normalizedStatus}</p>
-              </div>
-              <div className="rounded-xl border border-border bg-muted/20 p-4">
-                <p className="text-xs font-semibold uppercase text-muted-foreground">Mã đơn hàng</p>
-                <p className="mt-2 font-mono text-sm text-foreground">{orderCode}</p>
-              </div>
-              <div className="rounded-xl border border-border bg-muted/20 p-4">
-                <p className="text-xs font-semibold uppercase text-muted-foreground">Mã phản hồi</p>
-                <p className="mt-2 text-sm text-foreground">{code}</p>
-              </div>
-              <div className="rounded-xl border border-border bg-muted/20 p-4">
-                <p className="text-xs font-semibold uppercase text-muted-foreground">
-                  Mã giao dịch PayOS
-                </p>
-                <p className="mt-2 break-all text-sm text-foreground">{paymentId}</p>
-              </div>
-              <div className="rounded-xl border border-border bg-muted/20 p-4 sm:col-span-2">
-                <p className="text-xs font-semibold uppercase text-muted-foreground">Cờ hủy</p>
-                <p className="mt-2 text-sm text-foreground">{cancel}</p>
-              </div>
-            </div>
+        {/* Actions */}
+        <div className="flex flex-col gap-3">
+          {campaignId ? (
+            <Button className="w-full h-11" asChild>
+              <Link to={`/donate/${campaignId}`}>Quay lại chiến dịch</Link>
+            </Button>
+          ) : (
+            <Button className="w-full h-11" asChild>
+              <Link to="/fundraising">Xem các chiến dịch</Link>
+            </Button>
+          )}
 
-            <div className="flex flex-wrap gap-3">
-              {campaignId ? (
-                <Button asChild>
-                  <Link to={`/donate/${campaignId}`}>Quay lại chiến dịch</Link>
-                </Button>
-              ) : (
-                <Button asChild>
-                  <Link to="/fundraising">Xem các chiến dịch gây quỹ</Link>
-                </Button>
-              )}
-              <Button variant="outline" asChild>
-                <Link to="/fundraising">Về danh sách gây quỹ</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          <Button variant="outline" className="w-full h-11" asChild>
+            <Link to="/fundraising">Về trang chủ</Link>
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -106,6 +106,24 @@ const getAgeTextFromDob = (value?: string | null) => {
   return `${age}`;
 };
 
+const translateSkill = (name: string): string => {
+  const translations: Record<string, string> = {
+    'Logistics Support': 'Hỗ trợ hậu cần',
+    'Search and Rescue': 'Tìm kiếm cứu nạn',
+    'Medical Support': 'Hỗ trợ y tế',
+    'First Aid': 'Sơ cấp cứu',
+    Communication: 'Thông tin liên lạc',
+    Driving: 'Lái xe',
+    'Heavy Equipment Operation': 'Vận hành thiết bị hạng nặng',
+    Translation: 'Phiên dịch',
+    'Psychological Support': 'Hỗ trợ tâm lý',
+    Cooking: 'Nấu ăn',
+    'Data Entry': 'Nhập liệu',
+    Coordination: 'Điều phối',
+  };
+  return translations[name] || name;
+};
+
 export default function CoordinatorVolunteerRequestPage() {
   const {
     applications,
@@ -478,7 +496,7 @@ export default function CoordinatorVolunteerRequestPage() {
                                   key={`${app.volunteerProfileId}-${skill.skillId}`}
                                   className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground"
                                 >
-                                  {skill.name}
+                                  {translateSkill(skill.name)}
                                 </span>
                               ))}
                               {(app.skills || []).length > 3 && (
@@ -669,7 +687,7 @@ export default function CoordinatorVolunteerRequestPage() {
                               key={s.skillId}
                               className="rounded-full border border-primary/10 bg-primary/5 px-2.5 py-1 text-xs text-foreground"
                             >
-                              {s.name}
+                              {translateSkill(s.name)}
                             </span>
                           ))
                         ) : (

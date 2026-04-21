@@ -215,22 +215,11 @@ export function useShortageRequests(campaignId: string, params?: GetShortageRequ
 
 const invalidateCampaign = async (
   queryClient: ReturnType<typeof useQueryClient>,
-  campaignId: string,
+  _campaignId: string,
 ) => {
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: RELIEF_DISTRIBUTION_KEYS.households(campaignId) }),
-    queryClient.invalidateQueries({ queryKey: RELIEF_DISTRIBUTION_KEYS.checklist(campaignId) }),
-    queryClient.invalidateQueries({
-      queryKey: RELIEF_DISTRIBUTION_KEYS.distributionPoints(campaignId),
-    }),
-    queryClient.invalidateQueries({ queryKey: RELIEF_DISTRIBUTION_KEYS.packages(campaignId) }),
-    queryClient.invalidateQueries({ queryKey: RELIEF_DISTRIBUTION_KEYS.deliveries(campaignId) }),
-    queryClient.invalidateQueries({
-      queryKey: RELIEF_DISTRIBUTION_KEYS.shortageRequests(campaignId),
-    }),
-    queryClient.invalidateQueries({
-      queryKey: RELIEF_DISTRIBUTION_KEYS.assemblyHistoryCampaign(campaignId),
-    }),
+    queryClient.invalidateQueries({ queryKey: ['relief-distribution'] }),
+    queryClient.invalidateQueries({ queryKey: ['campaigns'] }),
   ]);
 };
 
@@ -322,9 +311,7 @@ export function useCreateDistributionPoint() {
     }) => reliefDistributionService.createDistributionPoint(campaignId, data),
     onSuccess: async (_, { campaignId }) => {
       toast.success('Đã tạo điểm phát');
-      await queryClient.invalidateQueries({
-        queryKey: RELIEF_DISTRIBUTION_KEYS.distributionPoints(campaignId),
-      });
+      await invalidateCampaign(queryClient, campaignId);
     },
     onError: (error) => handleHookError(error, 'Không thể tạo điểm phát'),
   });
@@ -344,9 +331,7 @@ export function usePatchDistributionPoint() {
     }) => reliefDistributionService.patchDistributionPoint(campaignId, distributionPointId, data),
     onSuccess: async (_, { campaignId }) => {
       toast.success('Đã cập nhật điểm phát');
-      await queryClient.invalidateQueries({
-        queryKey: RELIEF_DISTRIBUTION_KEYS.distributionPoints(campaignId),
-      });
+      await invalidateCampaign(queryClient, campaignId);
     },
     onError: (error) => handleHookError(error, 'Không thể cập nhật điểm phát'),
   });
@@ -364,9 +349,7 @@ export function useDeleteDistributionPoint() {
     }) => reliefDistributionService.deleteDistributionPoint(campaignId, distributionPointId),
     onSuccess: async (_, { campaignId }) => {
       toast.success('Đã xoá điểm phát');
-      await queryClient.invalidateQueries({
-        queryKey: RELIEF_DISTRIBUTION_KEYS.distributionPoints(campaignId),
-      });
+      await invalidateCampaign(queryClient, campaignId);
     },
     onError: (error) => handleHookError(error, 'Không thể xoá điểm phát'),
   });
@@ -384,9 +367,7 @@ export function useCreateReliefPackage() {
     }) => reliefDistributionService.createReliefPackage(campaignId, data),
     onSuccess: async (_, { campaignId }) => {
       toast.success('Đã tạo gói cứu trợ');
-      await queryClient.invalidateQueries({
-        queryKey: RELIEF_DISTRIBUTION_KEYS.packages(campaignId),
-      });
+      await invalidateCampaign(queryClient, campaignId);
     },
     onError: (error) => handleHookError(error, 'Không thể tạo gói cứu trợ'),
   });
@@ -406,9 +387,7 @@ export function usePatchReliefPackage() {
     }) => reliefDistributionService.patchReliefPackage(campaignId, reliefPackageDefinitionId, data),
     onSuccess: async (_, { campaignId }) => {
       toast.success('Đã cập nhật gói cứu trợ');
-      await queryClient.invalidateQueries({
-        queryKey: RELIEF_DISTRIBUTION_KEYS.packages(campaignId),
-      });
+      await invalidateCampaign(queryClient, campaignId);
     },
     onError: (error) => handleHookError(error, 'Không thể cập nhật gói cứu trợ'),
   });
@@ -426,9 +405,7 @@ export function useDeleteReliefPackage() {
     }) => reliefDistributionService.deleteReliefPackage(campaignId, reliefPackageDefinitionId),
     onSuccess: async (_, { campaignId }) => {
       toast.success('Đã xoá gói cứu trợ');
-      await queryClient.invalidateQueries({
-        queryKey: RELIEF_DISTRIBUTION_KEYS.packages(campaignId),
-      });
+      await invalidateCampaign(queryClient, campaignId);
     },
     onError: (error) => handleHookError(error, 'Không thể xoá gói cứu trợ'),
   });
@@ -447,31 +424,9 @@ export function useAssembleReliefPackage() {
       data: AssembleReliefPackageRequest;
     }) =>
       reliefDistributionService.assembleReliefPackage(campaignId, reliefPackageDefinitionId, data),
-    onSuccess: async (_, { campaignId, reliefPackageDefinitionId, data }) => {
+    onSuccess: async (_, { campaignId }) => {
       toast.success('Đã đóng gói cứu trợ');
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: RELIEF_DISTRIBUTION_KEYS.assemblyHistoryCampaign(campaignId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: RELIEF_DISTRIBUTION_KEYS.assemblyHistoryStation(
-            campaignId,
-            data.reliefStationId,
-          ),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: RELIEF_DISTRIBUTION_KEYS.assemblyHistoryDefinition(
-            campaignId,
-            reliefPackageDefinitionId,
-          ),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: RELIEF_DISTRIBUTION_KEYS.assemblyAvailability(
-            campaignId,
-            reliefPackageDefinitionId,
-          ),
-        }),
-      ]);
+      await invalidateCampaign(queryClient, campaignId);
     },
     onError: (error) => handleHookError(error, 'Không thể đóng gói cứu trợ'),
   });
@@ -522,9 +477,7 @@ export function useCreateShortageRequest() {
       reliefDistributionService.createShortageRequest(campaignId, data),
     onSuccess: async (_, { campaignId }) => {
       toast.success('Đã tạo yêu cầu thiếu hụt');
-      await queryClient.invalidateQueries({
-        queryKey: RELIEF_DISTRIBUTION_KEYS.shortageRequests(campaignId),
-      });
+      await invalidateCampaign(queryClient, campaignId);
     },
     onError: (error) => handleHookError(error, 'Không thể tạo yêu cầu thiếu hụt'),
   });
@@ -544,9 +497,7 @@ export function useApproveShortageRequest() {
     }) => reliefDistributionService.approveShortageRequest(campaignId, shortageRequestId, data),
     onSuccess: async (_, { campaignId }) => {
       toast.success('Đã duyệt yêu cầu thiếu hụt');
-      await queryClient.invalidateQueries({
-        queryKey: RELIEF_DISTRIBUTION_KEYS.shortageRequests(campaignId),
-      });
+      await invalidateCampaign(queryClient, campaignId);
     },
     onError: (error) => handleHookError(error, 'Không thể duyệt yêu cầu thiếu hụt'),
   });
@@ -566,9 +517,7 @@ export function useRejectShortageRequest() {
     }) => reliefDistributionService.rejectShortageRequest(campaignId, shortageRequestId, data),
     onSuccess: async (_, { campaignId }) => {
       toast.success('Đã từ chối yêu cầu thiếu hụt');
-      await queryClient.invalidateQueries({
-        queryKey: RELIEF_DISTRIBUTION_KEYS.shortageRequests(campaignId),
-      });
+      await invalidateCampaign(queryClient, campaignId);
     },
     onError: (error) => handleHookError(error, 'Không thể từ chối yêu cầu thiếu hụt'),
   });

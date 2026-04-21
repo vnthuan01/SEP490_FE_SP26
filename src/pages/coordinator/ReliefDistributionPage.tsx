@@ -1,5 +1,5 @@
 import { useMemo, useState, type SetStateAction } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQueries } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { CheckedState } from '@radix-ui/react-checkbox';
 import { useNavigate } from 'react-router-dom';
@@ -18,6 +18,7 @@ import {
   useCampaignInventoryBalance,
   useCampaigns,
   useCampaignTeams,
+  useCampaignSummary,
 } from '@/hooks/useCampaigns';
 import { useProvinces } from '@/hooks/useLocations';
 import {
@@ -49,6 +50,7 @@ import {
   type HouseholdChecklistItemResponse,
   type ReliefPackageDefinitionResponse,
 } from '@/services/reliefDistributionService';
+import { campaignService } from '@/services/campaignService';
 import { CoordinatorReliefDistributionPageHeader } from './components/relief-distribution/CoordinatorReliefDistributionPageHeader';
 import { CoordinatorReliefDistributionSetupSteps } from './components/relief-distribution/CoordinatorReliefDistributionSetupSteps';
 import { CoordinatorReliefDistributionAssignmentStep } from './components/relief-distribution/CoordinatorReliefDistributionAssignmentStep';
@@ -82,8 +84,6 @@ import { ReliefStickySectionHeader } from './components/relief-distribution/Reli
 import { ReliefFilterBar } from './components/relief-distribution/ReliefFilterBar';
 import { ReliefPaginationBar } from './components/relief-distribution/ReliefPaginationBar';
 import { MobileShortageRequestReview } from './components/shortage-request/MobileShortageRequestReview';
-import { ReliefAdvancedFilters } from '@/components/shared/relief-distribution/ReliefAdvancedFilters';
-import type { ReliefAdvancedFiltersValue } from '@/components/shared/relief-distribution/types';
 
 const createDefaultDistributionPointForm = (station?: {
   address?: string | null;
@@ -134,7 +134,7 @@ const mapPackageToForm = (pkg: ReliefPackageDefinitionResponse): CoordinatorPack
   isActive: pkg.isActive,
   items:
     pkg.items?.length > 0
-      ? pkg.items.map((item) => ({
+      ? pkg.items.map((item: any) => ({
           supplyItemId: item.supplyItemId,
           quantity: item.quantity,
           unit: item.unit,
@@ -207,14 +207,13 @@ export default function ReliefDistributionPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedHouseholdIds, setSelectedHouseholdIds] = useState<Set<string>>(new Set());
   const [householdSearch, setHouseholdSearch] = useState('');
-  const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>(
-    'all',
-  );
-  const [deliveryModeFilter, setDeliveryModeFilter] = useState<number | undefined>(undefined);
-  const [teamFilter, setTeamFilter] = useState<string | undefined>(undefined);
-  const [pointFilter, setPointFilter] = useState<string | undefined>(undefined);
-  const [statusFilter, setStatusFilter] = useState<number | undefined>(undefined);
-  const [isIsolatedFilter, setIsIsolatedFilter] = useState<boolean | undefined>(undefined);
+
+  const [teamFilter] = useState<string | undefined>();
+  const [pointFilter] = useState<string | undefined>();
+  const [deliveryModeFilter] = useState<number | undefined>();
+  const [statusFilter] = useState<number | undefined>();
+  const [assignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
+  const [isIsolatedFilter] = useState<boolean | undefined>(undefined);
   const [deliveriesPage, setDeliveriesPage] = useState(1);
   const [shortageRequestsPage, setShortageRequestsPage] = useState(1);
   const [distributionPointForm, setDistributionPointForm] =
@@ -283,7 +282,6 @@ export default function ReliefDistributionPage() {
     | null
   >(null);
   const [showMobileShortageReview, setShowMobileShortageReview] = useState(false);
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
 
   const resetAllPages = () => {
     setCurrentPage(1);
@@ -291,38 +289,6 @@ export default function ReliefDistributionPage() {
     setDeliveriesPage(1);
     setShortageRequestsPage(1);
     setTeamActivityPage(1);
-  };
-
-  const filtersValue: ReliefAdvancedFiltersValue = {
-    search: householdSearch,
-    assignment: assignmentFilter,
-    deliveryMode: deliveryModeFilter,
-    teamId: teamFilter,
-    distributionPointId: pointFilter,
-    status: statusFilter,
-    isIsolated: isIsolatedFilter,
-  };
-
-  const handleFiltersChange = (next: ReliefAdvancedFiltersValue) => {
-    setHouseholdSearch(next.search);
-    setAssignmentFilter(next.assignment ?? 'all');
-    setDeliveryModeFilter(next.deliveryMode);
-    setTeamFilter(next.teamId);
-    setPointFilter(next.distributionPointId);
-    setStatusFilter(next.status);
-    setIsIsolatedFilter(next.isIsolated);
-    resetAllPages();
-  };
-
-  const resetFilters = () => {
-    setHouseholdSearch('');
-    setAssignmentFilter('all');
-    setDeliveryModeFilter(undefined);
-    setTeamFilter(undefined);
-    setPointFilter(undefined);
-    setStatusFilter(undefined);
-    setIsIsolatedFilter(undefined);
-    resetAllPages();
   };
 
   const { station } = useMyReliefStation();
@@ -368,6 +334,32 @@ export default function ReliefDistributionPage() {
     { enabled: true },
   );
 
+  const fundraisingSummaryQueries = useQueries({
+    queries: fundraisingCampaigns.map((campaign) => ({
+      queryKey: CAMPAIGN_QUERY_KEYS.summary(campaign.campaignId),
+      queryFn: async () => {
+        const response = await campaignService.getSummary(campaign.campaignId);
+        return response.data;
+      },
+      staleTime: 60000,
+      enabled: !!campaign.campaignId,
+    })),
+  });
+
+  const sourceSummaries = useMemo(() => {
+    return fundraisingSummaryQueries.reduce(
+      (acc, query, index) => {
+        const campaignId = fundraisingCampaigns[index].campaignId;
+        acc[campaignId] = query.data;
+        return acc;
+      },
+      {} as Record<string, any>,
+    );
+  }, [fundraisingSummaryQueries, fundraisingCampaigns]);
+
+  const { summary: sourceCampaignSummary, isLoading: isSourceCampaignSummaryLoading } =
+    useCampaignSummary(budgetExtractForm.sourceCampaignId);
+
   const { teams } = useCampaignTeams(effectiveSelectedCampaignId);
   const { households, pagination: householdsPagination } = useReliefHouseholds(
     effectiveSelectedCampaignId,
@@ -394,6 +386,14 @@ export default function ReliefDistributionPage() {
       deliveryMode: deliveryModeFilter,
     },
   );
+
+  // Fetch full checklist for statistics calculation (Theo dõi hoạt động đội)
+  // We use a large pageSize to get all assigned items for the summary
+  const { checklist: fullChecklist } = useReliefChecklist(effectiveSelectedCampaignId, {
+    pageIndex: 1,
+    pageSize: 3000,
+  });
+
   const { distributionPoints } = useDistributionPoints(effectiveSelectedCampaignId, {
     campaignTeamId: teamFilter,
     deliveryMode: deliveryModeFilter,
@@ -1335,7 +1335,9 @@ export default function ReliefDistributionPage() {
 
   const teamActivitySummary = useMemo(() => {
     return teams.map((team) => {
-      const teamChecklist = checklist.filter((item) => item.campaignTeamId === team.campaignTeamId);
+      const teamChecklist = fullChecklist.filter(
+        (item) => item.campaignTeamId === team.campaignTeamId,
+      );
       const assignedCount = teamChecklist.length;
       const deliveredCount = teamChecklist.filter((item) => Number(item.status) === 2).length;
       const completionRate =
@@ -1378,7 +1380,7 @@ export default function ReliefDistributionPage() {
         progressTone,
       };
     });
-  }, [teams, checklist]);
+  }, [teams, fullChecklist]);
 
   const filteredTeamActivitySummary = useMemo(() => {
     const normalizedSearch = teamSearch.trim().toLowerCase();
@@ -1539,21 +1541,6 @@ export default function ReliefDistributionPage() {
               iconClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
             />
           </div>
-
-          <ReliefAdvancedFilters
-            value={filtersValue}
-            onChange={handleFiltersChange}
-            onReset={resetFilters}
-            expanded={filtersExpanded}
-            onExpandedChange={setFiltersExpanded}
-            teams={teams.map((team) => ({ label: team.teamName, value: team.campaignTeamId }))}
-            distributionPoints={distributionPoints.map((point) => ({
-              label: point.name,
-              value: point.distributionPointId,
-            }))}
-            showIsolationFilter
-            title="Bộ lọc điều phối phân phối"
-          />
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
             <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -2430,9 +2417,16 @@ export default function ReliefDistributionPage() {
                   Các yêu cầu bổ sung hàng hóa từ đội phát
                 </p>
               </div>
-              <Badge variant={shortageRequests.length > 0 ? 'warning' : 'success'}>
-                {shortageRequests.length} chờ duyệt
-              </Badge>
+              <div className="flex items-center gap-3">
+                <Badge variant={shortageRequests.length > 0 ? 'warning' : 'success'}>
+                  {shortageRequests.length} chờ duyệt
+                </Badge>
+                {shortageRequests.length > 0 && (
+                  <Button size="sm" onClick={() => setShowMobileShortageReview(true)}>
+                    Mở thiết lập duyệt
+                  </Button>
+                )}
+              </div>
             </div>
             {shortageRequests.length === 0 ? (
               <p className="text-sm text-muted-foreground">Không có yêu cầu nào.</p>
@@ -2862,12 +2856,48 @@ export default function ReliefDistributionPage() {
                     }
                   >
                     <option value="">Chọn chiến dịch gây quỹ</option>
-                    {fundraisingCampaigns.map((campaign) => (
-                      <option key={campaign.campaignId} value={campaign.campaignId}>
-                        {campaign.name}
-                      </option>
-                    ))}
+                    {fundraisingCampaigns.map((campaign) => {
+                      const summary = sourceSummaries[campaign.campaignId];
+                      const isLoaded = !!summary;
+                      const remaining = summary?.remainingBudget ?? 0;
+                      const isAvailable = isLoaded && remaining > 0;
+                      return (
+                        <option
+                          key={campaign.campaignId}
+                          value={campaign.campaignId}
+                          disabled={isLoaded && !isAvailable}
+                        >
+                          {campaign.name}{' '}
+                          {isLoaded
+                            ? isAvailable
+                              ? `(Khả dụng: ${formatNumberVN(remaining)})`
+                              : '(Không khả dụng)'
+                            : '(Đang tải...)'}
+                        </option>
+                      );
+                    })}
                   </select>
+                  {isSourceCampaignSummaryLoading && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Đang tải thông tin ngân sách...
+                    </p>
+                  )}
+                  {sourceCampaignSummary && (
+                    <div className="mt-2 rounded-lg bg-muted/50 p-3 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Tổng quỹ quyên góp:</span>
+                        <span className="font-semibold text-primary">
+                          {formatNumberVN(sourceCampaignSummary.totalMoneyReceived)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between mt-1">
+                        <span className="text-muted-foreground">Ngân sách còn lại (khả dụng):</span>
+                        <span className="font-semibold text-green-600 dark:text-green-400">
+                          {formatNumberVN(sourceCampaignSummary.remainingBudget)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                   {budgetExtractErrors.sourceCampaignId && (
                     <p className="text-sm text-destructive">
                       {budgetExtractErrors.sourceCampaignId}
