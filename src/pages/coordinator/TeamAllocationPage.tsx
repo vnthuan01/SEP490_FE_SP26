@@ -163,7 +163,7 @@ export default function CoordinatorTeamAllocationPage() {
   const firstTeamId = apiTeams?.[0]?.teamId;
   const { trackingPoints } = useTeamLatestTracking(String(firstTeamId || ''), 100);
   const allTeamIds = useMemo(() => (apiTeams || []).map((t: any) => String(t.teamId)), [apiTeams]);
-  const { busyTeamIds } = useTeamsActiveBatches(allTeamIds);
+  const { busyTeamIds, dispatchedVehicleByTeamId } = useTeamsActiveBatches(allTeamIds);
 
   // ── build headquarters from station ──
   const headquarters: Headquarters = useMemo(
@@ -273,7 +273,7 @@ export default function CoordinatorTeamAllocationPage() {
           disabledReason,
         };
       }),
-    [teamsWithTracking, busyTeamIds],
+    [teamsWithTracking, busyTeamIds, dispatchedVehicleByTeamId],
   );
 
   const availableTeams = useMemo(() => teamOptions.filter((t) => !t.disabledReason), [teamOptions]);
@@ -330,9 +330,33 @@ export default function CoordinatorTeamAllocationPage() {
       if (!location || !team) return;
 
       try {
+        let effectiveVehicleId = String(vehicleId || '').trim() || null;
+
+        // Reuse vehicle already dispatched in active batch for this team.
+        if (!effectiveVehicleId) {
+          const activeBatchVehicleId = String(
+            dispatchedVehicleByTeamId[teamId]?.vehicleId || '',
+          ).trim();
+          if (activeBatchVehicleId) {
+            effectiveVehicleId = activeBatchVehicleId;
+          }
+        }
+
+        // Fallback: fetch latest active batch to avoid stale local state.
+        if (!effectiveVehicleId) {
+          const latestBatch = await rescueRequestService.getActiveBatch(teamId);
+          const latestBatchVehicle = (latestBatch.items || []).find((item: any) =>
+            String(item?.vehicleId || '').trim(),
+          ) as any;
+          const latestBatchVehicleId = String(latestBatchVehicle?.vehicleId || '').trim();
+          if (latestBatchVehicleId) {
+            effectiveVehicleId = latestBatchVehicleId;
+          }
+        }
+
         await rescueRequestService.assignTeam(locationId, {
           teamId,
-          vehicleId: vehicleId ?? null,
+          vehicleId: effectiveVehicleId,
           note,
         });
         toast.success(`Đã phân công ${team.name} đến ${location.locationName}`);
@@ -341,7 +365,7 @@ export default function CoordinatorTeamAllocationPage() {
         toast.error(parseApiError(e, 'Không thể phân công đội cứu trợ.').message);
       }
     },
-    [reliefLocations, teams, refetch],
+    [reliefLocations, teams, dispatchedVehicleByTeamId, refetch],
   );
 
   // ── location click ──
@@ -418,6 +442,7 @@ export default function CoordinatorTeamAllocationPage() {
             allTeams={teamOptions}
             availableVehicles={availableVehicles}
             isLoadingVehicles={isLoadingVehicles}
+            teamDispatchedVehicleByTeamId={dispatchedVehicleByTeamId}
             onAssignTeam={handleAssignTeam}
           />
 
@@ -584,6 +609,7 @@ export default function CoordinatorTeamAllocationPage() {
         allTeams={teamOptions}
         availableVehicles={availableVehicles}
         isLoadingVehicles={isLoadingVehicles}
+        teamDispatchedVehicleByTeamId={dispatchedVehicleByTeamId}
         onAssignTeam={handleAssignTeam}
       />
     </DashboardLayout>

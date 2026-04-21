@@ -298,7 +298,7 @@ export function MissionTrackingMapSection({
   // ── Direction route: API → routePolyline fallback → straight line ─────────
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !teamCoords || !victimCoords) return;
+    if (!map || !victimCoords) return;
     let cancelled = false;
 
     const drawLine = (coords: Array<[number, number]>, dashed: boolean) => {
@@ -339,16 +339,30 @@ export function MissionTrackingMapSection({
     };
 
     const last = lastRouteFetchRef.current;
+    const canUseTeamCoords = Boolean(teamCoords);
     const destSame =
+      canUseTeamCoords &&
       last &&
       Math.abs(last.destination.lat - victimCoords.lat) < 0.00001 &&
       Math.abs(last.destination.lng - victimCoords.lng) < 0.00001;
-    const originNoise = last && !hasMeaningfulCoordinateShift(last.origin, teamCoords, 0.00036);
+    const originNoise =
+      canUseTeamCoords &&
+      last &&
+      !hasMeaningfulCoordinateShift(
+        last.origin,
+        teamCoords as { lat: number; lng: number },
+        0.00036,
+      );
 
-    const straightLine: Array<[number, number]> = [
-      [teamCoords.lng, teamCoords.lat],
-      [victimCoords.lng, victimCoords.lat],
-    ];
+    const straightLine: Array<[number, number]> = canUseTeamCoords
+      ? [
+          [
+            (teamCoords as { lat: number; lng: number }).lng,
+            (teamCoords as { lat: number; lng: number }).lat,
+          ],
+          [victimCoords.lng, victimCoords.lat],
+        ]
+      : [];
 
     const fitBoundsFor = (coords: Array<[number, number]>) => {
       const bounds = new goongjs.LngLatBounds();
@@ -364,9 +378,15 @@ export function MissionTrackingMapSection({
       return;
     }
 
-    const directionPromise = goongApiKey
-      ? getDirectionsCached(teamCoords, victimCoords, 'car', goongApiKey)
-      : Promise.resolve(null);
+    const directionPromise =
+      canUseTeamCoords && goongApiKey
+        ? getDirectionsCached(
+            teamCoords as { lat: number; lng: number },
+            victimCoords,
+            'car',
+            goongApiKey,
+          )
+        : Promise.resolve(null);
 
     const drawRoute = async () => {
       setRouteSource('Đang tải');
@@ -381,15 +401,23 @@ export function MissionTrackingMapSection({
       const direction = await directionPromise;
       if (cancelled) return;
 
-      if (!destSame || !originNoise) {
-        lastRouteFetchRef.current = { origin: teamCoords, destination: victimCoords };
+      if ((!destSame || !originNoise) && canUseTeamCoords) {
+        lastRouteFetchRef.current = {
+          origin: teamCoords as { lat: number; lng: number },
+          destination: victimCoords,
+        };
       }
 
       let finalDirection = direction;
-      if (!finalDirection && goongApiKey) {
+      if (!finalDirection && canUseTeamCoords && goongApiKey) {
         await new Promise((resolve) => setTimeout(resolve, 2500));
         if (cancelled) return;
-        finalDirection = await getDirections(teamCoords, victimCoords, 'car', goongApiKey);
+        finalDirection = await getDirections(
+          teamCoords as { lat: number; lng: number },
+          victimCoords,
+          'car',
+          goongApiKey,
+        );
       }
 
       const route = finalDirection?.routes?.[0];
@@ -417,9 +445,22 @@ export function MissionTrackingMapSection({
         }
       }
 
-      drawLine(straightLine, true);
-      fitBoundsFor(straightLine);
-      setRouteSource('Đường thẳng');
+      if (straightLine.length >= 2) {
+        drawLine(straightLine, true);
+        fitBoundsFor(straightLine);
+        setRouteSource('Đường thẳng');
+        return;
+      }
+
+      const existingSource = (map as any).getSource('direction');
+      if (existingSource) {
+        existingSource.setData({
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'LineString', coordinates: [] },
+        });
+      }
+      setRouteSource('Thiếu tọa độ đội');
     };
 
     pendingDrawRef.current = () => {
