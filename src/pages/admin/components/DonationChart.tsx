@@ -63,7 +63,7 @@ export function DonationChart({
 
   const data = useMemo(() => {
     const provided = dataByRange?.[timeRange];
-    if (provided && provided.length > 0) return provided;
+    if (provided) return provided;
     return DATA_GENERATORS[timeRange]();
   }, [dataByRange, timeRange]);
 

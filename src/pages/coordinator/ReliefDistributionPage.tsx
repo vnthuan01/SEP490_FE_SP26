@@ -62,6 +62,7 @@ import type {
   CoordinatorPackageForm,
   CoordinatorPackageItemForm,
 } from './components/relief-distribution/types';
+import type { ReliefAdvancedFiltersValue } from '@/components/shared/relief-distribution/types';
 import { Separator } from '@/components/ui/separator';
 import {
   Sheet,
@@ -205,15 +206,15 @@ export default function ReliefDistributionPage() {
   const navigate = useNavigate();
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedHouseholdIds, setSelectedHouseholdIds] = useState<Set<string>>(new Set());
-  const [householdSearch, setHouseholdSearch] = useState('');
+  const [selectedHouseholdsMap, setSelectedHouseholdsMap] = useState<
+    Map<string, CampaignHouseholdResponse>
+  >(new Map());
+  const [filtersValue, setFiltersValue] = useState<ReliefAdvancedFiltersValue>({
+    search: '',
+    assignment: 'all',
+  });
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
 
-  const [teamFilter] = useState<string | undefined>();
-  const [pointFilter] = useState<string | undefined>();
-  const [deliveryModeFilter] = useState<number | undefined>();
-  const [statusFilter] = useState<number | undefined>();
-  const [assignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
-  const [isIsolatedFilter] = useState<boolean | undefined>(undefined);
   const [deliveriesPage, setDeliveriesPage] = useState(1);
   const [shortageRequestsPage, setShortageRequestsPage] = useState(1);
   const [distributionPointForm, setDistributionPointForm] =
@@ -282,6 +283,19 @@ export default function ReliefDistributionPage() {
     | null
   >(null);
   const [showMobileShortageReview, setShowMobileShortageReview] = useState(false);
+
+  const handleFiltersChange = (next: ReliefAdvancedFiltersValue) => {
+    setFiltersValue(next);
+    resetAllPages();
+  };
+
+  const resetFilters = () => {
+    setFiltersValue({
+      search: '',
+      assignment: 'all',
+    });
+    resetAllPages();
+  };
 
   const resetAllPages = () => {
     setCurrentPage(1);
@@ -366,13 +380,14 @@ export default function ReliefDistributionPage() {
     {
       pageIndex: currentPage,
       pageSize: HOUSEHOLDS_PER_PAGE,
-      search: householdSearch || undefined,
-      isAssigned: assignmentFilter === 'all' ? undefined : assignmentFilter === 'assigned',
-      isIsolated: isIsolatedFilter,
-      campaignTeamId: teamFilter,
-      distributionPointId: pointFilter,
-      deliveryMode: deliveryModeFilter,
-      status: statusFilter,
+      search: filtersValue.search || undefined,
+      isAssigned:
+        filtersValue.assignment === 'all' ? undefined : filtersValue.assignment === 'assigned',
+      isIsolated: filtersValue.isIsolated,
+      campaignTeamId: filtersValue.teamId,
+      distributionPointId: filtersValue.distributionPointId,
+      deliveryMode: filtersValue.deliveryMode,
+      status: filtersValue.status,
     },
   );
   const { checklist, pagination: checklistPagination } = useReliefChecklist(
@@ -380,10 +395,10 @@ export default function ReliefDistributionPage() {
     {
       pageIndex: checklistPage,
       pageSize: CHECKLIST_ITEMS_PER_PAGE,
-      search: householdSearch || undefined,
-      campaignTeamId: teamFilter,
-      distributionPointId: pointFilter,
-      deliveryMode: deliveryModeFilter,
+      search: filtersValue.search || undefined,
+      campaignTeamId: filtersValue.teamId,
+      distributionPointId: filtersValue.distributionPointId,
+      deliveryMode: filtersValue.deliveryMode,
     },
   );
 
@@ -395,8 +410,8 @@ export default function ReliefDistributionPage() {
   });
 
   const { distributionPoints } = useDistributionPoints(effectiveSelectedCampaignId, {
-    campaignTeamId: teamFilter,
-    deliveryMode: deliveryModeFilter,
+    campaignTeamId: filtersValue.teamId,
+    deliveryMode: filtersValue.deliveryMode,
   });
   const { packages } = useReliefPackages(effectiveSelectedCampaignId);
   const {
@@ -410,10 +425,10 @@ export default function ReliefDistributionPage() {
     {
       pageIndex: deliveriesPage,
       pageSize: 10,
-      campaignTeamId: teamFilter,
-      distributionPointId: pointFilter,
-      deliveryMode: deliveryModeFilter,
-      status: statusFilter,
+      campaignTeamId: filtersValue.teamId,
+      distributionPointId: filtersValue.distributionPointId,
+      deliveryMode: filtersValue.deliveryMode,
+      status: filtersValue.status,
     },
   );
   const { shortageRequests, pagination: shortageRequestsPagination } = useShortageRequests(
@@ -422,8 +437,8 @@ export default function ReliefDistributionPage() {
       pageIndex: shortageRequestsPage,
       pageSize: 10,
       status: 0, // Pending
-      campaignTeamId: teamFilter,
-      distributionPointId: pointFilter,
+      campaignTeamId: filtersValue.teamId,
+      distributionPointId: filtersValue.distributionPointId,
     },
   );
   const createPointMutation = useCreateDistributionPoint();
@@ -487,8 +502,13 @@ export default function ReliefDistributionPage() {
   const paginatedHouseholds = households;
 
   const selectedHouseholds = useMemo(
-    () => households.filter((household) => selectedHouseholdIds.has(household.campaignHouseholdId)),
-    [households, selectedHouseholdIds],
+    () => Array.from(selectedHouseholdsMap.values()),
+    [selectedHouseholdsMap],
+  );
+
+  const selectedHouseholdIds = useMemo(
+    () => new Set(selectedHouseholdsMap.keys()),
+    [selectedHouseholdsMap],
   );
 
   const hasPickupHouseholds = selectedHouseholds.some(
@@ -962,8 +982,8 @@ export default function ReliefDistributionPage() {
           campaignId: effectiveSelectedCampaignId,
           campaignHouseholdId: deleteTarget.id,
         });
-        setSelectedHouseholdIds((prev) => {
-          const next = new Set(prev);
+        setSelectedHouseholdsMap((prev) => {
+          const next = new Map(prev);
           next.delete(deleteTarget.id);
           return next;
         });
@@ -1221,21 +1241,26 @@ export default function ReliefDistributionPage() {
     }));
   };
 
-  const handleToggleHousehold = (id: string) => {
-    setSelectedHouseholdIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+  const handleToggleHousehold = (household: CampaignHouseholdResponse) => {
+    setSelectedHouseholdsMap((prev) => {
+      const next = new Map(prev);
+      if (next.has(household.campaignHouseholdId)) {
+        next.delete(household.campaignHouseholdId);
+      } else {
+        next.set(household.campaignHouseholdId, household);
+      }
       return next;
     });
   };
 
   const handleToggleSelectAll = (checked: CheckedState) => {
     if (checked === 'indeterminate') return;
-    setSelectedHouseholdIds((prev) => {
-      const next = new Set(prev);
+    setSelectedHouseholdsMap((prev) => {
+      const next = new Map(prev);
       if (checked) {
-        paginatedHouseholds.forEach((household) => next.add(household.campaignHouseholdId));
+        paginatedHouseholds.forEach((household) =>
+          next.set(household.campaignHouseholdId, household),
+        );
       } else {
         paginatedHouseholds.forEach((household) => next.delete(household.campaignHouseholdId));
       }
@@ -1292,7 +1317,7 @@ export default function ReliefDistributionPage() {
         queryKey: RELIEF_DISTRIBUTION_KEYS.all,
       });
 
-      setSelectedHouseholdIds(new Set());
+      setSelectedHouseholdsMap(new Map());
       setAssignForm((prev) => ({ ...prev, notes: '' }));
       toast.success('Đã phân công hộ dân cho đội phụ trách');
     } catch (error) {
@@ -1493,7 +1518,7 @@ export default function ReliefDistributionPage() {
             onCampaignChange={(value) => {
               setSelectedCampaignId(value);
               resetAllPages();
-              setSelectedHouseholdIds(new Set());
+              setSelectedHouseholdsMap(new Map());
             }}
             campaigns={reliefCampaigns}
             stationName={headerStationName}
@@ -2355,8 +2380,15 @@ export default function ReliefDistributionPage() {
             onAssign={handleAssignSelectedHouseholds}
             hasPickupHouseholds={hasPickupHouseholds}
             hasDistributionPoint={!!defaultDistributionPointId}
-            householdSearch={householdSearch}
-            onChangeHouseholdSearch={setHouseholdSearch}
+            filtersValue={filtersValue}
+            onChangeFilters={handleFiltersChange}
+            onResetFilters={resetFilters}
+            filtersExpanded={filtersExpanded}
+            onFiltersExpandedChange={setFiltersExpanded}
+            distributionPoints={distributionPoints.map((point) => ({
+              label: point.name,
+              value: point.distributionPointId,
+            }))}
             onJumpToCreateTeam={() => navigate('/portal/coordinator/teams')}
             onJumpToCreatePackage={() => scrollToSection(PACKAGE_SECTION_ID)}
             assignErrors={assignErrors}

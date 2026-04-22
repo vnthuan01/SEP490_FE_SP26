@@ -31,11 +31,13 @@ export function LogisticsOverviewCard({
           Điều phối kho & phiên phân phát
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3 min-h-[280px]">
+      <CardContent className="min-h-[280px] h-full overflow-hidden">
         {isLoading ? (
-          Array.from({ length: 2 }).map((_, index) => (
-            <Skeleton key={index} className="h-[100px] rounded-xl" />
-          ))
+          <div className="space-y-3">
+            {Array.from({ length: 2 }).map((_, index) => (
+              <Skeleton key={index} className="h-[100px] rounded-xl" />
+            ))}
+          </div>
         ) : isError ? (
           <div className="h-full min-h-[220px] rounded-2xl border border-dashed border-border bg-muted/10 flex flex-col items-center justify-center text-center px-6">
             <span className="material-symbols-outlined text-4xl text-destructive">error</span>
@@ -56,22 +58,24 @@ export function LogisticsOverviewCard({
             </p>
           </div>
         ) : (
-          cards.map((card) => (
-            <div key={card.label} className="rounded-xl border border-border bg-muted/20 p-4">
-              <div className="flex items-start gap-3">
-                <div
-                  className={`size-10 rounded-xl flex items-center justify-center ${card.color}`}
-                >
-                  <span className="material-symbols-outlined text-lg">{card.icon}</span>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">{card.label}</p>
-                  <p className="mt-1 text-2xl font-black text-foreground">{card.value}</p>
-                  <p className="mt-2 text-sm text-muted-foreground">{card.note}</p>
+          <div className="space-y-3 h-full max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
+            {cards.map((card) => (
+              <div key={card.label} className="rounded-xl border border-border bg-muted/20 p-4">
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`size-10 rounded-xl flex items-center justify-center shrink-0 ${card.color}`}
+                  >
+                    <span className="material-symbols-outlined text-lg">{card.icon}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm text-muted-foreground break-words">{card.label}</p>
+                    <p className="mt-1 text-2xl font-black text-foreground">{card.value}</p>
+                    <p className="mt-2 text-sm text-muted-foreground break-words">{card.note}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>

@@ -114,6 +114,37 @@ const getDisasterTheme = (value?: string | null) => {
   return DISASTER_THEME[String(numericValue)] || DISASTER_THEME[String(DisasterType.Other)];
 };
 
+const getEffectiveDisasterType = (analysis: AnalyzeDisasterRiskResponse) =>
+  analysis.primaryDisasterType ||
+  analysis.ai?.primaryRiskType ||
+  analysis.ai?.requestedRiskType ||
+  analysis.requestedDisasterType ||
+  analysis.riskRanking?.[0]?.disasterType ||
+  String(DisasterType.Other);
+
+const getDisplayDisasterLabel = (analysis: AnalyzeDisasterRiskResponse) => {
+  const effectiveType = getEffectiveDisasterType(analysis);
+  const numericValue = resolveDisasterTypeValue(effectiveType);
+  if (numericValue === DisasterType.Other) {
+    return analysis.weather?.baseWeatherRiskLevel?.toLowerCase() === 'low'
+      ? 'Thời tiết đẹp'
+      : 'Thời tiết cần theo dõi';
+  }
+  return getDisasterTypeLabel(numericValue);
+};
+
+const getAnalysisPriorityScore = (analysis: AnalyzeDisasterRiskResponse) => {
+  const heuristicScore = Number(analysis.heuristic?.overallRiskScore || 0);
+  const severeRisk = Math.max(
+    0,
+    ...(analysis.forecast?.days?.map((day) => Number(day.severeRisk || 0)) || [0]),
+  );
+  const maxDailyPrecip = Number(analysis.forecast?.maxDailyPrecipMm || 0);
+  const detectedConcernsBonus = Number(analysis.ai?.detectedConcerns?.length || 0) * 8;
+
+  return heuristicScore + severeRisk * 0.8 + maxDailyPrecip * 2 + detectedConcernsBonus;
+};
+
 const parseRiskLevelVN = (level?: string | null) => {
   const normalized = String(level || '')
     .trim()
@@ -336,11 +367,10 @@ function DisasterRiskMap({
     riskPopupsRef.current = [];
 
     analyses.forEach((analysis) => {
-      const theme = getDisasterTheme(analysis.primaryDisasterType);
+      const theme = getDisasterTheme(getEffectiveDisasterType(analysis));
       const riskVN = parseRiskLevelVN(analysis.heuristic?.riskLevel);
       const weatherVN = parseWeatherConditionVN(analysis.weather?.condition);
-      const disasterTypeValue = resolveDisasterTypeValue(analysis.primaryDisasterType);
-      const disasterLabel = getDisasterTypeLabel(disasterTypeValue);
+      const disasterLabel = getDisplayDisasterLabel(analysis);
       const isSelected = analysis.analysisLogId === selectedAnalysis?.analysisLogId;
 
       const popup = new goongjs.Popup({ closeButton: false, closeOnClick: false, offset: 22 })
@@ -507,7 +537,9 @@ export default function ManagerDashboardPage() {
       stations
         .filter(
           (station) =>
-            typeof station.latitude === 'number' && typeof station.longitude === 'number',
+            typeof station.latitude === 'number' &&
+            typeof station.longitude === 'number' &&
+            Number(station.status) === EntityStatus.Active,
         )
         .map((station) => ({
           id: station.reliefStationId ?? station.stationId ?? station.id,
@@ -612,7 +644,7 @@ export default function ManagerDashboardPage() {
     if (disasterFilter === 'all') return disasterAnalyses;
     return disasterAnalyses.filter(
       (analysis) =>
-        String(resolveDisasterTypeValue(analysis.primaryDisasterType)) === disasterFilter,
+        String(resolveDisasterTypeValue(getEffectiveDisasterType(analysis))) === disasterFilter,
     );
   }, [disasterAnalyses, disasterFilter]);
 
@@ -620,7 +652,7 @@ export default function ManagerDashboardPage() {
   const topRisk = useMemo(() => {
     if (!disasterAnalyses.length) return null;
     return [...disasterAnalyses].sort(
-      (a, b) => (b.heuristic?.overallRiskScore || 0) - (a.heuristic?.overallRiskScore || 0),
+      (a, b) => getAnalysisPriorityScore(b) - getAnalysisPriorityScore(a),
     )[0];
   }, [disasterAnalyses]);
 
@@ -705,7 +737,7 @@ export default function ManagerDashboardPage() {
         {/* ── Disaster AI Alert Banner ── */}
         {topRisk && !isLoadingDisaster && (
           <div
-            className={`rounded-2xl border p-5 ${getDisasterTheme(topRisk.primaryDisasterType).cardClass} cursor-pointer hover:shadow-sm transition-all`}
+            className={`rounded-2xl border p-5 ${getDisasterTheme(getEffectiveDisasterType(topRisk)).cardClass} cursor-pointer hover:shadow-sm transition-all`}
             onClick={() => {
               setSelectedAnalysis(topRisk);
               setOpenMapSheet(true);
@@ -715,17 +747,21 @@ export default function ManagerDashboardPage() {
               <div className="flex items-start gap-4 min-w-0">
                 <div
                   className="size-12 rounded-2xl flex items-center justify-center shrink-0"
-                  style={{ background: `${getDisasterTheme(topRisk.primaryDisasterType).light}` }}
+                  style={{
+                    background: `${getDisasterTheme(getEffectiveDisasterType(topRisk)).light}`,
+                  }}
                 >
                   <span className="material-symbols-outlined text-2xl">
-                    {getDisasterTheme(topRisk.primaryDisasterType).icon}
+                    {getDisasterTheme(getEffectiveDisasterType(topRisk)).icon}
                   </span>
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-black text-lg">
                       Nguy cơ{' '}
-                      {getDisasterTypeLabel(resolveDisasterTypeValue(topRisk.primaryDisasterType))}{' '}
+                      {getDisasterTypeLabel(
+                        resolveDisasterTypeValue(getEffectiveDisasterType(topRisk)),
+                      )}{' '}
                       cấp tỉnh cao nhất
                     </p>
                     <Badge variant="outline" appearance="outline" size="xs" className="border">
@@ -736,6 +772,7 @@ export default function ManagerDashboardPage() {
                   <p className="mt-1 text-sm font-medium">{topRisk.locationName}</p>
                   <p className="mt-1 text-sm opacity-80 line-clamp-2">
                     {topRisk.ai?.summary ||
+                      topRisk.ai?.detectedConcerns?.[0] ||
                       topRisk.heuristic?.topThreats?.[0] ||
                       'Xem bản đồ để biết chi tiết nguy cơ thiên tai trong phạm vi trạm.'}
                   </p>
@@ -804,7 +841,7 @@ export default function ManagerDashboardPage() {
             {!isLoadingDisaster && disasterAnalyses.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {disasterAnalyses.slice(0, 6).map((analysis) => {
-                  const theme = getDisasterTheme(analysis.primaryDisasterType);
+                  const theme = getDisasterTheme(getEffectiveDisasterType(analysis));
                   const riskVN = parseRiskLevelVN(analysis.heuristic?.riskLevel);
                   return (
                     <button
@@ -849,17 +886,17 @@ export default function ManagerDashboardPage() {
             {/* Selected analysis card */}
             {selectedAnalysis && (
               <div
-                className={`rounded-2xl border p-4 space-y-3 ${getDisasterTheme(selectedAnalysis.primaryDisasterType).cardClass}`}
+                className={`rounded-2xl border p-4 space-y-3 ${getDisasterTheme(getEffectiveDisasterType(selectedAnalysis)).cardClass}`}
               >
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="material-symbols-outlined">
-                        {getDisasterTheme(selectedAnalysis.primaryDisasterType).icon}
+                        {getDisasterTheme(getEffectiveDisasterType(selectedAnalysis)).icon}
                       </span>
                       <p className="font-bold text-lg">
                         {getDisasterTypeLabel(
-                          resolveDisasterTypeValue(selectedAnalysis.primaryDisasterType),
+                          resolveDisasterTypeValue(getEffectiveDisasterType(selectedAnalysis)),
                         )}
                       </p>
                       <Badge
@@ -923,12 +960,45 @@ export default function ManagerDashboardPage() {
                     </p>
                   </div>
                   <div className="rounded-xl border border-current/20 bg-white/20 dark:bg-black/10 p-3 text-center">
-                    <p className="text-xs opacity-70">Lượng mưa</p>
+                    <p className="text-xs opacity-70">Mưa hiện tại</p>
                     <p className="mt-1 font-bold text-sm">
                       {selectedAnalysis.weather?.precipMm?.toFixed(1)} mm
                     </p>
                   </div>
                 </div>
+
+                {selectedAnalysis.forecast ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="rounded-xl border border-current/20 bg-white/20 dark:bg-black/10 p-3 text-center">
+                      <p className="text-xs opacity-70">Tổng mưa dự báo</p>
+                      <p className="mt-1 font-bold text-sm">
+                        {selectedAnalysis.forecast.totalPrecipMm?.toFixed(1) ?? '--'} mm
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-current/20 bg-white/20 dark:bg-black/10 p-3 text-center">
+                      <p className="text-xs opacity-70">Mưa ngày cao nhất</p>
+                      <p className="mt-1 font-bold text-sm">
+                        {selectedAnalysis.forecast.maxDailyPrecipMm?.toFixed(1) ?? '--'} mm
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-current/20 bg-white/20 dark:bg-black/10 p-3 text-center">
+                      <p className="text-xs opacity-70">Ngày mưa đỉnh</p>
+                      <p className="mt-1 font-bold text-sm">
+                        {selectedAnalysis.forecast.peakRainDate
+                          ? new Date(selectedAnalysis.forecast.peakRainDate).toLocaleDateString(
+                              'vi-VN',
+                            )
+                          : 'Chưa rõ'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-current/20 bg-white/20 dark:bg-black/10 p-3 text-center">
+                      <p className="text-xs opacity-70">Chuỗi ngày mưa</p>
+                      <p className="mt-1 font-bold text-sm">
+                        {selectedAnalysis.forecast.consecutiveRainyDaysPeak ?? '--'} ngày
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
 
                 {selectedAnalysis.ai?.recommendations?.length > 0 && (
                   <div>
@@ -1353,11 +1423,11 @@ export default function ManagerDashboardPage() {
                     </div>
                   ) : (
                     filteredAnalyses.map((analysis) => {
-                      const theme = getDisasterTheme(analysis.primaryDisasterType);
+                      const theme = getDisasterTheme(getEffectiveDisasterType(analysis));
                       const riskVN = parseRiskLevelVN(analysis.heuristic?.riskLevel);
                       const isActive = analysis.analysisLogId === selectedAnalysis?.analysisLogId;
                       const disasterTypeValue = resolveDisasterTypeValue(
-                        analysis.primaryDisasterType,
+                        getEffectiveDisasterType(analysis),
                       );
                       return (
                         <button
@@ -1399,7 +1469,8 @@ export default function ManagerDashboardPage() {
                               </p>
                               <p className="text-xs text-muted-foreground mt-1">
                                 Thời tiết: {parseWeatherConditionVN(analysis.weather?.condition)} •{' '}
-                                {analysis.weather?.temperatureC?.toFixed(1)}°C
+                                {analysis.weather?.temperatureC?.toFixed(1)}°C • Mưa đỉnh dự báo{' '}
+                                {analysis.forecast?.maxDailyPrecipMm?.toFixed(1) ?? '--'} mm
                               </p>
                             </div>
                             <Badge
@@ -1422,16 +1493,16 @@ export default function ManagerDashboardPage() {
                 {/* Detail of selected analysis */}
                 {selectedAnalysis && (
                   <Card
-                    className={`border ${getDisasterTheme(selectedAnalysis.primaryDisasterType).cardClass} overflow-hidden`}
+                    className={`border ${getDisasterTheme(getEffectiveDisasterType(selectedAnalysis)).cardClass} overflow-hidden`}
                   >
                     <CardHeader className="pb-3">
                       <CardTitle className="text-base flex items-center gap-2">
                         <span className="material-symbols-outlined">
-                          {getDisasterTheme(selectedAnalysis.primaryDisasterType).icon}
+                          {getDisasterTheme(getEffectiveDisasterType(selectedAnalysis)).icon}
                         </span>
                         Chi tiết phân tích AI —{' '}
                         {getDisasterTypeLabel(
-                          resolveDisasterTypeValue(selectedAnalysis.primaryDisasterType),
+                          resolveDisasterTypeValue(getEffectiveDisasterType(selectedAnalysis)),
                         )}
                       </CardTitle>
                     </CardHeader>
@@ -1497,6 +1568,24 @@ export default function ManagerDashboardPage() {
                           </ul>
                         </div>
                       )}
+
+                      {selectedAnalysis.ai?.detectedConcerns?.length ? (
+                        <div>
+                          <p className="text-xs uppercase font-semibold opacity-70 mb-2">
+                            Dấu hiệu cần lưu ý
+                          </p>
+                          <ul className="space-y-2">
+                            {selectedAnalysis.ai.detectedConcerns.map((concern, index) => (
+                              <li key={index} className="flex items-start gap-2 text-sm">
+                                <span className="material-symbols-outlined text-sm shrink-0 text-amber-600">
+                                  warning
+                                </span>
+                                {concern}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
 
                       {selectedAnalysis.heuristic?.topThreats?.length > 0 && (
                         <div>

@@ -28,6 +28,34 @@ export interface AnalyzeDisasterRiskResponse {
     baseWeatherRiskScore: number;
     baseWeatherRiskLevel: string;
   };
+  forecast?: {
+    resolvedAddress?: string;
+    timeZone?: string;
+    requestedDays?: number;
+    generatedAt?: string;
+    queryCost?: number;
+    totalPrecipMm?: number;
+    maxDailyPrecipMm?: number;
+    peakRainDate?: string;
+    consecutiveRainyDaysPeak?: number;
+    days?: Array<{
+      date: string;
+      tempMaxC?: number;
+      tempMinC?: number;
+      precipMm?: number;
+      precipProbability?: number;
+      precipCover?: number;
+      humidity?: number;
+      pressure?: number;
+      windSpeedKph?: number;
+      windGustKph?: number;
+      visibilityKm?: number;
+      severeRisk?: number;
+      conditions?: string;
+      description?: string;
+      precipTypes?: string[];
+    }>;
+  };
   riskRanking: Array<{
     disasterType: string;
     riskScore: number;
@@ -52,10 +80,12 @@ export interface AnalyzeDisasterRiskResponse {
     promptVersion?: string | null;
     analyzedAt?: string | null;
     primaryRiskType?: string | null;
+    requestedRiskType?: string | null;
     summary?: string | null;
     detailedAnalysis?: string | null;
     recommendations: string[];
     potentialScenarios: string[];
+    detectedConcerns?: string[];
     errorMessage?: string | null;
   };
 }
