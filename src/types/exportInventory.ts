@@ -21,6 +21,8 @@ export interface Team {
 export interface CampaignOption {
   id: string;
   name: string;
+  status?: number;
+  statusLabel?: string;
 }
 
 export interface ExportInventoryDialogProps {
@@ -37,5 +39,6 @@ export interface CampaignAllocationDialogProps {
   onOpenChange: (open: boolean) => void;
   items: ExportItem[];
   campaigns: CampaignOption[];
-  onSubmit: (items: ExportItem[], note: string, campaignId: string) => void;
+  selectedCampaignId?: string;
+  onSubmit: (items: ExportItem[], note: string, campaignId: string) => Promise<boolean>;
 }

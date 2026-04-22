@@ -5,7 +5,6 @@ import { managerNavGroups } from './components/sidebarConfig';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -36,6 +35,8 @@ import { ManagerReliefDistributionPageHeader } from './components/relief-distrib
 import { ManagerReliefDistributionHouseholdSampleTable } from './components/relief-distribution/ManagerReliefDistributionHouseholdSampleTable';
 import { StatCard } from './components/ManagerInventoryShared';
 import { parseApiError } from '@/lib/apiErrors';
+import { ReliefAdvancedFilters } from '@/components/shared/relief-distribution/ReliefAdvancedFilters';
+import type { ReliefAdvancedFiltersValue } from '@/components/shared/relief-distribution/types';
 
 const HOUSEHOLDS_PER_PAGE = 10;
 
@@ -87,7 +88,41 @@ export default function ManagerReliefDistributionPage() {
   const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>(
     'all',
   );
+  const [deliveryModeFilter, setDeliveryModeFilter] = useState<number | undefined>(undefined);
+  const [teamFilter, setTeamFilter] = useState<string | undefined>(undefined);
+  const [pointFilter, setPointFilter] = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<number | undefined>(undefined);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [sampleErrors, setSampleErrors] = useState<Record<string, string>>({});
+
+  const filtersValue: ReliefAdvancedFiltersValue = {
+    search: householdSearch,
+    assignment: assignmentFilter,
+    deliveryMode: deliveryModeFilter,
+    teamId: teamFilter,
+    distributionPointId: pointFilter,
+    status: statusFilter,
+  };
+
+  const handleFiltersChange = (next: ReliefAdvancedFiltersValue) => {
+    setHouseholdSearch(next.search);
+    setAssignmentFilter(next.assignment ?? 'all');
+    setDeliveryModeFilter(next.deliveryMode);
+    setTeamFilter(next.teamId);
+    setPointFilter(next.distributionPointId);
+    setStatusFilter(next.status);
+    setCurrentPage(1);
+  };
+
+  const resetFilters = () => {
+    setHouseholdSearch('');
+    setAssignmentFilter('all');
+    setDeliveryModeFilter(undefined);
+    setTeamFilter(undefined);
+    setPointFilter(undefined);
+    setStatusFilter(undefined);
+    setCurrentPage(1);
+  };
 
   const { campaigns, isLoading: campaignsLoading } = useCampaigns({ pageIndex: 1, pageSize: 200 });
   const reliefCampaigns = useMemo(
@@ -112,8 +147,20 @@ export default function ManagerReliefDistributionPage() {
   const { campaign: selectedCampaignDetail } = useCampaign(effectiveSelectedCampaignId);
   const { data: provinces } = useProvinces();
   const { teams } = useCampaignTeams(effectiveSelectedCampaignId);
-  const { households } = useReliefHouseholds(effectiveSelectedCampaignId);
-  const { distributionPoints } = useDistributionPoints(effectiveSelectedCampaignId);
+  const { households, pagination } = useReliefHouseholds(effectiveSelectedCampaignId, {
+    pageIndex: currentPage,
+    pageSize: HOUSEHOLDS_PER_PAGE,
+    search: householdSearch || undefined,
+    isAssigned: assignmentFilter === 'all' ? undefined : assignmentFilter === 'assigned',
+    campaignTeamId: teamFilter,
+    distributionPointId: pointFilter,
+    deliveryMode: deliveryModeFilter,
+    status: statusFilter,
+  });
+  const { distributionPoints } = useDistributionPoints(effectiveSelectedCampaignId, {
+    campaignTeamId: teamFilter,
+    deliveryMode: deliveryModeFilter,
+  });
   const { packages } = useReliefPackages(effectiveSelectedCampaignId);
   const importMutation = useImportReliefHouseholds();
 
@@ -129,31 +176,9 @@ export default function ManagerReliefDistributionPage() {
     selectedCampaignDetail?.stations?.[0]?.reliefStationName ||
     '';
 
-  const filteredHouseholds = useMemo(() => {
-    const normalizedSearch = householdSearch.trim().toLowerCase();
-
-    return households.filter((household) => {
-      const matchesSearch =
-        !normalizedSearch ||
-        household.householdCode.toLowerCase().includes(normalizedSearch) ||
-        household.headOfHouseholdName.toLowerCase().includes(normalizedSearch);
-
-      const isAssigned = Boolean(household.campaignTeamId);
-      const matchesAssignment =
-        assignmentFilter === 'all' ||
-        (assignmentFilter === 'assigned' && isAssigned) ||
-        (assignmentFilter === 'unassigned' && !isAssigned);
-
-      return matchesSearch && matchesAssignment;
-    });
-  }, [assignmentFilter, householdSearch, households]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredHouseholds.length / HOUSEHOLDS_PER_PAGE));
-  const paginatedHouseholds = useMemo(() => {
-    const start = (currentPage - 1) * HOUSEHOLDS_PER_PAGE;
-    return filteredHouseholds.slice(start, start + HOUSEHOLDS_PER_PAGE);
-  }, [currentPage, filteredHouseholds]);
-
+  const filteredHouseholds = households;
+  const totalPages = Math.max(1, pagination?.totalPages ?? 1);
+  const paginatedHouseholds = filteredHouseholds;
   const safeCurrentPage = Math.min(currentPage, totalPages);
 
   const handleImport = async () => {
@@ -191,7 +216,7 @@ export default function ManagerReliefDistributionPage() {
     });
 
     if (!effectiveSelectedCampaignId) nextErrors.form = 'Vui lòng chọn chiến dịch cứu trợ.';
-    if (householdSamples.length === 0) nextErrors.form = 'Cần ít nhất 1 hộ dân để import.';
+    if (householdSamples.length === 0) nextErrors.form = 'Cần ít nhất 1 hộ dân để nhập.';
     if (Object.keys(nextErrors).length > 0) {
       setSampleErrors(nextErrors);
       toast.error(Object.values(nextErrors)[0]);
@@ -256,8 +281,8 @@ export default function ManagerReliefDistributionPage() {
           )}`
         : '';
       const clonedAddress = sampleToClone.address?.trim()
-        ? `${sampleToClone.address.trim()} - bản clone`
-        : 'Địa chỉ hộ dân clone';
+        ? `${sampleToClone.address.trim()} - bản sao`
+        : 'Địa chỉ hộ dân bản sao';
 
       const clonedSample: HouseholdSampleForm = {
         ...sampleToClone,
@@ -298,7 +323,7 @@ export default function ManagerReliefDistributionPage() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatCard
             label="Hộ dân trong chiến dịch"
-            value={households.length}
+            value={pagination?.totalCount ?? households.length}
             note="Danh sách đã lưu trên hệ thống"
             icon="groups"
             iconClass="bg-primary/10 text-primary"
@@ -330,8 +355,8 @@ export default function ManagerReliefDistributionPage() {
           <CardContent className="flex flex-col gap-2 p-4 text-sm text-primary">
             <p className="font-semibold">Vai trò tại màn hình Manager</p>
             <p>
-              Manager xem thông số chiến dịch và có thể thêm nhanh dữ liệu mẫu hộ dân để
-              test/import. Các bước cấu hình điểm phát, tạo gói cứu trợ và phân công team được
+              Manager xem thông số chiến dịch và có thể thêm nhanh dữ liệu mẫu hộ dân để thử
+              nghiệm/nhập liệu. Các bước cấu hình điểm phát, tạo gói cứu trợ và phân công đội được
               chuyển sang màn hình điều phối.
             </p>
           </CardContent>
@@ -358,8 +383,8 @@ export default function ManagerReliefDistributionPage() {
             />
             {households.length > 0 && (
               <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">
-                Chiến dịch này đã có dữ liệu hộ dân. Bạn vẫn có thể thêm tiếp để test, miễn là mã hộ
-                không bị trùng.
+                Chiến dịch này đã có dữ liệu hộ dân. Bạn vẫn có thể thêm tiếp để thử nghiệm, miễn là
+                mã hộ không bị trùng.
               </p>
             )}
           </div>
@@ -368,108 +393,151 @@ export default function ManagerReliefDistributionPage() {
             <CardHeader className="space-y-1">
               <CardTitle>Danh sách hộ dân hiện có</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Hiển thị theo trang để manager theo dõi tình hình dataseed và trạng thái phân phối.
+                Hiển thị theo trang để manager theo dõi danh sách hộ dân và trạng thái phân phối.
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="overflow-x-auto rounded-xl border">
-                <div className="grid gap-3 border-b bg-muted/20 p-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Tìm kiếm hộ dân</p>
-                    <Input
-                      placeholder="Tìm theo mã hộ hoặc tên chủ hộ"
-                      value={householdSearch}
-                      onChange={(e) => setHouseholdSearch(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Lọc theo phân công</p>
-                    <select
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={assignmentFilter}
-                      onChange={(e) =>
-                        setAssignmentFilter(e.target.value as 'all' | 'assigned' | 'unassigned')
-                      }
-                    >
-                      <option value="all">Tất cả</option>
-                      <option value="assigned">Đã gán team</option>
-                      <option value="unassigned">Chưa gán team</option>
-                    </select>
-                  </div>
-                </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/40">
-                      <TableHead>Mã hộ</TableHead>
-                      <TableHead>Chủ hộ</TableHead>
-                      <TableHead>Hình thức nhận</TableHead>
-                      <TableHead>Trạng thái</TableHead>
-                      <TableHead>Đã gán team</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedHouseholds.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                          Không có hộ dân phù hợp bộ lọc hiện tại.
-                        </TableCell>
+              <div className="space-y-4">
+                <ReliefAdvancedFilters
+                  value={filtersValue}
+                  onChange={handleFiltersChange}
+                  onReset={resetFilters}
+                  expanded={filtersExpanded}
+                  onExpandedChange={setFiltersExpanded}
+                  teams={teams.map((team) => ({
+                    label: team.teamName,
+                    value: team.campaignTeamId,
+                  }))}
+                  distributionPoints={distributionPoints.map((point) => ({
+                    label: point.name,
+                    value: point.distributionPointId,
+                  }))}
+                  title="Bộ lọc hộ dân chiến dịch"
+                />
+                <div className="overflow-x-auto rounded-xl border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/40">
+                        <TableHead>Mã hộ</TableHead>
+                        <TableHead>Chủ hộ</TableHead>
+                        <TableHead>Đội thực hiện</TableHead>
+                        <TableHead>Điểm phát</TableHead>
+                        <TableHead>SĐT</TableHead>
+                        <TableHead>Địa chỉ</TableHead>
+                        <TableHead>Độ cô lập</TableHead>
+                        <TableHead>Hình thức nhận</TableHead>
+                        <TableHead>Trạng thái</TableHead>
+                        <TableHead>Đã gán team</TableHead>
                       </TableRow>
-                    ) : (
-                      paginatedHouseholds.map((household) => (
-                        <TableRow key={household.campaignHouseholdId} className="hover:bg-muted/30">
-                          <TableCell className="font-medium">{household.householdCode}</TableCell>
-                          <TableCell>{household.headOfHouseholdName}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={getDeliveryModeBadgeVariant(household.deliveryMode)}
-                              appearance="light"
-                            >
-                              {getDeliveryModeLabel(household.deliveryMode)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={getHouseholdFulfillmentStatusBadgeVariant(
-                                household.fulfillmentStatus,
-                              )}
-                              appearance="light"
-                            >
-                              {getHouseholdFulfillmentStatusLabel(household.fulfillmentStatus)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={household.campaignTeamId ? 'success' : 'outline'}
-                              appearance="light"
-                            >
-                              {household.campaignTeamId ? 'Đã gán' : 'Chưa gán'}
-                            </Badge>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedHouseholds.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={10}
+                            className="h-24 text-center text-muted-foreground"
+                          >
+                            Không có hộ dân phù hợp bộ lọc hiện tại.
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                      ) : (
+                        paginatedHouseholds.map((household) => (
+                          <TableRow
+                            key={household.campaignHouseholdId}
+                            className="hover:bg-muted/30"
+                          >
+                            <TableCell className="font-medium">{household.householdCode}</TableCell>
+                            <TableCell>{household.headOfHouseholdName}</TableCell>
+                            <TableCell>
+                              {household.campaignTeamName ? (
+                                <Badge variant="info" appearance="light">
+                                  {household.campaignTeamName}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">Chưa gán</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {household.distributionPointName ? (
+                                <Badge variant="outline" appearance="light">
+                                  {household.distributionPointName}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell>{household.contactPhone || '—'}</TableCell>
+                            <TableCell
+                              className="max-w-[220px] truncate"
+                              title={household.address || ''}
+                            >
+                              {household.address || '—'}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={household.isIsolated ? 'warning' : 'outline'}
+                                appearance="light"
+                              >
+                                {household.isIsolated ? 'Cô lập' : 'Bình thường'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={getDeliveryModeBadgeVariant(household.deliveryMode)}
+                                appearance="light"
+                              >
+                                {getDeliveryModeLabel(household.deliveryMode)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={getHouseholdFulfillmentStatusBadgeVariant(
+                                  household.fulfillmentStatus,
+                                )}
+                                appearance="light"
+                              >
+                                {getHouseholdFulfillmentStatusLabel(household.fulfillmentStatus)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={household.campaignTeamId ? 'success' : 'outline'}
+                                appearance="light"
+                              >
+                                {household.campaignTeamId ? 'Đã gán' : 'Chưa gán'}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
 
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm text-muted-foreground">
-                  Trang {safeCurrentPage}/{totalPages} · Tổng {households.length} hộ dân
+                  Trang {safeCurrentPage}/{totalPages} · Tổng{' '}
+                  {pagination?.totalCount ?? households.length} hộ dân
                 </p>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
                     onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                     disabled={safeCurrentPage === 1}
+                    className="gap-2"
                   >
+                    <span className="material-symbols-outlined text-[18px]">chevron_left</span>
                     Trang trước
                   </Button>
                   <Button
                     variant="outline"
                     onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                     disabled={safeCurrentPage === totalPages}
+                    className="gap-2"
                   >
                     Trang sau
+                    <span className="material-symbols-outlined text-[18px]">chevron_right</span>
                   </Button>
                 </div>
               </div>

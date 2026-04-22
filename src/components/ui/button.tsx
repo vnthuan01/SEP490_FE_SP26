@@ -365,28 +365,36 @@ const buttonVariants = cva(
   },
 );
 
-function Button({
-  className,
-  selected,
-  variant,
-  shape,
-  appearance,
-  mode,
-  size,
-  autoHeight,
-  underlined,
-  underline,
-  asChild = false,
-  placeholder = false,
-  ...props
-}: React.ComponentProps<'button'> &
-  VariantProps<typeof buttonVariants> & {
-    selected?: boolean;
-    asChild?: boolean;
-  }) {
+const Button = React.forwardRef<
+  HTMLButtonElement,
+  React.ComponentProps<'button'> &
+    VariantProps<typeof buttonVariants> & {
+      selected?: boolean;
+      asChild?: boolean;
+    }
+>(function Button(
+  {
+    className,
+    selected,
+    variant,
+    shape,
+    appearance,
+    mode,
+    size,
+    autoHeight,
+    underlined,
+    underline,
+    asChild = false,
+    placeholder = false,
+    ...props
+  },
+  ref,
+) {
   const Comp = asChild ? SlotPrimitive.Slot : 'button';
+
   return (
     <Comp
+      ref={ref}
       data-slot="button"
       className={cn(
         buttonVariants({
@@ -407,7 +415,9 @@ function Button({
       {...props}
     />
   );
-}
+});
+
+Button.displayName = 'Button';
 
 interface ButtonArrowProps extends React.SVGProps<SVGSVGElement> {
   icon?: LucideIcon; // Allows passing any Lucide icon

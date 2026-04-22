@@ -18,6 +18,7 @@ import { roleVariantMap } from '@/constants/roleVariant';
 import { roleLabelMap } from '@/constants/roleLabel';
 import { useEffect, useState } from 'react';
 import { AddUserModal } from './components/AddUserModal';
+import type { CreateUserPayload } from './components/AddUserModal';
 import { getCurrentUserProfile } from '@/services/userService';
 import { useAllUsers } from '@/hooks/useUsers';
 import { StatsCard } from '@/pages/admin/components/StatsCard';
@@ -40,6 +41,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { adminNavItems, adminProjects } from './components/sidebarConfig';
 import { Textarea } from '@/components/ui/textarea';
+import { parseApiError } from '@/lib/apiErrors';
 
 export default function AdminUserManagementPage() {
   const [openAddUser, setOpenAddUser] = useState(false);
@@ -73,9 +75,13 @@ export default function AdminUserManagementPage() {
 
     fetchProfile();
   }, []);
-  const handleCreateUser = async () => {
-    console.log('Đã tạo user thành công');
-    await refetch();
+  const handleCreateUser = async (_data: CreateUserPayload) => {
+    try {
+      await refetch();
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const handleBanUser = async () => {
@@ -92,7 +98,7 @@ export default function AdminUserManagementPage() {
       setBanReason('');
       await refetch();
     } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Không thể khóa tài khoản');
+      toast.error(parseApiError(error, 'Không thể khóa tài khoản').message);
     }
   };
 
@@ -108,7 +114,7 @@ export default function AdminUserManagementPage() {
       setUnbanUserDialog({ open: false, userId: '', email: '' });
       await refetch();
     } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Không thể mở khóa tài khoản');
+      toast.error(parseApiError(error, 'Không thể mở khóa tài khoản').message);
     }
   };
 

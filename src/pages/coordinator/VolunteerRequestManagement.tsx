@@ -25,6 +25,7 @@ import {
   TeamRolePreference,
   TeamRolePreferenceLabel,
 } from '@/enums/beEnums';
+import { parseApiError } from '@/lib/apiErrors';
 
 type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
 
@@ -103,6 +104,24 @@ const getAgeTextFromDob = (value?: string | null) => {
   const m = now.getMonth() - dob.getMonth();
   if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age -= 1;
   return `${age}`;
+};
+
+const translateSkill = (name: string): string => {
+  const translations: Record<string, string> = {
+    'Logistics Support': 'Hỗ trợ hậu cần',
+    'Search and Rescue': 'Tìm kiếm cứu nạn',
+    'Medical Support': 'Hỗ trợ y tế',
+    'First Aid': 'Sơ cấp cứu',
+    Communication: 'Thông tin liên lạc',
+    Driving: 'Lái xe',
+    'Heavy Equipment Operation': 'Vận hành thiết bị hạng nặng',
+    Translation: 'Phiên dịch',
+    'Psychological Support': 'Hỗ trợ tâm lý',
+    Cooking: 'Nấu ăn',
+    'Data Entry': 'Nhập liệu',
+    Coordination: 'Điều phối',
+  };
+  return translations[name] || name;
 };
 
 export default function CoordinatorVolunteerRequestPage() {
@@ -215,7 +234,7 @@ export default function CoordinatorVolunteerRequestPage() {
       await refetch();
       toast.success('Đã chấp nhận hồ sơ tình nguyện viên!');
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Không thể chấp nhận request.';
+      const msg = parseApiError(error, 'Không thể chấp nhận request.').message;
       setActionError(msg);
       toast.error(msg);
     }
@@ -236,7 +255,7 @@ export default function CoordinatorVolunteerRequestPage() {
       await refetch();
       toast.success('Đã từ chối hồ sơ tình nguyện viên!');
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Không thể từ chối hồ sơ tình nguyện viên!';
+      const msg = parseApiError(error, 'Không thể từ chối hồ sơ tình nguyện viên!').message;
       setActionError(msg);
       toast.error(msg);
     }
@@ -477,7 +496,7 @@ export default function CoordinatorVolunteerRequestPage() {
                                   key={`${app.volunteerProfileId}-${skill.skillId}`}
                                   className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground"
                                 >
-                                  {skill.name}
+                                  {translateSkill(skill.name)}
                                 </span>
                               ))}
                               {(app.skills || []).length > 3 && (
@@ -668,7 +687,7 @@ export default function CoordinatorVolunteerRequestPage() {
                               key={s.skillId}
                               className="rounded-full border border-primary/10 bg-primary/5 px-2.5 py-1 text-xs text-foreground"
                             >
-                              {s.name}
+                              {translateSkill(s.name)}
                             </span>
                           ))
                         ) : (

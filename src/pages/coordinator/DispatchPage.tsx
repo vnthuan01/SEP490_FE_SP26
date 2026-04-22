@@ -55,6 +55,7 @@ import {
   RescueRequestStatusLabel,
 } from '@/enums/beEnums';
 import { toast } from 'sonner';
+import { parseApiError } from '@/lib/apiErrors';
 
 const GOONG_MAP_KEY = import.meta.env.VITE_GOONG_MAP_KEY || '';
 const NORMAL_THRESHOLD_KM = 2;
@@ -70,6 +71,13 @@ const BUFFER_OUTLINE_LAYER_ID = 'dispatch-buffer-outline';
 type Coordinate = { lat: number; lng: number };
 type LoadOptions = { silentNotFound?: boolean };
 type MapRenderOptions = { fitPadding?: number };
+
+function isMapStyleReady(map: GoongMap | null): boolean {
+  if (!map) return false;
+  const mapAny = map as any;
+  if (typeof mapAny.isStyleLoaded === 'function') return mapAny.isStyleLoaded();
+  return true;
+}
 
 function decodePolyline(encoded: string): Array<[number, number]> {
   const coordinates: Array<[number, number]> = [];
@@ -176,7 +184,7 @@ function queueRowLeftBorder(status?: string | null, variant: 'active' | 'preview
 
 function getApiErrorMessage(error: any, fallback: string, notFoundMessage?: string) {
   if (error?.response?.status === 404 && notFoundMessage) return notFoundMessage;
-  return error?.response?.data?.message || fallback;
+  return parseApiError(error, fallback).message;
 }
 
 function translateSystemReason(reason?: string | null) {
@@ -184,14 +192,40 @@ function translateSystemReason(reason?: string | null) {
   if (!value) return '--';
 
   const lower = value.toLowerCase();
-  if (lower === 'team has no tracking location for smart assignment.') {
-    return 'Đội cứu hộ chưa có vị trí theo dõi nên chưa thể tính điều phối thông minh.';
-  }
+
+  // Mapping for exact matches or common phrases
   if (lower.includes('team has no tracking location')) {
     return 'Đội cứu hộ chưa có vị trí theo dõi.';
   }
-  if (lower.includes('smart assignment')) {
-    return 'Chưa thể tính toán điều phối thông minh với dữ liệu hiện tại.';
+  if (lower.includes('smart assignment') || lower.includes('smart dispatch')) {
+    return 'Không thể tính toán điều phối thông minh với dữ liệu hiện tại.';
+  }
+  if (lower.includes('already assigned') || lower.includes('already in another batch')) {
+    return 'Yêu cầu đã được gán hoặc đang nằm trong hàng đợi của đội khác.';
+  }
+  if (lower.includes('not verified') || lower.includes('not in verified status')) {
+    return 'Yêu cầu chưa được xác minh.';
+  }
+  if (lower.includes('distance exceeds') || lower.includes('too far')) {
+    return 'Khoảng cách vượt quá ngưỡng cho phép của trạm.';
+  }
+  if (lower.includes('requires backtrack') || lower.includes('requires major backtrack')) {
+    return 'Yêu cầu di chuyển ngược lại quá xa so với lộ trình hiện hữu.';
+  }
+  if (lower.includes('detour') && lower.includes('too high')) {
+    return 'Quãng đường vòng để tiếp cận yêu cầu này quá lớn.';
+  }
+  if (lower.includes('eligible for smart')) {
+    return 'Đủ điều kiện để điều phối thông minh.';
+  }
+  if (lower.includes('out of station coverage')) {
+    return 'Nằm ngoài phạm vi quản lý của trạm cứu trợ.';
+  }
+  if (lower.includes('team is busy') || lower.includes('handling another')) {
+    return 'Đội hiện đang bận xử lý nhiệm vụ khác.';
+  }
+  if (lower.includes('no valid route')) {
+    return 'Không tìm thấy tuyến đường hợp lệ để tiếp cận.';
   }
 
   return value;
@@ -255,7 +289,9 @@ function isVerifiedCandidate(req: DispatchCandidateItem): boolean {
 
 function getBlockReason(req: DispatchCandidateItem): string | null {
   if (req.canDispatch === false) {
-    return req.dispatchBlockReason || 'Yêu cầu này hiện không thể điều phối.';
+    return (
+      translateSystemReason(req.dispatchBlockReason) || 'Yêu cầu này hiện không thể điều phối.'
+    );
   }
 
   const status = normalizeStatus(req.rescueRequestStatus);
@@ -385,7 +421,21 @@ function QueueRow({
 export default function DispatchPage() {
   const { station } = useMyReliefStation();
   const hasAssignedStation = !!station?.reliefStationId;
-  const { teams, isLoading: isTeamsLoading } = useTeamsInStation(station?.reliefStationId);
+  const { teams: stationTeams, isLoading: isTeamsLoading } = useTeamsInStation(
+    station?.reliefStationId,
+  );
+
+  const teams = useMemo(
+    () =>
+      (stationTeams || []).filter((team) => {
+        const type = Number((team as any).teamType ?? -1);
+        const typeName = String((team as any).teamTypeName ?? '')
+          .trim()
+          .toLowerCase();
+        return type === 2 || typeName.includes('cứu hộ') || typeName.includes('rescue');
+      }),
+    [stationTeams],
+  );
 
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [selectedRequestId, setSelectedRequestId] = useState('');
@@ -740,6 +790,13 @@ export default function DispatchPage() {
   const renderMapData = useCallback(
     (map: GoongMap | null, markerStore: MutableRefObject<Marker[]>, options?: MapRenderOptions) => {
       if (!map) return;
+
+      if (!isMapStyleReady(map)) {
+        (map as any).once?.('load', () => {
+          renderMapData(map, markerStore, options);
+        });
+        return;
+      }
 
       markerStore.current.forEach((marker) => marker.remove());
       markerStore.current = [];

@@ -18,6 +18,7 @@ export type CoordinatorPackageItemForm = {
 export type CoordinatorPackageForm = {
   name: string;
   description: string;
+  cashSupportAmount: string;
   isDefault: boolean;
   isActive: boolean;
   items: CoordinatorPackageItemForm[];

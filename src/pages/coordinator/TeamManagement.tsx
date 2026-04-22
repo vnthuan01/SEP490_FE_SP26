@@ -7,7 +7,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useNavigate } from 'react-router-dom';
 import { useTeamMembers, useTeams, useTeamsInStation } from '@/hooks/useTeams';
-import { useAssignTeamToCampaign, useCampaignTeams, useCampaigns } from '@/hooks/useCampaigns';
+import {
+  useAssignTeamToCampaign,
+  useCampaignTeams,
+  useCampaigns,
+  useUpdateCampaignStatus,
+} from '@/hooks/useCampaigns';
 import { campaignService } from '@/services/campaignService';
 import {
   Dialog,
@@ -30,6 +35,8 @@ import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { useUnassignedVolunteers } from '@/hooks/useVolunteerProfiles';
 import { coordinatorNavGroups } from './components/sidebarConfig';
 import { toast } from 'sonner';
+import { handleHookError } from '@/hooks/hookErrorUtils';
+import { parseApiError } from '@/lib/apiErrors';
 import type { TeamStatus } from '@/enums/beEnums';
 import {
   CampaignTeamRole,
@@ -144,6 +151,7 @@ export default function CoordinatorTeamManagementPage() {
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [selectedVolunteerIds, setSelectedVolunteerIds] = useState<string[]>([]);
+  const [manageMembersError, setManageMembersError] = useState('');
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isReliefCampaignAssignOpen, setIsReliefCampaignAssignOpen] = useState(false);
   const [editName, setEditName] = useState('');
@@ -164,6 +172,7 @@ export default function CoordinatorTeamManagementPage() {
       memberCount: number;
     }>
   >([]);
+  const [assignedReliefCampaignsVersion, setAssignedReliefCampaignsVersion] = useState(0);
   const navigate = useNavigate();
 
   const isLoading = isLoadingStation || isLoadingTeamList;
@@ -188,10 +197,10 @@ export default function CoordinatorTeamManagementPage() {
 
   // Không auto-select khi load — chờ user tự click vào nhóm
   useEffect(() => {
-    if (!teams.length) {
+    if (!teams.length && selectedTeamId !== undefined) {
       setSelectedTeamId(undefined);
     }
-  }, [teams]);
+  }, [selectedTeamId, teams.length]);
 
   const selectedTeam = useMemo(
     () => teams.find((t) => t.id === selectedTeamId),
@@ -209,7 +218,7 @@ export default function CoordinatorTeamManagementPage() {
     },
     { enabled: hasAssignedStation },
   );
-  const { campaigns } = useCampaigns(
+  const { campaigns, refetch: refetchCampaigns } = useCampaigns(
     {
       pageIndex: 1,
       pageSize: 200,
@@ -223,6 +232,7 @@ export default function CoordinatorTeamManagementPage() {
   );
   const { mutateAsync: assignTeamToCampaign, status: assignTeamToCampaignStatus } =
     useAssignTeamToCampaign();
+  const { mutateAsync: updateCampaignStatus } = useUpdateCampaignStatus();
 
   const filteredTeams = useMemo(() => {
     return teams.filter((t) => {
@@ -253,16 +263,21 @@ export default function CoordinatorTeamManagementPage() {
   const totalListPages = Math.max(1, Math.ceil(filteredTeams.length / TEAM_PAGE_SIZE));
 
   useEffect(() => {
-    setListPage(1);
-  }, [searchTerm, teamStatusFilter]);
+    if (listPage !== 1) {
+      setListPage(1);
+    }
+  }, [listPage, searchTerm, teamStatusFilter]);
 
   useEffect(() => {
     if (listPage > totalListPages) setListPage(totalListPages);
   }, [listPage, totalListPages]);
 
   useEffect(() => {
-    setPageInput(String(listPage));
-  }, [listPage]);
+    const nextPageInput = String(listPage);
+    if (pageInput !== nextPageInput) {
+      setPageInput(nextPageInput);
+    }
+  }, [listPage, pageInput]);
 
   const paginatedTeams = useMemo(() => {
     const start = (listPage - 1) * TEAM_PAGE_SIZE;
@@ -325,7 +340,9 @@ export default function CoordinatorTeamManagementPage() {
         Number(selectedTeam?.teamType ?? 1) !== 1 ||
         reliefCampaigns.length === 0
       ) {
-        if (active) setAssignedReliefCampaigns([]);
+        if (active) {
+          setAssignedReliefCampaigns((prev) => (prev.length > 0 ? [] : prev));
+        }
         return;
       }
 
@@ -351,15 +368,31 @@ export default function CoordinatorTeamManagementPage() {
       );
 
       if (active) {
-        setAssignedReliefCampaigns(
-          results.filter(Boolean) as Array<{
-            campaignId: string;
-            campaignName: string;
-            status: number;
-            campaignTeamId: string;
-            memberCount: number;
-          }>,
-        );
+        const nextAssignments = results.filter(Boolean) as Array<{
+          campaignId: string;
+          campaignName: string;
+          status: number;
+          campaignTeamId: string;
+          memberCount: number;
+        }>;
+
+        setAssignedReliefCampaigns((prev) => {
+          const hasSameAssignments =
+            prev.length === nextAssignments.length &&
+            prev.every((item, index) => {
+              const nextItem = nextAssignments[index];
+              return (
+                nextItem &&
+                item.campaignId === nextItem.campaignId &&
+                item.campaignTeamId === nextItem.campaignTeamId &&
+                item.status === nextItem.status &&
+                item.memberCount === nextItem.memberCount &&
+                item.campaignName === nextItem.campaignName
+              );
+            });
+
+          return hasSameAssignments ? prev : nextAssignments;
+        });
       }
     };
 
@@ -368,7 +401,7 @@ export default function CoordinatorTeamManagementPage() {
     return () => {
       active = false;
     };
-  }, [reliefCampaigns, selectedTeam?.teamType, selectedTeamId]);
+  }, [assignedReliefCampaignsVersion, reliefCampaigns, selectedTeam?.teamType, selectedTeamId]);
 
   const handleCreateTeam = async () => {
     if (!reliefStationId) {
@@ -401,7 +434,7 @@ export default function CoordinatorTeamManagementPage() {
       await refetch();
       toast.success('Tạo đội ngũ mới thành công!');
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Không thể tạo đội ngũ. Vui lòng thử lại.';
+      const msg = parseApiError(error, 'Không thể tạo đội ngũ. Vui lòng thử lại.').message;
       setCreateError(msg);
       toast.error(msg);
     } finally {
@@ -416,6 +449,7 @@ export default function CoordinatorTeamManagementPage() {
     }
 
     try {
+      setManageMembersError('');
       await addMembersBulk({
         volunteerIds: selectedVolunteerIds,
       });
@@ -423,7 +457,8 @@ export default function CoordinatorTeamManagementPage() {
       toast.success('Thao tác hoàn tất');
       setIsManageMembersOpen(false);
     } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Có lỗi xảy ra khi lưu vào hệ thống.');
+      setManageMembersError(parseApiError(e, 'Có lỗi xảy ra khi lưu vào hệ thống.').message);
+      handleHookError(e, 'Có lỗi xảy ra khi lưu vào hệ thống.');
     }
   };
 
@@ -472,7 +507,7 @@ export default function CoordinatorTeamManagementPage() {
       await refetch();
       toast.success('Cập nhật đội ngũ thành công!');
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Không thể cập nhật đội ngũ.';
+      const msg = parseApiError(error, 'Không thể cập nhật đội ngũ.').message;
       setEditError(msg);
       toast.error(msg);
     } finally {
@@ -504,10 +539,23 @@ export default function CoordinatorTeamManagementPage() {
           initialStatus: CampaignTeamStatus.Active,
         },
       });
+
+      await updateCampaignStatus({
+        id: selectedReliefCampaignId,
+        data: {
+          status: 1,
+        },
+      });
+
+      await Promise.all([refetchCampaigns(), refetch()]);
+      setAssignedReliefCampaignsVersion((prev) => prev + 1);
       setIsReliefCampaignAssignOpen(false);
       setSelectedReliefCampaignId('');
-    } catch {
-      // handled by hook
+      toast.success('Đã gán team vào chiến dịch cứu trợ và kích hoạt chiến dịch.');
+    } catch (error) {
+      setReliefCampaignAssignError(
+        parseApiError(error, 'Không thể gán team vào chiến dịch cứu trợ.').message,
+      );
     }
   };
 
@@ -524,7 +572,7 @@ export default function CoordinatorTeamManagementPage() {
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => {
-              navigate('/portal/coordinator/team-allocation');
+              navigate('/portal/coordinator/volunteer-allocation');
             }}
             variant="outline"
             className="gap-2 text-base px-6 h-12"
@@ -535,22 +583,20 @@ export default function CoordinatorTeamManagementPage() {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <span>
-                  <Button
-                    variant="primary"
-                    className="gap-2 text-base px-6 h-12"
-                    onClick={() => {
-                      if (!reliefStationId) {
-                        toast.error('Bạn chưa được phân vào trạm nào. Không thể tạo đội ngũ.');
-                        return;
-                      }
-                      setIsCreateOpen(true);
-                    }}
-                    disabled={isLoadingStation}
-                  >
-                    <span className="material-symbols-outlined">group_add</span>
-                  </Button>
-                </span>
+                <Button
+                  variant="primary"
+                  className="gap-2 text-base px-6 h-12"
+                  onClick={() => {
+                    if (!reliefStationId) {
+                      toast.error('Bạn chưa được phân vào trạm nào. Không thể tạo đội ngũ.');
+                      return;
+                    }
+                    setIsCreateOpen(true);
+                  }}
+                  disabled={isLoadingStation}
+                >
+                  <span className="material-symbols-outlined">group_add</span>
+                </Button>
               </TooltipTrigger>
               <TooltipContent>
                 <p className="text-white dark:text-black">
@@ -1056,7 +1102,7 @@ export default function CoordinatorTeamManagementPage() {
                                 {campaign.campaignTeamId.slice(0, 8)}
                               </p>
                             </div>
-                            <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-500/10 px-2.5 py-1 text-[11px] font-medium text-blue-700 dark:border-blue-900/40 dark:text-blue-300">
+                            <span className="inline-flex max-w-full shrink-0 items-center truncate whitespace-nowrap rounded-full border border-blue-200 bg-blue-500/10 px-2.5 py-1 text-[11px] font-medium text-blue-700 dark:border-blue-900/40 dark:text-blue-300">
                               {CAMPAIGN_TEAM_STATUS_LABEL[campaign.status] ||
                                 `Trạng thái ${campaign.status}`}
                             </span>
@@ -1094,7 +1140,7 @@ export default function CoordinatorTeamManagementPage() {
                     Quản lý
                   </button>
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 max-h-[230px] overflow-y-auto pr-2 custom-scrollbar">
                   {members && members.length > 0 ? (
                     members.map((member: any) => (
                       <div
@@ -1180,6 +1226,7 @@ export default function CoordinatorTeamManagementPage() {
       <Dialog
         open={isCreateOpen}
         onOpenChange={(open) => {
+          if (isCreating) return;
           setIsCreateOpen(open);
           if (!open) {
             resetCreateForm();
@@ -1253,7 +1300,16 @@ export default function CoordinatorTeamManagementPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isManageMembersOpen} onOpenChange={setIsManageMembersOpen}>
+      <Dialog
+        open={isManageMembersOpen}
+        onOpenChange={(open) => {
+          if (addMembersBulkStatus === 'pending') return;
+          setIsManageMembersOpen(open);
+          if (!open) {
+            setManageMembersError('');
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
             <DialogTitle>Quản lý thành viên đội</DialogTitle>
@@ -1311,7 +1367,13 @@ export default function CoordinatorTeamManagementPage() {
               </div>
             )}
 
-            <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+            {manageMembersError ? (
+              <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {manageMembersError}
+              </div>
+            ) : null}
+
+            <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3 max-h-[320px] overflow-y-auto custom-scrollbar">
               <p className="text-sm font-semibold text-foreground">Thành viên hiện tại</p>
               {members?.length ? (
                 members.map((member: any) => (
@@ -1366,7 +1428,11 @@ export default function CoordinatorTeamManagementPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsManageMembersOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsManageMembersOpen(false)}
+              disabled={addMembersBulkStatus === 'pending'}
+            >
               Đóng
             </Button>
             <Button
@@ -1383,6 +1449,7 @@ export default function CoordinatorTeamManagementPage() {
       <Dialog
         open={isEditOpen}
         onOpenChange={(open) => {
+          if (isEditing) return;
           setIsEditOpen(open);
           if (!open) setEditError('');
         }}
@@ -1466,6 +1533,7 @@ export default function CoordinatorTeamManagementPage() {
       <Dialog
         open={isReliefCampaignAssignOpen}
         onOpenChange={(open) => {
+          if (assignTeamToCampaignStatus === 'pending') return;
           setIsReliefCampaignAssignOpen(open);
           if (!open) {
             setSelectedReliefCampaignId('');
@@ -1512,7 +1580,11 @@ export default function CoordinatorTeamManagementPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsReliefCampaignAssignOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsReliefCampaignAssignOpen(false)}
+              disabled={assignTeamToCampaignStatus === 'pending'}
+            >
               Hủy
             </Button>
             <Button

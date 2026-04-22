@@ -154,10 +154,15 @@ export function useUpdateSupplyAllocationStatus() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateSupplyAllocationStatusPayload }) =>
       supplyAllocationService.updateStatus(id, data),
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       toast.success('Đã cập nhật trạng thái điều phối');
-      queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.all });
-      queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.allocationDetail(variables.id) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: SUPPLY_QUERY_KEYS.all }),
+        queryClient.invalidateQueries({
+          queryKey: SUPPLY_QUERY_KEYS.allocationDetail(variables.id),
+        }),
+        queryClient.invalidateQueries({ queryKey: ['supplies', 'allocations'] }),
+      ]);
     },
     onError: (error: any) => {
       handleHookError(error, 'Không thể cập nhật trạng thái điều phối');

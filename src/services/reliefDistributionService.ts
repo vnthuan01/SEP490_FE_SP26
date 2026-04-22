@@ -43,6 +43,8 @@ export interface CampaignHouseholdResponse {
   fulfillmentStatus: number;
   notes?: string | null;
   createdAt: string;
+  distributionPointName?: string | null;
+  campaignTeamName?: string | null;
 }
 
 export interface AssignHouseholdRequest {
@@ -67,14 +69,19 @@ export interface HouseholdDeliveryResponse {
   householdDeliveryId: string;
   campaignId: string;
   campaignHouseholdId: string;
+  householdCode?: string;
   distributionPointId?: string | null;
+  distributionPointName?: string | null;
   campaignTeamId?: string | null;
+  campaignTeamName?: string | null;
   reliefPackageDefinitionId: string;
+  reliefPackageDefinitionName?: string;
   deliveredByUserId?: string | null;
   deliveryMode: number;
   status: number;
   scheduledAt: string;
   deliveredAt?: string | null;
+  cashSupportAmount?: number | null;
   notes?: string | null;
   createdAt: string;
   proofs: HouseholdDeliveryProofResponse[];
@@ -95,6 +102,9 @@ export interface HouseholdChecklistItemResponse {
   deliveredAt?: string | null;
   notes?: string | null;
   proofCount: number;
+  campaignTeamName?: string | null;
+  distributionPointName?: string | null;
+  reliefPackageDefinitionName: string;
 }
 
 export interface CreateDistributionPointRequest {
@@ -111,6 +121,11 @@ export interface CreateDistributionPointRequest {
   isActive: boolean;
 }
 
+export interface DistributionPointTeamSummaryResponse {
+  campaignTeamId: string;
+  campaignTeamName: string;
+}
+
 export interface DistributionPointResponse {
   distributionPointId: string;
   campaignId: string;
@@ -125,6 +140,11 @@ export interface DistributionPointResponse {
   startsAt: string;
   endsAt?: string | null;
   isActive: boolean;
+  campaignTeamName?: string | null;
+  assignedHouseholdCount: number;
+  pendingDeliveryCount: number;
+  totalDeliveryCount: number;
+  assignedTeams: DistributionPointTeamSummaryResponse[];
 }
 
 export interface ReliefPackageDefinitionItemRequest {
@@ -136,7 +156,8 @@ export interface ReliefPackageDefinitionItemRequest {
 export interface CreateReliefPackageDefinitionRequest {
   name: string;
   description?: string | null;
-  outputSupplyItemId: string;
+  outputSupplyItemId?: string;
+  cashSupportAmount?: number | null;
   isDefault: boolean;
   isActive: boolean;
   items: ReliefPackageDefinitionItemRequest[];
@@ -158,6 +179,7 @@ export interface ReliefPackageDefinitionResponse {
   outputUnit: string;
   name: string;
   description?: string | null;
+  cashSupportAmount?: number | null;
   isDefault: boolean;
   isActive: boolean;
   createdAt: string;
@@ -175,8 +197,9 @@ export interface ReliefPackageAssemblyAvailabilityItemResponse {
 
 export interface ReliefPackageAssemblyAvailabilityResponse {
   campaignId: string;
+  campaignInventoryId?: string | null;
   reliefStationId: string;
-  inventoryId: string;
+  inventoryId?: string;
   reliefPackageDefinitionId: string;
   outputSupplyItemId: string;
   outputSupplyItemName: string;
@@ -187,7 +210,7 @@ export interface ReliefPackageAssemblyAvailabilityResponse {
 
 export interface AssembleReliefPackageRequest {
   reliefStationId: string;
-  inventoryId: string;
+  campaignInventoryId: string;
   quantityToAssemble: number;
   notes?: string | null;
 }
@@ -203,7 +226,8 @@ export interface ReliefPackageAssemblyResponse {
   reliefPackageAssemblyId: string;
   campaignId: string;
   reliefStationId: string;
-  inventoryId: string;
+  campaignInventoryId?: string | null;
+  inventoryId?: string;
   reliefPackageDefinitionId: string;
   outputSupplyItemId: string;
   outputSupplyItemName: string;
@@ -218,6 +242,7 @@ export interface ReliefPackageAssemblyResponse {
 export interface CompleteHouseholdDeliveryRequest {
   reliefPackageDefinitionId?: string | null;
   campaignTeamId?: string | null;
+  cashSupportAmount?: number | null;
   notes?: string | null;
   proofNote?: string | null;
   proofFileUrl: string;
@@ -253,6 +278,7 @@ export interface SupplyShortageRequestItemResponse {
   supplyItemName: string;
   quantityRequested: number;
   quantityApproved?: number | null;
+  unit?: string | null;
   note?: string | null;
 }
 
@@ -269,6 +295,10 @@ export interface SupplyShortageRequestResponse {
   reviewedByUserId?: string | null;
   reviewNote?: string | null;
   items: SupplyShortageRequestItemResponse[];
+  distributionPointName?: string | null;
+  campaignTeamName?: string | null;
+  requestedByUserName?: string | null;
+  reviewedByUserName?: string | null;
 }
 
 export interface GetHouseholdsParams {
@@ -279,6 +309,7 @@ export interface GetHouseholdsParams {
   deliveryMode?: number;
   fulfillmentStatus?: number;
   isIsolated?: boolean;
+  isAssigned?: boolean;
   campaignTeamId?: string;
   distributionPointId?: string;
 }
@@ -326,6 +357,7 @@ export interface GetDeliveriesParams {
 
 export interface CompleteDeliveriesBatchItemRequest {
   householdDeliveryId: string;
+  cashSupportAmount?: number | null;
   notes?: string | null;
   proofNote?: string | null;
   proofFileUrl: string;
@@ -349,6 +381,11 @@ export interface UpdateCampaignHouseholdRequest {
   notes?: string | null;
 }
 
+export interface UpdateCampaignHouseholdStatusRequest {
+  status: number;
+  notes?: string | null;
+}
+
 export interface UpdateDistributionPointRequest {
   name?: string;
   reliefStationId?: string;
@@ -367,18 +404,25 @@ export interface UpdateReliefPackageDefinitionRequest {
   name?: string;
   description?: string | null;
   outputSupplyItemId?: string;
+  cashSupportAmount?: number | null;
   isDefault?: boolean;
   isActive?: boolean;
   items?: ReliefPackageDefinitionItemRequest[];
 }
 
 export interface GetShortageRequestsParams {
+  pageIndex?: number;
+  pageSize?: number;
   status?: number;
+  distributionPointId?: string;
+  campaignTeamId?: string;
+  requestedByUserId?: string;
+  search?: string;
 }
 
 export interface GetPackageAssemblyAvailabilityParams {
   reliefStationId: string;
-  inventoryId: string;
+  campaignInventoryId: string;
 }
 
 const baseCampaignPath = (campaignId: string) => `/relief/campaigns/${campaignId}`;
@@ -588,12 +632,14 @@ export const reliefDistributionService = {
     ),
 
   getShortageRequests: (campaignId: string, params?: GetShortageRequestsParams) =>
-    apiClient.get<SupplyShortageRequestResponse[]>(
-      `${baseCampaignPath(campaignId)}/shortage-requests`,
-      {
-        params,
-      },
-    ),
+    apiClient
+      .get<PaginatedResponse<SupplyShortageRequestResponse> | SupplyShortageRequestResponse[]>(
+        `${baseCampaignPath(campaignId)}/shortage-requests`,
+        {
+          params,
+        },
+      )
+      .then((response) => ({ ...response, data: mapPaginatedResponse(response.data) })),
 
   approveShortageRequest: (
     campaignId: string,
@@ -612,6 +658,16 @@ export const reliefDistributionService = {
   ) =>
     apiClient.patch<SupplyShortageRequestResponse>(
       `${baseCampaignPath(campaignId)}/shortage-requests/${shortageRequestId}/reject`,
+      data,
+    ),
+
+  patchHouseholdStatus: (
+    campaignId: string,
+    campaignHouseholdId: string,
+    data: UpdateCampaignHouseholdStatusRequest,
+  ) =>
+    apiClient.patch<CampaignHouseholdResponse>(
+      `${baseCampaignPath(campaignId)}/households/${campaignHouseholdId}/status`,
       data,
     ),
 };

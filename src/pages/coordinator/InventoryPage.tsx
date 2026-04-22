@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQueries } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { FileUploadCard } from '@/components/ui/file-upload-card';
+import CustomCalendar from '@/components/ui/customCalendar';
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -22,6 +26,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { TransferPdfWorkflowDialog } from '@/components/pdf/TransferPdfWorkflowDialog';
+import { ImportHistoryBySupplyItemDialog } from '@/components/inventory/ImportHistoryBySupplyItemDialog';
 import { PdfSignaturePad } from '@/components/pdf/PdfSignaturePad';
 import { PdfPreviewCard } from '@/components/pdf/PdfPreviewCard';
 import { CampaignAllocationDialog } from './components/CampaignAllocationDialog';
@@ -32,15 +37,21 @@ import { useMyReliefStation } from '@/hooks/useReliefStation';
 import {
   useAddStock,
   useCreateTransaction,
+  useImportHistoryBySupplyItem,
   useInventories,
   useInventoryStocks,
   useInventoryTransactions,
   useUpdateStock,
 } from '@/hooks/useInventory';
 import { useProvincialStations } from '@/hooks/useReliefStations';
-import { useSupplyItems } from '@/hooks/useSupplies';
-import { useCreateSupplyAllocation } from '@/hooks/useSupplies';
+import {
+  useCreateSupplyAllocation,
+  useSupplyAllocationsByCampaign,
+  useSupplyItems,
+  useUpdateSupplyAllocationStatus,
+} from '@/hooks/useSupplies';
 import { useCloudinaryUpload } from '@/hooks/useCloudinaryUpload';
+import { useVehicles } from '@/hooks/useVehicles';
 import {
   useAppendSupplyTransferEvidences,
   useCreateSupplyTransfer,
@@ -57,7 +68,11 @@ import { useCampaigns } from '@/hooks/useCampaigns';
 import { useUserProfile } from '@/hooks/useUsers';
 import { formatNumberInputVN, formatNumberVN, parseFormattedNumber } from '@/lib/utils';
 import { clearDialogDraft, readDialogDraft, writeDialogDraft } from '@/lib/dialogDraft';
+import { parseApiError } from '@/lib/apiErrors';
 import {
+  CampaignStatus,
+  CampaignType,
+  SupplyAllocationStatus,
   getSupplyCategoryClass,
   getSupplyCategoryIcon,
   getSupplyCategoryLabel,
@@ -65,20 +80,26 @@ import {
   TransactionReason,
   TransactionType,
   SupplyTransferStatus,
+  VehicleStatus,
+  getSupplyAllocationStatusClass,
+  getSupplyAllocationStatusLabel,
   parseEnumValue,
 } from '@/enums/beEnums';
 import { toast } from 'sonner';
-import type { Stock } from '@/services/inventoryService';
+import { inventoryTransactionService, type Stock } from '@/services/inventoryService';
+import { campaignService } from '@/services/campaignService';
 import { useAuthContext } from '@/components/provider/auth/AuthProvider';
 import {
   attachSignatureToPdf,
   buildTransferPdf,
+  updateTransferPdfApprovalData,
   type TransferPdfFillData,
 } from '@/lib/pdfTransferUtils';
 import {
   convertNumberToVietnameseWords,
   formatTransferApprovalNotes,
   parseTransferNotes,
+  type TransferApprovalItemMeta,
 } from '@/lib/transferNotes';
 
 // ─── Local helpers ──────────────────────────────────────────────────────────
@@ -113,6 +134,13 @@ type InventoryItemCard = {
   status: InventoryStatus;
   /** All individual stock rows for this supply item (lot-level detail) */
   lots: Stock[];
+};
+
+type CoordinatorCampaignOption = {
+  id: string;
+  name: string;
+  status: number;
+  statusLabel: string;
 };
 
 const statusMap: Record<
@@ -202,14 +230,6 @@ function getInventoryCardStatus(
   return 'safe';
 }
 
-/** Format an ISO date string for display, falling back to the given fallback text */
-function formatExpirationDate(date: string | null | undefined): string {
-  if (!date) return 'Chưa có hạn sử dụng';
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return 'Chưa có hạn sử dụng';
-  return d.toLocaleDateString('vi-VN');
-}
-
 /** Sort lots: those with expiration first (earliest first), then those without */
 function sortLotsByExpiration(lots: Stock[]): Stock[] {
   return [...lots].sort((a, b) => {
@@ -235,28 +255,90 @@ export default function CoordinatorInventoryPage() {
   const [showAllTransactions, setShowAllTransactions] = useState(false);
   const [openCreate, setOpenCreate] = useState(false);
   const [openCampaignAllocation, setOpenCampaignAllocation] = useState(false);
+  const [selectedCampaignAllocationId, setSelectedCampaignAllocationId] = useState('');
+  const [openCampaignAllocationStatus, setOpenCampaignAllocationStatus] = useState(false);
+  const [selectedCampaignAllocationStatusId, setSelectedCampaignAllocationStatusId] = useState('');
+  const [campaignAllocationStatusFilter, setCampaignAllocationStatusFilter] = useState<
+    'all' | 'pending' | 'approved' | 'delivered' | 'cancelled'
+  >('all');
+  const [allocationStatusUpdateState, setAllocationStatusUpdateState] = useState<{
+    allocationId: string;
+    nextStatus: number;
+  } | null>(null);
   const [openTransferRequest, setOpenTransferRequest] = useState(false);
   const [transferErrors, setTransferErrors] = useState<Record<string, string>>({});
+  const [transferSubmitError, setTransferSubmitError] = useState('');
+  const [isSubmittingTransferRequest, setIsSubmittingTransferRequest] = useState(false);
   const [editStockErrors, setEditStockErrors] = useState<Record<string, string>>({});
   const [openApproveTransfer, setOpenApproveTransfer] = useState(false);
+  const [openApproveExpiryCalendarKey, setOpenApproveExpiryCalendarKey] = useState<string | null>(
+    null,
+  );
   const [openShipTransfer, setOpenShipTransfer] = useState(false);
   const [openReceiveTransfer, setOpenReceiveTransfer] = useState(false);
   const [openCancelTransfer, setOpenCancelTransfer] = useState(false);
   const [openTransferDetail, setOpenTransferDetail] = useState(false);
+  const [openImportHistoryDialog, setOpenImportHistoryDialog] = useState(false);
   const [openTransferPdfWorkflow, setOpenTransferPdfWorkflow] = useState(false);
   const [selectedTransferId, setSelectedTransferId] = useState<string | null>(null);
+  const [selectedImportHistorySupplyItem, setSelectedImportHistorySupplyItem] = useState<{
+    supplyItemId: string;
+    supplyItemName: string;
+    unit?: string;
+  } | null>(null);
   const [approveTransferForm, setApproveTransferForm] = useState<{
     actualQuantities: Record<string, number>;
     referenceAmount: string;
     approverName: string;
     approverSignatureDataUrl: string;
+    itemMetas: Record<
+      string,
+      {
+        unitCost: string;
+        expiryDate: string;
+        sourceReference: string;
+      }
+    >;
     pdfBytes: Uint8Array | null;
   }>({
     actualQuantities: {},
     referenceAmount: '',
     approverName: '',
     approverSignatureDataUrl: '',
+    itemMetas: {},
     pdfBytes: null,
+  });
+  const [shipTransferForm, setShipTransferForm] = useState<{
+    vehicleId: string;
+    notes: string;
+    evidenceFiles: File[];
+  }>({
+    vehicleId: '',
+    notes: '',
+    evidenceFiles: [],
+  });
+  const [receiveTransferForm, setReceiveTransferForm] = useState<{
+    notes: string;
+    evidenceFiles: File[];
+    itemMetas: Record<
+      string,
+      {
+        unitCost: string;
+        expiryDate: string;
+        sourceReference: string;
+      }
+    >;
+  }>({
+    notes: '',
+    evidenceFiles: [],
+    itemMetas: {},
+  });
+  const [cancelTransferForm, setCancelTransferForm] = useState<{
+    notes: string;
+    evidenceFiles: File[];
+  }>({
+    notes: '',
+    evidenceFiles: [],
   });
   const [openOutgoingTransferSection, setOpenOutgoingTransferSection] = useState(true);
   const [openActionableTransferSection, setOpenActionableTransferSection] = useState(true);
@@ -286,9 +368,6 @@ export default function CoordinatorInventoryPage() {
       items: [] as Array<{ supplyItemId: string; quantity: number; notes: string }>,
     }),
   );
-
-  // ── Lot detail panel state ──────────────────────────────────────────────────
-  const [expandedSupplyItemId, setExpandedSupplyItemId] = useState<string | null>(null);
 
   // ── Edit min/max dialog state ───────────────────────────────────────────────
   const [editStockDialog, setEditStockDialog] = useState<{
@@ -353,6 +432,15 @@ export default function CoordinatorInventoryPage() {
     pageIndex: 1,
     pageSize: 300,
   });
+  const { vehicles: stationVehicles, vehiclesByStatus: freeVehicles } = useVehicles(
+    undefined,
+    VehicleStatus.Free,
+    {
+      reliefStationId: station?.reliefStationId,
+      pageIndex: 1,
+      pageSize: 200,
+    },
+  );
 
   // Campaigns for this station's province/location
   const { campaigns: allCampaigns } = useCampaigns(
@@ -360,6 +448,7 @@ export default function CoordinatorInventoryPage() {
       pageIndex: 1,
       pageSize: 200,
       locationId: station?.locationId || undefined,
+      type: CampaignType.Relief,
     },
     { enabled: !!station?.locationId },
   );
@@ -380,6 +469,7 @@ export default function CoordinatorInventoryPage() {
   const { mutateAsync: appendTransferEvidences } = useAppendSupplyTransferEvidences();
   const { uploadFile, isUploading: isUploadingTransferEvidence } = useCloudinaryUpload();
   const { mutateAsync: createSupplyAllocation } = useCreateSupplyAllocation();
+  const { mutateAsync: updateSupplyAllocationStatus } = useUpdateSupplyAllocationStatus();
   const { mutateAsync: approveTransfer, status: approveTransferStatus } =
     useApproveSupplyTransfer();
   const { mutateAsync: shipTransfer, status: shipTransferStatus } = useShipSupplyTransfer();
@@ -441,6 +531,35 @@ export default function CoordinatorInventoryPage() {
     });
   }, [stocks, supplyMap]);
 
+  const importHistoryCountQueries = useQueries({
+    queries: inventoryItems.map((item) => ({
+      queryKey: [
+        'transactions',
+        'import-history-count',
+        managedInventory?.inventoryId,
+        item.supplyItemId,
+      ],
+      queryFn: async () => {
+        const response = await inventoryTransactionService.getImportHistoryBySupplyItem(
+          managedInventory?.inventoryId || '',
+          item.supplyItemId,
+        );
+        return response.data.length;
+      },
+      enabled: !!managedInventory?.inventoryId && !!item.supplyItemId,
+      staleTime: 60_000,
+    })),
+  });
+
+  const importHistoryCountMap = useMemo(() => {
+    return new Map(
+      inventoryItems.map((item, index) => [
+        item.supplyItemId,
+        importHistoryCountQueries[index]?.data || 0,
+      ]),
+    );
+  }, [inventoryItems, importHistoryCountQueries]);
+
   const outgoingRequestTransfers = useMemo(
     () =>
       [...destinationTransfers].sort(
@@ -483,6 +602,19 @@ export default function CoordinatorInventoryPage() {
   const relatedTransfersDetailed = useMemo(
     () => relatedTransfers.map((transfer) => detailedTransferMap.get(transfer.id) || transfer),
     [relatedTransfers, detailedTransferMap],
+  );
+
+  const relatedTransferByTransactionId = useMemo(
+    () =>
+      relatedTransfersDetailed.reduce<
+        Record<string, (typeof relatedTransfersDetailed)[number] | undefined>
+      >((acc, transfer) => {
+        (transfer.inventoryTransactionIds || []).forEach((transactionId) => {
+          if (transactionId) acc[transactionId] = transfer;
+        });
+        return acc;
+      }, {}),
+    [relatedTransfersDetailed],
   );
 
   const outgoingTransferTotalPages = Math.max(
@@ -648,15 +780,108 @@ export default function CoordinatorInventoryPage() {
     [selectedSourceStocks],
   );
 
-  /** Campaigns filtered by current station locationId.
-   * If backend returns nearby campaigns in the same location/province, show them here. */
+  const stationCampaignDetailQueries = useQueries({
+    queries: allCampaigns.map((campaign) => ({
+      queryKey: ['campaigns', 'coordinator-allocation-detail', campaign.campaignId],
+      queryFn: async () => {
+        const response = await campaignService.getById(campaign.campaignId);
+        return response.data;
+      },
+      enabled: !!station?.reliefStationId,
+      staleTime: 60_000,
+    })),
+  });
+
+  /** Campaigns usable by the coordinator-managed station only. */
   const stationCampaigns = useMemo(() => {
-    return allCampaigns.map((c) => ({ id: c.campaignId, name: c.name }));
-  }, [allCampaigns]);
+    const reliefStationId = station?.reliefStationId;
+    if (!reliefStationId) return [] as CoordinatorCampaignOption[];
+
+    const allowedStatuses = new Set<number>([
+      CampaignStatus.Active,
+      CampaignStatus.ReadyToExecute,
+      CampaignStatus.InProgress,
+    ]);
+
+    return allCampaigns
+      .map((campaign, index) => {
+        const detail = stationCampaignDetailQueries[index]?.data;
+        return detail ? { summary: campaign, detail } : null;
+      })
+      .filter(
+        (
+          item,
+        ): item is {
+          summary: (typeof allCampaigns)[number];
+          detail: NonNullable<(typeof stationCampaignDetailQueries)[number]['data']>;
+        } => !!item,
+      )
+      .filter(
+        ({ summary, detail }) =>
+          Number(summary.type) === CampaignType.Relief &&
+          allowedStatuses.has(Number(summary.status)) &&
+          (detail.stations || []).some(
+            (campaignStation) =>
+              campaignStation.reliefStationId === reliefStationId && campaignStation.isActive,
+          ),
+      )
+      .map(({ summary }) => ({
+        id: summary.campaignId,
+        name: summary.name,
+        status: Number(summary.status),
+        statusLabel:
+          Number(summary.status) === CampaignStatus.Active
+            ? 'Đang hoạt động'
+            : Number(summary.status) === CampaignStatus.ReadyToExecute
+              ? 'Sẵn sàng triển khai'
+              : 'Đang triển khai',
+      }));
+  }, [allCampaigns, station, stationCampaignDetailQueries]);
+
+  const { data: allocationsByCampaignStatus = [], isLoading: isLoadingCampaignAllocations } =
+    useSupplyAllocationsByCampaign(selectedCampaignAllocationStatusId);
+
+  const campaignAllocationSummary = useMemo(
+    () =>
+      allocationsByCampaignStatus.reduce(
+        (acc, allocation) => {
+          acc.totalAllocations += 1;
+          acc.totalItems += (allocation.items || []).length;
+          acc.totalQuantity += (allocation.items || []).reduce(
+            (sum: number, item: { quantity?: number }) => sum + Number(item.quantity || 0),
+            0,
+          );
+          return acc;
+        },
+        { totalAllocations: 0, totalItems: 0, totalQuantity: 0 },
+      ),
+    [allocationsByCampaignStatus],
+  );
+
+  const filteredAllocationsByCampaignStatus = useMemo(() => {
+    if (campaignAllocationStatusFilter === 'all') return allocationsByCampaignStatus;
+
+    return allocationsByCampaignStatus.filter((allocation) => {
+      const status = Number(allocation.status);
+      if (campaignAllocationStatusFilter === 'pending')
+        return status === SupplyAllocationStatus.Pending;
+      if (campaignAllocationStatusFilter === 'approved')
+        return status === SupplyAllocationStatus.Approved;
+      if (campaignAllocationStatusFilter === 'delivered')
+        return status === SupplyAllocationStatus.Delivered;
+      if (campaignAllocationStatusFilter === 'cancelled')
+        return status === SupplyAllocationStatus.Cancelled;
+      return true;
+    });
+  }, [allocationsByCampaignStatus, campaignAllocationStatusFilter]);
 
   const selectedTransfer = useMemo(
     () => relatedTransfersDetailed.find((t) => t.id === selectedTransferId) ?? null,
     [relatedTransfersDetailed, selectedTransferId],
+  );
+
+  const { vehicle: selectedTransferVehicle } = useVehicles(
+    selectedTransfer?.vehicleId || undefined,
   );
 
   const selectedTransferSummary = useMemo(() => {
@@ -670,6 +895,296 @@ export default function CoordinatorInventoryPage() {
       `Tổng SL: ${formatNumberVN(selectedTransfer.totalRequestedQuantity || 0)}`,
     ];
   }, [selectedTransfer]);
+
+  const selectedTransferSummaryCompact = useMemo(() => {
+    if (!selectedTransfer) return [] as Array<{ label: string; value: string }>;
+
+    return [
+      {
+        label: 'Mã phiếu',
+        value: selectedTransfer.transferCode || selectedTransfer.id.slice(0, 8),
+      },
+      {
+        label: 'Kho nguồn',
+        value: selectedTransfer.sourceStationName || selectedTransfer.sourceStationId || '—',
+      },
+      {
+        label: 'Kho đích',
+        value:
+          selectedTransfer.destinationStationName || selectedTransfer.destinationStationId || '—',
+      },
+      {
+        label: 'Số dòng vật phẩm',
+        value: formatNumberVN(
+          selectedTransfer.totalRequestedItems || selectedTransfer.items?.length || 0,
+        ),
+      },
+      {
+        label: 'Tổng số lượng',
+        value: formatNumberVN(selectedTransfer.totalRequestedQuantity || 0),
+      },
+    ];
+  }, [selectedTransfer]);
+
+  const selectedTransferMetaRows = useMemo(() => {
+    if (!selectedTransfer) {
+      return [] as Array<{ icon: string; label: string; value: string; tone: string }>;
+    }
+
+    return [
+      {
+        icon: 'barcode',
+        label: 'Mã phiếu',
+        value: selectedTransfer.transferCode || selectedTransfer.id,
+        tone: 'bg-sky-500/10 text-sky-600',
+      },
+      {
+        icon: 'warehouse',
+        label: 'Kho / trạm nguồn',
+        value: selectedTransfer.sourceStationName || selectedTransfer.sourceStationId || '—',
+        tone: 'bg-indigo-500/10 text-indigo-600',
+      },
+      {
+        icon: 'south_east',
+        label: 'Kho đích',
+        value:
+          selectedTransfer.destinationStationName || selectedTransfer.destinationStationId || '—',
+        tone: 'bg-emerald-500/10 text-emerald-600',
+      },
+      {
+        icon: 'person',
+        label: 'Người yêu cầu',
+        value: selectedTransfer.requestedByName || 'Chưa rõ',
+        tone: 'bg-amber-500/10 text-amber-600',
+      },
+      {
+        icon: 'deployed_code_history',
+        label: 'Tổng dòng vật phẩm',
+        value: formatNumberVN(
+          selectedTransfer.totalRequestedItems || selectedTransfer.items?.length || 0,
+        ),
+        tone: 'bg-violet-500/10 text-violet-600',
+      },
+      {
+        icon: 'inventory_2',
+        label: 'Tổng số lượng',
+        value: formatNumberVN(selectedTransfer.totalRequestedQuantity || 0),
+        tone: 'bg-rose-500/10 text-rose-600',
+      },
+    ];
+  }, [selectedTransfer]);
+
+  const selectedTransferTimelineStepper = useMemo(() => {
+    type TransferTimelineStep = {
+      key: string;
+      label: string;
+      value?: string;
+      state: 'completed' | 'current' | 'upcoming' | 'cancelled';
+      nodeClass: string;
+      lineClass: string;
+    };
+
+    if (!selectedTransfer) return [] as Array<TransferTimelineStep>;
+
+    const isCancelled = selectedTransfer.status === SupplyTransferStatus.Cancelled;
+    const hasApproved = Boolean(selectedTransfer.approvedAt);
+    const hasShipped = Boolean(selectedTransfer.shippedAt);
+    const hasReceived = Boolean(selectedTransfer.receivedAt);
+    const cancelledAt =
+      (selectedTransfer as { cancelledAt?: string | null }).cancelledAt ||
+      (selectedTransfer as { canceledAt?: string | null }).canceledAt ||
+      null;
+
+    const cancelledAfterIndex = hasShipped ? 2 : hasApproved ? 1 : 0;
+
+    const baseSteps: TransferTimelineStep[] = [
+      {
+        key: 'requested',
+        label: 'Yêu cầu',
+        value: selectedTransfer.requestedAt
+          ? new Date(selectedTransfer.requestedAt).toLocaleString('vi-VN')
+          : undefined,
+        reached: true,
+      },
+      {
+        key: 'approved',
+        label: 'Duyệt',
+        value: selectedTransfer.approvedAt
+          ? new Date(selectedTransfer.approvedAt).toLocaleString('vi-VN')
+          : undefined,
+        reached: hasApproved,
+      },
+      {
+        key: 'shipping',
+        label: 'Vận chuyển',
+        value: selectedTransfer.shippedAt
+          ? new Date(selectedTransfer.shippedAt).toLocaleString('vi-VN')
+          : undefined,
+        reached: hasShipped,
+      },
+      {
+        key: 'received',
+        label: 'Đã nhận',
+        value: selectedTransfer.receivedAt
+          ? new Date(selectedTransfer.receivedAt).toLocaleString('vi-VN')
+          : undefined,
+        reached: hasReceived,
+      },
+    ].map((step, index, array) => {
+      const isMutedByCancel = isCancelled && index > cancelledAfterIndex;
+      const state: 'completed' | 'current' | 'upcoming' = isMutedByCancel
+        ? 'upcoming'
+        : step.reached
+          ? 'completed'
+          : index === Math.min(cancelledAfterIndex + (isCancelled ? 0 : 1), array.length - 1) &&
+              !hasReceived
+            ? 'current'
+            : 'upcoming';
+
+      return {
+        key: step.key,
+        label: step.label,
+        value: step.value,
+        state,
+        nodeClass:
+          state === 'completed'
+            ? 'border-primary bg-primary text-primary-foreground'
+            : state === 'current'
+              ? 'border-primary bg-primary/10 text-primary ring-4 ring-primary/10'
+              : 'border-border bg-background text-muted-foreground',
+        lineClass:
+          state === 'completed' &&
+          index < array.length - 1 &&
+          !(isCancelled && index >= cancelledAfterIndex)
+            ? 'bg-primary/70'
+            : 'bg-border',
+      };
+    });
+
+    if (isCancelled) {
+      baseSteps.push({
+        key: 'cancelled',
+        label: 'Đã hủy',
+        value: cancelledAt ? new Date(cancelledAt).toLocaleString('vi-VN') : undefined,
+        state: 'cancelled' as const,
+        nodeClass: 'border-red-500 bg-red-500 text-white ring-4 ring-red-500/10',
+        lineClass: 'bg-border',
+      });
+    }
+
+    return baseSteps;
+  }, [selectedTransfer]);
+
+  const selectedTransferDocumentGroups = useMemo(() => {
+    if (!selectedTransfer) {
+      return {
+        requestPdf: null as { fileUrl?: string | null } | null,
+        confirmedPdf: null as { fileUrl?: string | null } | null,
+      };
+    }
+
+    const documents = selectedTransfer.documents || [];
+
+    return {
+      requestPdf:
+        documents.find((document) => document.documentType === 1 && document.isCurrent) ||
+        documents.find((document) => document.documentType === 1) ||
+        null,
+      confirmedPdf:
+        documents.find((document) => document.documentType === 2 && document.isCurrent) ||
+        documents.find((document) => document.documentType === 2) ||
+        null,
+    };
+  }, [selectedTransfer]);
+
+  const availableStationVehicles = useMemo(() => {
+    const freeVehicleIds = new Set((freeVehicles || []).map((vehicle) => vehicle.vehicleId));
+
+    return (stationVehicles || []).filter(
+      (vehicle) =>
+        vehicle.reliefStationId === station?.reliefStationId &&
+        freeVehicleIds.has(vehicle.vehicleId),
+    );
+  }, [freeVehicles, station?.reliefStationId, stationVehicles]);
+
+  const selectedTransferPreviewUrls = useMemo(() => {
+    if (!selectedTransfer) return [] as string[];
+
+    const urls = [
+      selectedTransfer.currentRequestPdfUrl,
+      selectedTransfer.currentConfirmedPdfUrl,
+      ...(selectedTransfer.documents || []).map((document) => document.fileUrl),
+      ...(selectedTransfer.evidenceUrls || []),
+    ].filter((url): url is string => !!url);
+
+    return Array.from(new Set(urls));
+  }, [selectedTransfer]);
+
+  const vehicleMap = useMemo(() => {
+    const allKnownVehicles = [...(stationVehicles || []), ...(freeVehicles || [])];
+    return new Map(allKnownVehicles.map((vehicle) => [vehicle.vehicleId, vehicle]));
+  }, [freeVehicles, stationVehicles]);
+
+  const getVehicleDisplayLabel = (vehicleId?: string | null) => {
+    if (!vehicleId) return 'Chưa cập nhật';
+
+    const matchedVehicle =
+      selectedTransferVehicle?.vehicleId === vehicleId
+        ? selectedTransferVehicle
+        : vehicleMap.get(vehicleId);
+    if (!matchedVehicle) return `PT • ${vehicleId.slice(0, 6)}`;
+
+    const vehicleName = matchedVehicle.vehicleTypeName || 'Phương tiện';
+    const licensePlate =
+      matchedVehicle.licensePlate || `PT-${matchedVehicle.vehicleId.slice(0, 6)}`;
+
+    return `${vehicleName} • ${licensePlate}`;
+  };
+
+  const selectedTransferVehicleLabel = useMemo(
+    () => getVehicleDisplayLabel(selectedTransfer?.vehicleId),
+    [selectedTransfer?.vehicleId, vehicleMap],
+  );
+
+  const shipTransferVehicleLabel = useMemo(
+    () => getVehicleDisplayLabel(shipTransferForm.vehicleId),
+    [shipTransferForm.vehicleId, vehicleMap],
+  );
+
+  const selectedTransferPreviewFiles = useMemo(() => {
+    return selectedTransferPreviewUrls.map((url, index) => {
+      const normalizedUrl = url.toLowerCase();
+      const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/.test(normalizedUrl);
+      const isPdf = /\.pdf(\?|$)/.test(normalizedUrl);
+
+      return {
+        id: `${index}-${url}`,
+        index,
+        url,
+        isImage,
+        isPdf,
+        shortLabel: url.split('/').pop()?.slice(0, 6) || `file-${index + 1}`,
+      };
+    });
+  }, [selectedTransferPreviewUrls]);
+
+  const hasSystemTransferDocuments = useMemo(() => {
+    if (!selectedTransfer) return false;
+
+    return Boolean(
+      selectedTransfer.currentRequestPdfUrl ||
+      selectedTransfer.currentConfirmedPdfUrl ||
+      selectedTransferDocumentGroups.requestPdf?.fileUrl ||
+      selectedTransferDocumentGroups.confirmedPdf?.fileUrl ||
+      selectedTransfer.documents?.length,
+    );
+  }, [selectedTransfer, selectedTransferDocumentGroups]);
+
+  const { data: importHistoryBySupplyItem = [], isLoading: isLoadingImportHistory } =
+    useImportHistoryBySupplyItem(
+      managedInventory?.inventoryId || '',
+      selectedImportHistorySupplyItem?.supplyItemId || '',
+    );
 
   const isLoading =
     isLoadingStation || isLoadingInventories || isLoadingStocks || isLoadingSupplyItems;
@@ -719,16 +1234,33 @@ export default function CoordinatorInventoryPage() {
     selectedSourceStockMapBySupplyItemId,
   ]);
 
+  const approveTransferReferenceAmount = useMemo(() => {
+    if (!selectedTransfer) return 0;
+    return (selectedTransfer.items || []).reduce((sum, item, index) => {
+      const key = `${item.supplyItemId}-${index}`;
+      const itemMeta = approveTransferForm.itemMetas[key];
+      const unitCost = parseFormattedNumber(itemMeta?.unitCost || '0');
+      const actualQuantity =
+        approveTransferForm.actualQuantities[key] ??
+        item.actualQuantity ??
+        item.requestedQuantity ??
+        item.quantity ??
+        0;
+      return sum + unitCost * actualQuantity;
+    }, 0);
+  }, [approveTransferForm.actualQuantities, approveTransferForm.itemMetas, selectedTransfer]);
+
   const selectedTransferPdfData = useMemo<TransferPdfFillData | null>(() => {
     if (!selectedTransfer) return null;
 
     const parsedNotes = parseTransferNotes(selectedTransfer.notes);
-    const referenceAmount = parseFormattedNumber(approveTransferForm.referenceAmount || '0');
+    const referenceAmount = approveTransferReferenceAmount;
     const approverName = approveTransferForm.approverName.trim();
 
     return {
       transferCode: selectedTransfer.transferCode || selectedTransfer.id,
       creatorName: selectedTransfer.requestedByName || 'Người lập phiếu',
+      creatorEmail: undefined,
       sourceName: selectedTransfer.sourceStationName || selectedTransfer.sourceStationId || '—',
       sourceInventoryName:
         selectedTransfer.sourceStationName || selectedTransfer.sourceStationId || '—',
@@ -743,11 +1275,13 @@ export default function CoordinatorInventoryPage() {
       reason: selectedTransfer.reason || parsedNotes.reason,
       notes: parsedNotes.note || parsedNotes.raw || selectedTransfer.notes || '',
       signedDateLabel: new Date().toLocaleDateString('vi-VN'),
+      signedDateTimeLabel: new Date().toLocaleString('vi-VN'),
       referenceAmount,
       referenceAmountText: convertNumberToVietnameseWords(referenceAmount),
       items: (selectedTransfer.items || []).map((item, index) => {
         const matchedSupply = supplyMap.get(item.supplyItemId);
         const key = `${item.supplyItemId}-${index}`;
+        const itemMeta = approveTransferForm.itemMetas[key];
         const actualQuantity =
           approveTransferForm.actualQuantities[key] ??
           item.actualQuantity ??
@@ -760,19 +1294,57 @@ export default function CoordinatorInventoryPage() {
           unit: matchedSupply?.unit || 'Đơn vị',
           actualQuantity,
           notes: item.notes,
+          unitPrice: parseFormattedNumber(itemMeta?.unitCost || '0') || item.unitCost,
+          totalAmount:
+            parseFormattedNumber(itemMeta?.unitCost || '0') > 0
+              ? parseFormattedNumber(itemMeta.unitCost || '0') * actualQuantity
+              : undefined,
         };
       }),
     };
   }, [
     approveTransferForm.actualQuantities,
     approveTransferForm.approverName,
-    approveTransferForm.referenceAmount,
+    approveTransferForm.itemMetas,
+    approveTransferReferenceAmount,
     profile?.displayName,
     selectedTransfer,
     supplyMap,
     user?.email,
     user?.fullName,
   ]);
+
+  useEffect(() => {
+    if (!selectedTransferPdfData) return;
+
+    const missingItemFields = selectedTransferPdfData.items
+      .map((item, index) => ({
+        index,
+        name: item.name,
+        hasUnitPrice: Number(item.unitPrice || 0) > 0,
+        hasActualQuantity: Number(item.actualQuantity || 0) > 0,
+        hasTotalAmount: Number(item.totalAmount || 0) > 0,
+      }))
+      .filter((item) => !item.hasUnitPrice || !item.hasActualQuantity || !item.hasTotalAmount);
+
+    const debugPayload = {
+      transferCode: selectedTransferPdfData.transferCode,
+      referenceAmount: selectedTransferPdfData.referenceAmount,
+      referenceAmountText: selectedTransferPdfData.referenceAmountText,
+      itemCount: selectedTransferPdfData.items.length,
+      missingItemFields,
+    };
+
+    console.debug('[Transfer PDF] payload summary', debugPayload);
+
+    if (
+      Number(selectedTransferPdfData.referenceAmount || 0) <= 0 ||
+      !selectedTransferPdfData.referenceAmountText ||
+      missingItemFields.length > 0
+    ) {
+      console.warn('[Transfer PDF] payload may be incomplete', debugPayload);
+    }
+  }, [selectedTransferPdfData]);
 
   const todayTransactionSummary = useMemo(() => {
     const todayKey = new Date().toDateString();
@@ -823,6 +1395,8 @@ export default function CoordinatorInventoryPage() {
     quantity: number;
     capacity?: number;
     note?: string;
+    unitCost?: number;
+    sourceReference?: string;
     expirationDate?: string | null;
   }): Promise<boolean> => {
     if (!managedInventory?.inventoryId) {
@@ -852,6 +1426,8 @@ export default function CoordinatorInventoryPage() {
           type: TransactionType.Import,
           reason: TransactionReason.Other,
           notes: item.note || 'Nhập kho từ trang quản lý kho moderator',
+          importBatchCode: `LO-${Date.now()}`,
+          sourceReference: item.sourceReference?.trim() || 'Nhập kho trực tiếp',
           items: [
             {
               supplyItemId: matchedSupplyItem.id,
@@ -859,6 +1435,8 @@ export default function CoordinatorInventoryPage() {
               supplyItemUnit: matchedSupplyItem.unit,
               quantity: item.quantity,
               notes: item.note || 'Nhập thêm vật tư vào kho',
+              unitCost: item.unitCost,
+              expiryDate: item.expirationDate ?? null,
             },
           ],
         });
@@ -914,6 +1492,7 @@ export default function CoordinatorInventoryPage() {
 
   const handleOpenTransferRequest = () => {
     setTransferErrors({});
+    setTransferSubmitError('');
     setTransferForm((prev) => ({
       ...prev,
       sourceStationId: prev.sourceStationId || upstreamSourceStations[0]?.stationId || '',
@@ -1055,40 +1634,65 @@ export default function CoordinatorInventoryPage() {
     }
 
     setTransferErrors({});
+    setTransferSubmitError('');
+    setIsSubmittingTransferRequest(true);
 
-    const uploadedEvidenceUrls = await Promise.all(
-      transferEvidenceFiles.map(async (evidence) => {
-        const uploaded = await uploadFile({
-          file: evidence.file,
-          folder: 'reliefhub/supply-transfer-evidence',
-          resourceType: 'raw',
-        });
-        return uploaded.secureUrl;
-      }),
-    );
+    try {
+      const uploadedEvidenceUrls = await Promise.all(
+        transferEvidenceFiles.map(async (evidence) => {
+          const uploaded = await uploadFile({
+            file: evidence.file,
+            folder: 'reliefhub/supply-transfer-evidence',
+            resourceType: 'raw',
+          });
+          return uploaded.secureUrl;
+        }),
+      );
 
-    const createdTransferResponse = await createSupplyTransfer({
-      sourceStationId: transferForm.sourceStationId,
-      destinationStationId: station.reliefStationId,
-      reason: transferForm.reason.trim(),
-      notes: transferForm.notes.trim(),
-      items: validItems,
-    });
-
-    const createdTransferId = createdTransferResponse?.data?.id;
-    if (createdTransferId && uploadedEvidenceUrls.length > 0) {
-      await replaceTransferEvidenceUrls({
-        id: createdTransferId,
-        data: { evidenceUrls: uploadedEvidenceUrls },
+      const createdTransferResponse = await createSupplyTransfer({
+        sourceStationId: transferForm.sourceStationId,
+        destinationStationId: station.reliefStationId,
+        reason: transferForm.reason.trim(),
+        notes: transferForm.notes.trim(),
+        items: validItems,
       });
-    }
 
-    await Promise.all([refetchStocks(), refetchTransactions()]);
-    clearDialogDraft(TRANSFER_REQUEST_DRAFT_KEY);
-    setTransferForm({ sourceStationId: '', reason: '', notes: '', items: [] });
-    setTransferPdfDraftCode('');
-    setTransferEvidenceFiles([]);
-    setOpenTransferRequest(false);
+      const createdTransferId = createdTransferResponse?.data?.id;
+      if (createdTransferId) {
+        if (uploadedEvidenceUrls.length > 0) {
+          await replaceTransferEvidenceUrls({
+            id: createdTransferId,
+            data: { evidenceUrls: uploadedEvidenceUrls },
+          });
+        }
+
+        const generatedPdfEvidence = transferEvidenceFiles.find(
+          (item) => item.source === 'generated',
+        );
+        if (generatedPdfEvidence) {
+          const generatedPdfIndex = transferEvidenceFiles.findIndex(
+            (item) => item.id === generatedPdfEvidence.id,
+          );
+          const generatedPdfUrl =
+            generatedPdfIndex >= 0 ? uploadedEvidenceUrls[generatedPdfIndex] : undefined;
+
+          if (generatedPdfUrl) {
+            void generatedPdfUrl;
+          }
+        }
+      }
+
+      await Promise.all([refetchStocks(), refetchTransactions()]);
+      clearDialogDraft(TRANSFER_REQUEST_DRAFT_KEY);
+      setTransferForm({ sourceStationId: '', reason: '', notes: '', items: [] });
+      setTransferPdfDraftCode('');
+      setTransferEvidenceFiles([]);
+      setOpenTransferRequest(false);
+    } catch (error) {
+      setTransferSubmitError(parseApiError(error, 'Không thể gửi phiếu điều phối.').message);
+    } finally {
+      setIsSubmittingTransferRequest(false);
+    }
   };
 
   /**
@@ -1101,15 +1705,15 @@ export default function CoordinatorInventoryPage() {
     items: ExportItem[],
     note: string,
     campaignId: string,
-  ) => {
+  ): Promise<boolean> => {
     if (!managedInventory?.inventoryId) {
       toast.error('Không tìm thấy kho đang quản lý để cấp phát.');
-      return;
+      return false;
     }
 
     if (!campaignId) {
       toast.error('Vui lòng chọn chiến dịch nhận vật tư.');
-      return;
+      return false;
     }
 
     const validItems = items
@@ -1130,34 +1734,64 @@ export default function CoordinatorInventoryPage() {
 
     if (validItems.length === 0) {
       toast.error('Không có vật phẩm hợp lệ để cấp phát.');
-      return;
+      return false;
     }
 
-    // 1) Create supply allocation record (links inventory → campaign)
-    await createSupplyAllocation({
-      campaignId,
-      sourceInventoryId: managedInventory.inventoryId,
-      items: validItems,
-    });
+    try {
+      await createSupplyAllocation({
+        campaignId,
+        sourceInventoryId: managedInventory.inventoryId,
+        items: validItems,
+      });
 
-    // 2) Create inventory export transaction to track stock reduction
-    await createTransaction({
-      inventoryId: managedInventory.inventoryId,
-      type: TransactionType.Export,
-      reason: TransactionReason.CampaignAllocation,
-      notes: note || `Cấp phát vật tư cho chiến dịch`,
-      items: validItems.map((item) => ({
-        supplyItemId: item.supplyItemId,
-        supplyItemName: item.supplyItemName,
-        supplyItemUnit: item.supplyItemUnit,
-        quantity: item.quantity,
-        notes: note || 'Cấp phát chiến dịch',
-      })),
-    });
+      await createTransaction({
+        inventoryId: managedInventory.inventoryId,
+        type: TransactionType.Export,
+        reason: TransactionReason.CampaignAllocation,
+        notes: note || `Cấp phát vật tư cho chiến dịch`,
+        items: validItems.map((item) => ({
+          supplyItemId: item.supplyItemId,
+          supplyItemName: item.supplyItemName,
+          supplyItemUnit: item.supplyItemUnit,
+          quantity: item.quantity,
+          notes: note || 'Cấp phát chiến dịch',
+        })),
+      });
 
-    await Promise.all([refetchStocks(), refetchTransactions()]);
-    toast.success('Đã cấp phát vật tư cho chiến dịch.');
-    setOpenCampaignAllocation(false);
+      await Promise.all([refetchStocks(), refetchTransactions()]);
+      toast.success('Đã cấp phát vật tư cho chiến dịch.');
+      setOpenCampaignAllocation(false);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const getNextAllocationStatusActions = (status: number) => {
+    switch (status) {
+      case SupplyAllocationStatus.Pending:
+        return [
+          { label: 'Duyệt cấp phát', value: SupplyAllocationStatus.Approved },
+          { label: 'Hủy cấp phát', value: SupplyAllocationStatus.Cancelled },
+        ];
+      case SupplyAllocationStatus.Approved:
+        return [{ label: 'Đánh dấu đã giao', value: SupplyAllocationStatus.Delivered }];
+      default:
+        return [];
+    }
+  };
+
+  const handleUpdateCampaignAllocationStatus = async () => {
+    if (!allocationStatusUpdateState) return;
+    try {
+      await updateSupplyAllocationStatus({
+        id: allocationStatusUpdateState.allocationId,
+        data: { status: allocationStatusUpdateState.nextStatus },
+      });
+      setAllocationStatusUpdateState(null);
+    } catch {
+      // handled by hook
+    }
   };
 
   /**
@@ -1171,7 +1805,33 @@ export default function CoordinatorInventoryPage() {
     }
 
     try {
-      const referenceAmount = parseFormattedNumber(approveTransferForm.referenceAmount || '0');
+      const referenceAmount = approveTransferReferenceAmount;
+      const approvalItemMetas: TransferApprovalItemMeta[] = (selectedTransfer.items || []).map(
+        (item, index) => {
+          const key = `${item.supplyItemId}-${index}`;
+          const itemMeta = approveTransferForm.itemMetas[key];
+          return {
+            key,
+            supplyItemId: item.supplyItemId,
+            sourceReference:
+              itemMeta?.sourceReference?.trim() ||
+              item.sourceReference?.trim() ||
+              selectedTransfer.sourceStationName ||
+              selectedTransfer.transferCode ||
+              '',
+            totalAmount:
+              itemMeta && parseFormattedNumber(itemMeta.unitCost) > 0
+                ? parseFormattedNumber(itemMeta.unitCost) *
+                  (approveTransferForm.actualQuantities[key] ??
+                    item.actualQuantity ??
+                    item.requestedQuantity ??
+                    item.quantity ??
+                    0)
+                : undefined,
+            expiryDate: itemMeta?.expiryDate || item.expiryDate || null,
+          };
+        },
+      );
       if (!approveTransferForm.approverName.trim()) {
         toast.error('Vui lòng nhập người phê duyệt.');
         return;
@@ -1188,7 +1848,10 @@ export default function CoordinatorInventoryPage() {
         );
 
         const basePdfBytes = existingPdfUrl
-          ? new Uint8Array(await (await fetch(existingPdfUrl)).arrayBuffer())
+          ? await updateTransferPdfApprovalData(
+              new Uint8Array(await (await fetch(existingPdfUrl)).arrayBuffer()),
+              selectedTransferPdfData,
+            )
           : await buildTransferPdf(selectedTransferPdfData);
 
         const signedPdf = await attachSignatureToPdf(
@@ -1210,7 +1873,10 @@ export default function CoordinatorInventoryPage() {
           folder: 'reliefhub/supply-transfer-evidence',
           resourceType: 'raw',
         });
-        evidenceUrls = [...evidenceUrls, uploaded.secureUrl];
+        evidenceUrls = [
+          ...evidenceUrls.filter((url) => !url.toLowerCase().includes('.pdf')),
+          uploaded.secureUrl,
+        ];
       }
 
       if (evidenceUrls.length > 0) {
@@ -1223,7 +1889,11 @@ export default function CoordinatorInventoryPage() {
       await approveTransfer({
         id: selectedTransfer.id,
         data: {
-          notes: formatTransferApprovalNotes(referenceAmount, approveTransferForm.approverName),
+          notes: formatTransferApprovalNotes(
+            referenceAmount,
+            approveTransferForm.approverName,
+            approvalItemMetas,
+          ),
           evidenceUrls,
         },
       });
@@ -1239,8 +1909,10 @@ export default function CoordinatorInventoryPage() {
         referenceAmount: '',
         approverName: '',
         approverSignatureDataUrl: '',
+        itemMetas: {},
         pdfBytes: null,
       });
+      setOpenApproveExpiryCalendarKey(null);
       setOpenApproveTransfer(false);
       setSelectedTransferId(null);
       toast.success(
@@ -1253,15 +1925,37 @@ export default function CoordinatorInventoryPage() {
 
   const handleShipTransfer = async () => {
     if (!selectedTransfer) return;
-    if (selectedTransfer.evidenceUrls?.length) {
-      await appendTransferEvidences({
-        id: selectedTransfer.id,
-        data: { evidenceUrls: selectedTransfer.evidenceUrls },
-      });
+
+    if (!shipTransferForm.vehicleId.trim()) {
+      toast.error('Vui lòng chọn phương tiện của trạm đang ở trạng thái sẵn sàng.');
+      return;
     }
 
-    await shipTransfer({ id: selectedTransfer.id, data: {} });
+    const uploadedEvidenceUrls = await Promise.all(
+      shipTransferForm.evidenceFiles.map(async (file) => {
+        const uploaded = await uploadFile({
+          file,
+          folder: 'reliefhub/supply-transfer-evidence',
+          resourceType: 'raw',
+        });
+        return uploaded.secureUrl;
+      }),
+    );
+
+    const evidenceUrls = [
+      ...new Set([...(selectedTransfer.evidenceUrls || []), ...uploadedEvidenceUrls]),
+    ];
+
+    await shipTransfer({
+      id: selectedTransfer.id,
+      data: {
+        vehicleId: shipTransferForm.vehicleId.trim(),
+        notes: shipTransferForm.notes.trim() || undefined,
+        evidenceUrls,
+      },
+    });
     await Promise.all([refetchSourceTransfers(), refetchDestinationTransfers()]);
+    setShipTransferForm({ vehicleId: '', notes: '', evidenceFiles: [] });
     setOpenShipTransfer(false);
     setSelectedTransferId(null);
   };
@@ -1269,14 +1963,46 @@ export default function CoordinatorInventoryPage() {
   const handleReceiveTransfer = async () => {
     if (!selectedTransfer) return;
 
+    const uploadedEvidenceUrls = await Promise.all(
+      receiveTransferForm.evidenceFiles.map(async (file) => {
+        const uploaded = await uploadFile({
+          file,
+          folder: 'reliefhub/supply-transfer-evidence',
+          resourceType: 'raw',
+        });
+        return uploaded.secureUrl;
+      }),
+    );
+
+    const evidenceUrls = [
+      ...new Set([...(selectedTransfer.evidenceUrls || []), ...uploadedEvidenceUrls]),
+    ];
+
     await receiveTransfer({
       id: selectedTransfer.id,
       data: {
-        items: (selectedTransfer.items || []).map((item) => ({
-          supplyItemId: item.supplyItemId,
-          actualQuantity: item.requestedQuantity ?? item.quantity ?? 0,
-          notes: item.notes,
-        })),
+        items: (selectedTransfer.items || []).map((item, index) => {
+          const key = `${item.supplyItemId}-${index}`;
+          const itemMeta = receiveTransferForm.itemMetas[key];
+          return {
+            supplyItemId: item.supplyItemId,
+            actualQuantity: item.requestedQuantity ?? item.quantity ?? 0,
+            notes: item.notes,
+            unitCost:
+              itemMeta && parseFormattedNumber(itemMeta.unitCost) > 0
+                ? parseFormattedNumber(itemMeta.unitCost)
+                : item.unitCost,
+            expiryDate: itemMeta?.expiryDate || item.expiryDate || null,
+            sourceReference:
+              itemMeta?.sourceReference?.trim() ||
+              item.sourceReference?.trim() ||
+              selectedTransfer.sourceStationName ||
+              selectedTransfer.transferCode ||
+              undefined,
+          };
+        }),
+        notes: receiveTransferForm.notes.trim() || undefined,
+        evidenceUrls,
       },
     });
 
@@ -1286,21 +2012,43 @@ export default function CoordinatorInventoryPage() {
       refetchSourceTransfers(),
       refetchDestinationTransfers(),
     ]);
+    setReceiveTransferForm({ notes: '', evidenceFiles: [], itemMetas: {} });
     setOpenReceiveTransfer(false);
     setSelectedTransferId(null);
   };
 
   const handleCancelTransfer = async () => {
     if (!selectedTransfer) return;
-    if (selectedTransfer.evidenceUrls?.length) {
-      await appendTransferEvidences({
-        id: selectedTransfer.id,
-        data: { evidenceUrls: selectedTransfer.evidenceUrls },
-      });
+
+    if (!cancelTransferForm.notes.trim()) {
+      toast.error('Vui lòng nhập ghi chú hủy phiếu.');
+      return;
     }
 
-    await cancelTransfer({ id: selectedTransfer.id, data: {} });
+    const uploadedEvidenceUrls = await Promise.all(
+      cancelTransferForm.evidenceFiles.map(async (file) => {
+        const uploaded = await uploadFile({
+          file,
+          folder: 'reliefhub/supply-transfer-evidence',
+          resourceType: 'raw',
+        });
+        return uploaded.secureUrl;
+      }),
+    );
+
+    const evidenceUrls = [
+      ...new Set([...(selectedTransfer.evidenceUrls || []), ...uploadedEvidenceUrls]),
+    ];
+
+    await cancelTransfer({
+      id: selectedTransfer.id,
+      data: {
+        notes: cancelTransferForm.notes.trim(),
+        evidenceUrls,
+      },
+    });
     await Promise.all([refetchSourceTransfers(), refetchDestinationTransfers()]);
+    setCancelTransferForm({ notes: '', evidenceFiles: [] });
     setOpenCancelTransfer(false);
     setSelectedTransferId(null);
   };
@@ -1313,6 +2061,7 @@ export default function CoordinatorInventoryPage() {
   const openApproveTransferDialog = (transferId: string) => {
     setSelectedTransferId(transferId);
     const transfer = relatedTransfersDetailed.find((item) => item.id === transferId) ?? null;
+    const parsedNotes = parseTransferNotes(transfer?.notes);
     setApproveTransferForm({
       actualQuantities: Object.fromEntries(
         (transfer?.items || []).map((item, index) => [
@@ -1320,27 +2069,107 @@ export default function CoordinatorInventoryPage() {
           item.actualQuantity ?? item.requestedQuantity ?? item.quantity ?? 0,
         ]),
       ),
-      referenceAmount: '',
+      referenceAmount: formatNumberInputVN(
+        (transfer?.items || []).reduce((sum, item) => sum + Number(item.totalAmount || 0), 0),
+      ),
       approverName: profile?.displayName || user?.fullName || '',
       approverSignatureDataUrl: '',
+      itemMetas: Object.fromEntries(
+        (transfer?.items || []).map((item, index) => {
+          const key = `${item.supplyItemId}-${index}`;
+          const parsedMeta = parsedNotes.itemMetas?.find((meta) => meta.key === key);
+          return [
+            key,
+            {
+              unitCost:
+                parsedMeta?.totalAmount != null &&
+                (item.actualQuantity ?? item.requestedQuantity ?? item.quantity ?? 0) > 0
+                  ? formatNumberInputVN(
+                      parsedMeta.totalAmount /
+                        (item.actualQuantity ?? item.requestedQuantity ?? item.quantity ?? 1),
+                    )
+                  : item.unitCost != null
+                    ? formatNumberInputVN(item.unitCost)
+                    : '',
+              expiryDate: parsedMeta?.expiryDate || item.expiryDate || '',
+              sourceReference:
+                parsedMeta?.sourceReference ||
+                item.sourceReference ||
+                transfer?.sourceStationName ||
+                transfer?.sourceStationId ||
+                '',
+            },
+          ];
+        }),
+      ),
       pdfBytes: null,
     });
     setOpenApproveTransfer(true);
+    setOpenApproveExpiryCalendarKey(null);
   };
 
   const openShipTransferDialog = (transferId: string) => {
     setSelectedTransferId(transferId);
+    const transfer = relatedTransfersDetailed.find((item) => item.id === transferId) ?? null;
+    setShipTransferForm({
+      vehicleId: transfer?.vehicleId || '',
+      notes: transfer?.notes || '',
+      evidenceFiles: [],
+    });
     setOpenShipTransfer(true);
   };
 
   const openReceiveTransferDialog = (transferId: string) => {
     setSelectedTransferId(transferId);
+    const transfer = relatedTransfersDetailed.find((item) => item.id === transferId) ?? null;
+    const parsedNotes = parseTransferNotes(transfer?.notes);
+    setReceiveTransferForm({
+      notes: '',
+      evidenceFiles: [],
+      itemMetas: Object.fromEntries(
+        (transfer?.items || []).map((item, index) => {
+          const key = `${item.supplyItemId}-${index}`;
+          const parsedMeta = parsedNotes.itemMetas?.find((meta) => meta.key === key);
+          return [
+            key,
+            {
+              unitCost:
+                parsedMeta?.totalAmount != null &&
+                (item.requestedQuantity ?? item.quantity ?? 0) > 0
+                  ? formatNumberInputVN(
+                      parsedMeta.totalAmount / (item.requestedQuantity ?? item.quantity ?? 1),
+                    )
+                  : item.unitCost != null
+                    ? formatNumberInputVN(item.unitCost)
+                    : '',
+              expiryDate: parsedMeta?.expiryDate || item.expiryDate || '',
+              sourceReference:
+                parsedMeta?.sourceReference ||
+                item.sourceReference ||
+                transfer?.sourceStationName ||
+                transfer?.sourceStationId ||
+                '',
+            },
+          ];
+        }),
+      ),
+    });
     setOpenReceiveTransfer(true);
   };
 
   const openCancelTransferDialog = (transferId: string) => {
     setSelectedTransferId(transferId);
+    setCancelTransferForm({ notes: '', evidenceFiles: [] });
     setOpenCancelTransfer(true);
+  };
+
+  const openImportHistoryBySupplyItemDialog = (item: InventoryItemCard) => {
+    setSelectedImportHistorySupplyItem({
+      supplyItemId: item.supplyItemId,
+      supplyItemName: item.name,
+      unit: item.unit,
+    });
+    setOpenImportHistoryDialog(true);
   };
 
   /** Open the edit min/max dialog for a specific stock lot */
@@ -1470,10 +2299,25 @@ export default function CoordinatorInventoryPage() {
           <Button
             variant="outline"
             className="gap-2"
-            onClick={() => setOpenCampaignAllocation(true)}
+            onClick={() => {
+              setSelectedCampaignAllocationId('');
+              setOpenCampaignAllocation(true);
+            }}
           >
             <span className="material-symbols-outlined text-lg">outbound</span>
             Cấp phát chiến dịch
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => {
+              setSelectedCampaignAllocationStatusId(stationCampaigns[0]?.id || '');
+              setCampaignAllocationStatusFilter('all');
+              setOpenCampaignAllocationStatus(true);
+            }}
+          >
+            <span className="material-symbols-outlined text-lg">fact_check</span>
+            Trạng thái cấp phát chiến dịch
           </Button>
           <Button variant="primary" className="gap-2" onClick={handleOpenCreateDialog}>
             <span className="material-symbols-outlined text-lg">inventory_2</span>
@@ -1628,38 +2472,41 @@ export default function CoordinatorInventoryPage() {
           {filteredItems.map((item) => {
             const percent = Math.round((item.current / Math.max(item.capacity, 1)) * 100);
             const status = statusMap[item.status];
-            const isExpanded = expandedSupplyItemId === item.supplyItemId;
+            const primaryLot = item.lots[0];
+            const importHistoryCount = importHistoryCountMap.get(item.supplyItemId) || 0;
 
             return (
               <Card
                 key={item.supplyItemId}
                 className={`group flex flex-col bg-card border-border transition ${status.hover}`}
               >
-                <CardContent className="p-5 flex flex-col flex-1">
-                  <div className="flex justify-between mb-4 gap-3">
-                    <div className="flex gap-4 min-w-0">
+                <CardContent className="min-w-0 p-5 flex flex-col flex-1">
+                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex flex-1 min-w-0 gap-4">
                       <div className="size-12 font-bold border rounded-xl bg-border-dark flex items-center justify-center shrink-0">
                         <span className="material-symbols-outlined">{item.icon}</span>
                       </div>
                       <div className="min-w-0">
-                        <h3 className="font-bold text-lg group-hover:text-primary truncate">
+                        <h3 className="font-bold text-lg group-hover:text-primary break-words leading-snug">
                           {item.name}
                         </h3>
-                        <p className="text-sm text-muted-foreground truncate">{item.category}</p>
+                        <p className="text-sm text-muted-foreground break-words">{item.category}</p>
                       </div>
                     </div>
 
                     <span
-                      className={`px-2.5 py-1 rounded-md h-6 text-xs font-bold border ${status.badge}`}
+                      className={`inline-flex max-w-full shrink-0 items-center rounded-md border px-2 py-1 text-[11px] font-bold leading-tight text-center whitespace-normal break-words sm:whitespace-nowrap ${status.badge}`}
                     >
                       {status.label}
                     </span>
                   </div>
 
                   <div className="flex-1 mb-3">
-                    <div className="flex justify-between mb-2 gap-3">
-                      <span className="text-3xl font-black">{formatNumberVN(item.current)}</span>
-                      <span className="text-sm text-muted-foreground text-right">
+                    <div className="mb-2 flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
+                      <span className="min-w-0 text-3xl font-black break-words leading-none">
+                        {formatNumberVN(item.current)}
+                      </span>
+                      <span className="basis-full text-sm text-muted-foreground break-words leading-snug sm:basis-auto sm:text-right">
                         / {formatNumberVN(item.capacity)} {item.unit}
                       </span>
                     </div>
@@ -1676,57 +2523,23 @@ export default function CoordinatorInventoryPage() {
                     </p>
                   </div>
 
-                  {/* ── Lot detail toggle ── */}
                   <button
                     type="button"
-                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-3 transition-colors"
-                    onClick={() => setExpandedSupplyItemId(isExpanded ? null : item.supplyItemId)}
+                    className="mb-3 flex flex-wrap items-center gap-1 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
+                    onClick={() => openImportHistoryBySupplyItemDialog(item)}
                   >
-                    <span className="material-symbols-outlined text-sm">
-                      {isExpanded ? 'expand_less' : 'expand_more'}
-                    </span>
-                    {item.lots.length > 1 ? `${item.lots.length} lô hàng` : '1 lô hàng'}
-                    {' – Xem chi tiết'}
+                    <span className="material-symbols-outlined text-sm">history</span>
+                    {importHistoryCount} lần nhập hàng – Xem chi tiết
                   </button>
 
-                  {isExpanded && (
-                    <div className="mb-3 rounded-xl border border-border bg-muted/10 divide-y divide-border text-xs">
-                      {item.lots.map((lot, idx) => (
-                        <div
-                          key={lot.stockId}
-                          className="px-3 py-2 flex items-start justify-between gap-2"
-                        >
-                          <div className="space-y-0.5 min-w-0">
-                            <p className="font-medium text-foreground">
-                              Lô #{idx + 1} · {formatNumberVN(lot.currentQuantity)} {item.unit}
-                            </p>
-                            <p className="text-muted-foreground">
-                              Hạn sử dụng: {formatExpirationDate(lot.expirationDate)}
-                            </p>
-                            <p className="text-muted-foreground">
-                              Tồn min: {formatNumberVN(lot.minimumStockLevel)} · max:{' '}
-                              {formatNumberVN(lot.maximumStockLevel)}
-                            </p>
-                          </div>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="shrink-0 h-7 w-7"
-                            title="Chỉnh ngưỡng tồn kho"
-                            onClick={() => handleOpenEditStock(lot, item.name)}
-                          >
-                            <span className="material-symbols-outlined text-sm">edit</span>
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="flex gap-3">
+                  <div className="flex flex-wrap items-stretch gap-2">
                     <Button
-                      className="flex-1"
+                      className="min-w-[140px] flex-1"
                       variant="primary"
-                      onClick={() => setOpenCampaignAllocation(true)}
+                      onClick={() => {
+                        setSelectedCampaignAllocationId('');
+                        setOpenCampaignAllocation(true);
+                      }}
                     >
                       <span className="material-symbols-outlined text-lg">outbound</span>
                       Cấp phát
@@ -1734,9 +2547,29 @@ export default function CoordinatorInventoryPage() {
                     <Button
                       size="icon"
                       variant="outline"
+                      className="shrink-0"
+                      title="Chỉnh min/max trực tiếp"
+                      disabled={!primaryLot}
+                      onClick={() => primaryLot && handleOpenEditStock(primaryLot, item.name)}
+                    >
+                      <span className="material-symbols-outlined">edit</span>
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="shrink-0"
                       onClick={() => handleOpenQuickImport(item)}
                     >
                       <span className="material-symbols-outlined">add</span>
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="shrink-0"
+                      title="Xem lịch sử nhập theo vật phẩm"
+                      onClick={() => openImportHistoryBySupplyItemDialog(item)}
+                    >
+                      <span className="material-symbols-outlined">history</span>
                     </Button>
                   </div>
                 </CardContent>
@@ -2189,12 +3022,255 @@ export default function CoordinatorInventoryPage() {
       {/* Campaign Allocation Dialog */}
       <CampaignAllocationDialog
         open={openCampaignAllocation}
-        onOpenChange={setOpenCampaignAllocation}
+        onOpenChange={(open) => {
+          setOpenCampaignAllocation(open);
+          if (!open) setSelectedCampaignAllocationId('');
+        }}
         items={exportItems}
         campaigns={stationCampaigns}
+        selectedCampaignId={selectedCampaignAllocationId}
         onSubmit={(items, note, campaignId) => {
-          void handleCampaignAllocation(items, note, campaignId);
+          return handleCampaignAllocation(items, note, campaignId);
         }}
+      />
+
+      <Dialog open={openCampaignAllocationStatus} onOpenChange={setOpenCampaignAllocationStatus}>
+        <DialogContent className="w-[96vw] !max-w-[1100px] max-h-[90vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
+            <DialogTitle>Trạng thái cấp phát chiến dịch</DialogTitle>
+            <DialogDescription>
+              Chỉ hiển thị các phiếu cấp phát của những chiến dịch thuộc trạm bạn đang quản lý.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-5">
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">Chiến dịch</p>
+              <Select
+                value={selectedCampaignAllocationStatusId}
+                onValueChange={setSelectedCampaignAllocationStatusId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn chiến dịch để xem trạng thái cấp phát" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stationCampaigns.map((campaign) => (
+                    <SelectItem key={campaign.id} value={campaign.id}>
+                      {campaign.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">Lọc trạng thái</p>
+              <Select
+                value={campaignAllocationStatusFilter}
+                onValueChange={(value) =>
+                  setCampaignAllocationStatusFilter(
+                    value as 'all' | 'pending' | 'approved' | 'delivered' | 'cancelled',
+                  )
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn trạng thái cần lọc" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả</SelectItem>
+                  <SelectItem value="pending">Chờ duyệt</SelectItem>
+                  <SelectItem value="approved">Đã duyệt</SelectItem>
+                  <SelectItem value="delivered">Đã giao</SelectItem>
+                  <SelectItem value="cancelled">Đã hủy</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {!!selectedCampaignAllocationStatusId && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="border-border bg-card">
+                  <CardContent className="p-5 bg-sky-500/10 rounded-xl">
+                    <p className="text-sm text-muted-foreground">Số đợt cấp phát</p>
+                    <p className="mt-2 text-3xl font-black text-foreground">
+                      {formatNumberVN(campaignAllocationSummary.totalAllocations)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="border-border bg-card">
+                  <CardContent className="p-5 bg-emerald-500/10 rounded-xl">
+                    <p className="text-sm text-muted-foreground">Tổng dòng vật phẩm</p>
+                    <p className="mt-2 text-3xl font-black text-foreground">
+                      {formatNumberVN(campaignAllocationSummary.totalItems)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="border-border bg-card">
+                  <CardContent className="p-5 bg-amber-500/10 rounded-xl">
+                    <p className="text-sm text-muted-foreground">Trạng thái đang lọc</p>
+                    <p className="mt-2 text-3xl font-black text-foreground">
+                      {campaignAllocationStatusFilter === 'all'
+                        ? 'Tất cả'
+                        : campaignAllocationStatusFilter === 'pending'
+                          ? 'Chờ duyệt'
+                          : campaignAllocationStatusFilter === 'approved'
+                            ? 'Đã duyệt'
+                            : campaignAllocationStatusFilter === 'delivered'
+                              ? 'Đã giao'
+                              : 'Đã hủy'}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {!selectedCampaignAllocationStatusId ? (
+              <div className="rounded-2xl border border-dashed border-border bg-muted/10 p-6 text-sm text-muted-foreground">
+                Chọn một chiến dịch thuộc trạm đang quản lý để xem các phiếu cấp phát.
+              </div>
+            ) : isLoadingCampaignAllocations ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="flex flex-col items-center gap-3">
+                  <span className="material-symbols-outlined text-4xl text-primary animate-spin">
+                    progress_activity
+                  </span>
+                  <p className="text-muted-foreground text-sm">Đang tải trạng thái cấp phát...</p>
+                </div>
+              </div>
+            ) : filteredAllocationsByCampaignStatus.length === 0 ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="flex flex-col items-center gap-3">
+                  <span className="material-symbols-outlined text-4xl text-muted-foreground">
+                    inventory_2
+                  </span>
+                  <p className="text-muted-foreground text-sm">
+                    Không có phiếu cấp phát nào phù hợp với bộ lọc hiện tại.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredAllocationsByCampaignStatus.map((allocation, index) => (
+                  <Card
+                    className="relative"
+                    key={allocation.allocationId || `${allocation.campaignId}-${index}`}
+                  >
+                    <CardContent className="p-5 space-y-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-base font-semibold text-foreground">
+                            Phiếu cấp phát #{index + 1}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1 break-all">
+                            Mã phiếu: {allocation.allocationId || '—'}
+                          </p>
+                          <p className="text-xs text-muted-foreground break-all">
+                            Kho nguồn:{' '}
+                            {allocation.sourceInventoryName || allocation.sourceInventoryId || '—'}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 justify-end">
+                          <Badge
+                            variant="outline"
+                            appearance="outline"
+                            size="sm"
+                            className={`border ${getSupplyAllocationStatusClass(allocation.status)}`}
+                          >
+                            {getSupplyAllocationStatusLabel(allocation.status)}
+                          </Badge>
+
+                          {getNextAllocationStatusActions(Number(allocation.status)).map(
+                            (action) => (
+                              <Button
+                                key={`${allocation.allocationId}-${action.value}`}
+                                size="sm"
+                                variant={
+                                  action.value === SupplyAllocationStatus.Approved
+                                    ? 'success'
+                                    : action.value === SupplyAllocationStatus.Cancelled
+                                      ? 'destructive'
+                                      : 'warning'
+                                }
+                                onClick={() =>
+                                  setAllocationStatusUpdateState({
+                                    allocationId: allocation.allocationId,
+                                    nextStatus: action.value,
+                                  })
+                                }
+                              >
+                                {action.label}
+                              </Button>
+                            ),
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        {(allocation.items || []).map((item, itemIndex: number) => (
+                          <div
+                            key={`${allocation.allocationId}-${item.supplyItemId}-${itemIndex}`}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/10 px-4 py-3"
+                          >
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground">{item.supplyItemName}</p>
+                              <p className="text-xs text-muted-foreground break-all">
+                                {item.supplyItemId}
+                              </p>
+                            </div>
+                            <p className="text-sm font-medium text-foreground whitespace-nowrap">
+                              {formatNumberVN(item.quantity)} {item.supplyItemUnit || ''}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 shrink-0">
+            <Button variant="outline" onClick={() => setOpenCampaignAllocationStatus(false)}>
+              Đóng
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!allocationStatusUpdateState}
+        onOpenChange={(open) => {
+          if (!open) setAllocationStatusUpdateState(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cập nhật trạng thái cấp phát</DialogTitle>
+            <DialogDescription>
+              Thay đổi trạng thái sẽ ảnh hưởng trực tiếp đến luồng tồn kho chiến dịch.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Huỷ</Button>
+            </DialogClose>
+            <Button variant="primary" onClick={() => void handleUpdateCampaignAllocationStatus()}>
+              {allocationStatusUpdateState
+                ? getSupplyAllocationStatusLabel(allocationStatusUpdateState.nextStatus)
+                : 'Xác nhận'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ImportHistoryBySupplyItemDialog
+        open={openImportHistoryDialog}
+        onOpenChange={setOpenImportHistoryDialog}
+        selectedSupplyItem={selectedImportHistorySupplyItem}
+        transactions={importHistoryBySupplyItem}
+        relatedTransferByTransactionId={relatedTransferByTransactionId}
+        isLoading={isLoadingImportHistory}
       />
 
       {/* Create / Import Dialog */}
@@ -2213,10 +3289,11 @@ export default function CoordinatorInventoryPage() {
         existingStock={selectedQuickImportSupplyItemId ? selectedQuickImportStock : null}
         onSubmit={async (item) => {
           const success = await handleImportItem(item);
-          if (!success) return;
+          if (!success) return false;
           setSelectedQuickImportSupplyItemId('');
           setSelectedQuickImportStock(null);
           setOpenCreate(false);
+          return true;
         }}
       />
 
@@ -2333,6 +3410,11 @@ export default function CoordinatorInventoryPage() {
                     <span className="material-symbols-outlined text-[14px]">error</span>
                     {transferErrors['items']}
                   </p>
+                )}
+                {transferSubmitError && (
+                  <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {transferSubmitError}
+                  </div>
                 )}
                 <div className="rounded-xl border border-border bg-yellow-500 p-3 text-sm text-white/80">
                   {isLoadingSelectedSourceStocks
@@ -2513,30 +3595,28 @@ export default function CoordinatorInventoryPage() {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
-                      variant="outline"
-                      className="gap-2"
+                      variant="primary"
+                      className="gap-2 h-10"
                       onClick={() => setOpenTransferPdfWorkflow(true)}
                     >
                       <span className="material-symbols-outlined text-lg">picture_as_pdf</span>
                       Tạo PDF mẫu
                     </Button>
 
-                    <label className="inline-flex">
-                      <input
-                        type="file"
+                    <div className="min-w-[240px] max-w-sm">
+                      <FileUploadCard
+                        title="Tải PDF lên"
+                        description="Chọn một hoặc nhiều tệp PDF đính kèm cho phiếu điều phối."
                         accept="application/pdf"
                         multiple
-                        className="hidden"
-                        onChange={(e) => {
-                          handleAddTransferEvidenceFiles(e.target.files, 'manual');
-                          e.target.value = '';
+                        selectedFiles={transferEvidenceFiles.map((evidence) => evidence.file)}
+                        onRemoveFile={(index) => {
+                          const target = transferEvidenceFiles[index];
+                          if (target) handleRemoveTransferEvidenceFile(target.id);
                         }}
+                        onFilesSelected={(files) => handleAddTransferEvidenceFiles(files, 'manual')}
                       />
-                      <span className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground">
-                        <span className="material-symbols-outlined text-lg">upload_file</span>
-                        Tải PDF lên
-                      </span>
-                    </label>
+                    </div>
                   </div>
                 </div>
 
@@ -2592,22 +3672,36 @@ export default function CoordinatorInventoryPage() {
           </div>
 
           <DialogFooter className="border-t border-border px-6 py-4 bg-muted/40 flex justify-end gap-2 shrink-0">
-            <Button variant="outline" onClick={handleClearTransferDraft}>
+            <Button
+              variant="outline"
+              disabled={isSubmittingTransferRequest}
+              onClick={handleClearTransferDraft}
+            >
               <span className="material-symbols-outlined mr-1">remove_done</span>
               Xóa nháp
             </Button>
-            <Button variant="destructive" onClick={() => setOpenTransferRequest(false)}>
+            <Button
+              variant="destructive"
+              disabled={isSubmittingTransferRequest}
+              onClick={() => setOpenTransferRequest(false)}
+            >
               <span className="material-symbols-outlined mr-1">close</span>
               Hủy
             </Button>
             <Button
               variant="primary"
               className="gap-2"
-              disabled={createSupplyTransferStatus === 'pending' || isUploadingTransferEvidence}
+              disabled={
+                createSupplyTransferStatus === 'pending' ||
+                isUploadingTransferEvidence ||
+                isSubmittingTransferRequest
+              }
               onClick={() => void handleSubmitTransferRequest()}
             >
               <span className="material-symbols-outlined text-lg">send</span>
-              {createSupplyTransferStatus === 'pending' || isUploadingTransferEvidence
+              {createSupplyTransferStatus === 'pending' ||
+              isUploadingTransferEvidence ||
+              isSubmittingTransferRequest
                 ? 'Đang gửi...'
                 : 'Gửi phiếu điều phối'}
             </Button>
@@ -2629,7 +3723,7 @@ export default function CoordinatorInventoryPage() {
           if (!open) setSelectedTransferId(null);
         }}
       >
-        <DialogContent className="!max-w-none w-[96vw] max-w-7xl h-[92vh] overflow-hidden p-0 flex flex-col">
+        <DialogContent className="!max-w-none w-[96vw] max-w-5xl h-[92vh] overflow-hidden p-0 flex flex-col">
           <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle>Phê duyệt phiếu điều phối</DialogTitle>
             <DialogDescription>
@@ -2639,100 +3733,156 @@ export default function CoordinatorInventoryPage() {
           </DialogHeader>
 
           {selectedTransfer ? (
-            <div className="flex-1 min-h-0 overflow-y-auto p-6 grid grid-cols-1 xl:grid-cols-[minmax(0,1.1fr)_420px] gap-6">
-              <div className="space-y-6 min-w-0">
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <Card className="border-sky-500/20 bg-sky-500/5">
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Mã phiếu</p>
-                      <p className="text-lg font-semibold text-foreground break-all">
-                        {selectedTransfer.transferCode || selectedTransfer.id}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Kho nguồn</p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {selectedTransfer.sourceStationName ||
-                          selectedTransfer.sourceStationId ||
-                          '—'}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Kho đích</p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {selectedTransfer.destinationStationName ||
-                          selectedTransfer.destinationStationId ||
-                          '—'}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Người yêu cầu</p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {selectedTransfer.requestedByName || 'Chưa rõ'}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Card className="shadow-sm">
-                  <CardContent className="p-5 space-y-4">
-                    <div>
-                      <p className="text-base font-semibold text-foreground">
-                        Danh sách vật phẩm cần xử lý
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Điền số lượng thực tế trước khi phê duyệt để lưu đúng nội dung PDF và dữ
-                        liệu phiếu.
-                      </p>
+            <div className="flex-1 min-h-0 overflow-y-auto p-6">
+              <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+                <section className="rounded-3xl border border-sky-500/20 bg-gradient-to-br from-sky-500/10 via-background to-background p-5 shadow-sm">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          appearance="outline"
+                          className={`border ${TRANSFER_STATUS_CLASS[selectedTransfer.status] || 'bg-gray-500/10 text-gray-600 border-gray-500/20'}`}
+                        >
+                          {selectedTransfer.statusName ||
+                            TRANSFER_STATUS_LABEL[selectedTransfer.status] ||
+                            'Không rõ'}
+                        </Badge>
+                        <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                          Hồ sơ phê duyệt
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-foreground break-all">
+                          {selectedTransfer.transferCode || selectedTransfer.id}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Kiểm tra số lượng thực tế, thông tin phê duyệt và PDF trước khi xác nhận.
+                        </p>
+                      </div>
                     </div>
-                    <div className="space-y-3">
-                      {(selectedTransfer.items || []).map((item, index) => {
-                        const matchedSupply = supplyMap.get(item.supplyItemId);
-                        const fieldKey = `${item.supplyItemId}-${index}`;
-                        return (
+                    <div className="grid gap-3 sm:grid-cols-2 md:min-w-[320px]">
+                      {selectedTransferMetaRows.slice(4).map((meta) => (
+                        <div
+                          key={meta.label}
+                          className="rounded-2xl border border-border bg-background/80 p-3"
+                        >
+                          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                            {meta.label}
+                          </p>
+                          <p className="mt-1 text-lg font-semibold text-foreground">{meta.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {selectedTransferMetaRows.slice(0, 4).map((meta) => (
+                      <div
+                        key={meta.label}
+                        className="rounded-2xl border border-border bg-background/80 p-4"
+                      >
+                        <div className="flex items-start gap-3">
                           <div
-                            key={fieldKey}
-                            className="rounded-xl border border-border bg-muted/10 p-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]"
+                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${meta.tone}`}
                           >
-                            <div className="space-y-2 min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="font-semibold text-foreground">
-                                  {item.supplyItemName || matchedSupply?.name || item.supplyItemId}
-                                </p>
-                                {matchedSupply && (
-                                  <Badge
-                                    variant="outline"
-                                    appearance="outline"
-                                    size="xs"
-                                    className={`gap-1 border ${getSupplyCategoryClass(matchedSupply.category)}`}
-                                  >
-                                    <span className="material-symbols-outlined text-[14px]">
-                                      {getSupplyCategoryIcon(matchedSupply.category)}
+                            <span className="material-symbols-outlined text-[20px]">
+                              {meta.icon}
+                            </span>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                              {meta.label}
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-foreground break-words">
+                              {meta.value}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                  <div className="mb-4">
+                    <p className="text-base font-semibold text-foreground">
+                      Danh sách vật phẩm cần xử lý
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Điền số lượng thực tế để nội dung phê duyệt và PDF phản ánh đúng lô hàng sẽ
+                      được duyệt.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {(selectedTransfer.items || []).map((item, index) => {
+                      const matchedSupply = supplyMap.get(item.supplyItemId);
+                      const fieldKey = `${item.supplyItemId}-${index}`;
+                      const itemMeta = approveTransferForm.itemMetas[fieldKey] || {
+                        unitCost: '',
+                        expiryDate: '',
+                        sourceReference: '',
+                      };
+                      return (
+                        <div
+                          key={fieldKey}
+                          className="rounded-2xl border border-border bg-muted/10 p-4"
+                        >
+                          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-start">
+                            <div className="min-w-0 space-y-3">
+                              <div className="flex items-start gap-3">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-border bg-background text-primary">
+                                  <span className="material-symbols-outlined text-[20px]">
+                                    {matchedSupply
+                                      ? getSupplyCategoryIcon(matchedSupply.category)
+                                      : 'inventory_2'}
+                                  </span>
+                                </div>
+                                <div className="min-w-0 flex-1 space-y-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-base font-semibold text-foreground break-words">
+                                      {item.supplyItemName ||
+                                        matchedSupply?.name ||
+                                        item.supplyItemId}
+                                    </p>
+                                    {matchedSupply && (
+                                      <Badge
+                                        variant="outline"
+                                        appearance="outline"
+                                        size="xs"
+                                        className={`gap-1 border ${getSupplyCategoryClass(matchedSupply.category)}`}
+                                      >
+                                        <span className="material-symbols-outlined text-[14px]">
+                                          {getSupplyCategoryIcon(matchedSupply.category)}
+                                        </span>
+                                        {getSupplyCategoryLabel(matchedSupply.category)}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                                    <span>
+                                      Yêu cầu:{' '}
+                                      <span className="font-semibold text-foreground">
+                                        {formatNumberVN(
+                                          item.requestedQuantity ?? item.quantity ?? 0,
+                                        )}{' '}
+                                        {matchedSupply?.unit || ''}
+                                      </span>
                                     </span>
-                                    {getSupplyCategoryLabel(matchedSupply.category)}
-                                  </Badge>
-                                )}
+                                    <span>Mã: {item.supplyItemId}</span>
+                                  </div>
+                                  {item.notes && (
+                                    <p className="text-sm leading-6 text-muted-foreground">
+                                      <span className="font-medium text-foreground">Ghi chú:</span>{' '}
+                                      {item.notes}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
-                              <p className="text-sm text-muted-foreground">
-                                SL yêu cầu:{' '}
-                                <span className="font-semibold text-foreground">
-                                  {formatNumberVN(item.requestedQuantity ?? item.quantity ?? 0)}{' '}
-                                  {matchedSupply?.unit || ''}
-                                </span>
-                              </p>
-                              {item.notes && (
-                                <p className="text-sm text-muted-foreground">
-                                  Ghi chú: {item.notes}
-                                </p>
-                              )}
                             </div>
-                            <div className="space-y-2">
+
+                            <div className="space-y-2 rounded-2xl border border-border bg-background/80 p-3">
                               <label className="text-sm font-medium text-foreground">
                                 SL thực tế
                               </label>
@@ -2759,126 +3909,297 @@ export default function CoordinatorInventoryPage() {
                               </p>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
 
-                <Card className="shadow-sm">
-                  <CardContent className="p-5 space-y-4">
-                    <div>
-                      <p className="text-base font-semibold text-foreground">Thông tin phê duyệt</p>
-                      <p className="text-sm text-muted-foreground">
-                        Các dữ liệu này sẽ được điền vào PDF và lưu vào evidenceUrls.
-                      </p>
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-foreground">
-                          Người phê duyệt
-                        </label>
-                        <Input
-                          value={approveTransferForm.approverName}
-                          onChange={(e) =>
-                            setApproveTransferForm((prev) => ({
-                              ...prev,
-                              approverName: e.target.value,
-                            }))
-                          }
-                          placeholder="Nhập tên người phê duyệt"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-foreground">
-                          Số tiền tham chiếu
-                        </label>
-                        <Input
-                          value={approveTransferForm.referenceAmount}
-                          onChange={(e) =>
-                            setApproveTransferForm((prev) => ({
-                              ...prev,
-                              referenceAmount: formatNumberInputVN(
-                                parseFormattedNumber(e.target.value),
-                              ),
-                            }))
-                          }
-                          placeholder="Ví dụ: 12.500.000"
-                        />
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-border bg-muted/10 p-4 text-sm text-muted-foreground">
-                      <p className="font-medium text-foreground">Số tiền bằng chữ</p>
-                      <p className="mt-1">
-                        {convertNumberToVietnameseWords(
-                          parseFormattedNumber(approveTransferForm.referenceAmount || '0'),
-                        ) || 'Chưa có dữ liệu'}
-                      </p>
-                    </div>
-                    <div className="space-y-3">
-                      <p className="text-sm font-medium text-foreground">Chữ ký người phê duyệt</p>
-                      <PdfSignaturePad
-                        onSave={(dataUrl) =>
+                          <div className="mt-4 grid gap-3 md:grid-cols-3">
+                            <div className="space-y-2 rounded-2xl border border-border bg-background/70 p-3">
+                              <label className="text-sm font-medium text-foreground">
+                                Giá tiền vật phẩm (x1)
+                              </label>
+                              <Input
+                                value={itemMeta.unitCost}
+                                onChange={(e) =>
+                                  setApproveTransferForm((prev) => ({
+                                    ...prev,
+                                    itemMetas: {
+                                      ...prev.itemMetas,
+                                      [fieldKey]: {
+                                        ...prev.itemMetas[fieldKey],
+                                        unitCost: formatNumberInputVN(
+                                          parseFormattedNumber(e.target.value),
+                                        ),
+                                        expiryDate: prev.itemMetas[fieldKey]?.expiryDate || '',
+                                        sourceReference:
+                                          prev.itemMetas[fieldKey]?.sourceReference || '',
+                                      },
+                                    },
+                                  }))
+                                }
+                                placeholder="Ví dụ: 12.000"
+                              />
+                            </div>
+                            <div className="space-y-2 rounded-2xl border border-border bg-background/70 p-3">
+                              <label className="text-sm font-medium text-foreground">
+                                Hạn sử dụng
+                              </label>
+                              <Popover
+                                open={openApproveExpiryCalendarKey === fieldKey}
+                                onOpenChange={(open) =>
+                                  setOpenApproveExpiryCalendarKey(open ? fieldKey : null)
+                                }
+                              >
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="w-full justify-between font-normal"
+                                  >
+                                    <span className="truncate">
+                                      {itemMeta.expiryDate
+                                        ? new Date(itemMeta.expiryDate).toLocaleDateString('vi-VN')
+                                        : 'Chọn hạn sử dụng'}
+                                    </span>
+                                    <span className="material-symbols-outlined text-[18px] text-muted-foreground">
+                                      calendar_month
+                                    </span>
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent
+                                  className="z-[120] w-auto p-0"
+                                  align="start"
+                                  side="bottom"
+                                >
+                                  <CustomCalendar
+                                    value={
+                                      itemMeta.expiryDate
+                                        ? new Date(itemMeta.expiryDate)
+                                        : undefined
+                                    }
+                                    onChange={(date) => {
+                                      setApproveTransferForm((prev) => ({
+                                        ...prev,
+                                        itemMetas: {
+                                          ...prev.itemMetas,
+                                          [fieldKey]: {
+                                            ...prev.itemMetas[fieldKey],
+                                            unitCost: prev.itemMetas[fieldKey]?.unitCost || '',
+                                            expiryDate: date ? date.toISOString().slice(0, 10) : '',
+                                            sourceReference:
+                                              prev.itemMetas[fieldKey]?.sourceReference || '',
+                                          },
+                                        },
+                                      }));
+                                      setOpenApproveExpiryCalendarKey(null);
+                                    }}
+                                  />
+                                </PopoverContent>
+                              </Popover>
+                            </div>
+                            <div className="space-y-2 rounded-2xl border border-border bg-background/70 p-3">
+                              <label className="text-sm font-medium text-foreground">
+                                Nguồn hàng từ:
+                              </label>
+                              <Input
+                                disabled
+                                value={itemMeta.sourceReference}
+                                onChange={(e) =>
+                                  setApproveTransferForm((prev) => ({
+                                    ...prev,
+                                    itemMetas: {
+                                      ...prev.itemMetas,
+                                      [fieldKey]: {
+                                        ...prev.itemMetas[fieldKey],
+                                        unitCost: prev.itemMetas[fieldKey]?.unitCost || '',
+                                        expiryDate: prev.itemMetas[fieldKey]?.expiryDate || '',
+                                        sourceReference: e.target.value,
+                                      },
+                                    },
+                                  }))
+                                }
+                                placeholder="Ví dụ: Kho nguồn Trạm A / mã phiếu"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                  <div className="mb-4">
+                    <p className="text-base font-semibold text-foreground">Thông tin phê duyệt</p>
+                    <p className="text-sm text-muted-foreground">
+                      Dữ liệu bên dưới sẽ được dùng để tạo nội dung PDF lưu cùng hồ sơ phiếu.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Người phê duyệt</label>
+                      <Input
+                        value={approveTransferForm.approverName}
+                        onChange={(e) =>
                           setApproveTransferForm((prev) => ({
                             ...prev,
-                            approverSignatureDataUrl: dataUrl,
+                            approverName: e.target.value,
                           }))
                         }
+                        placeholder="Nhập tên người phê duyệt"
                       />
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="space-y-6 min-w-0">
-                <PdfPreviewCard
-                  pdfBytes={approveTransferForm.pdfBytes}
-                  title="Xem trước PDF phê duyệt"
-                  className="h-[520px]"
-                />
-
-                <Card className="shadow-sm">
-                  <CardContent className="p-5 space-y-4">
-                    <div>
-                      <p className="text-base font-semibold text-foreground">
-                        Bằng chứng PDF hiện có
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Các file PDF đã lưu trong hồ sơ phiếu sẽ hiển thị ở đây để kiểm tra nhanh.
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">
+                        Tổng số tiền tham chiếu
+                      </label>
+                      <Input
+                        value={formatNumberInputVN(approveTransferReferenceAmount)}
+                        readOnly
+                        placeholder="Tự động tính từ đơn giá x số lượng thực tế"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Hệ thống tự tính tổng từ đơn giá từng mặt hàng và số lượng thực tế đã duyệt.
                       </p>
                     </div>
-                    {(selectedTransfer.evidenceUrls || []).length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-border bg-muted/10 p-4 text-sm text-muted-foreground">
-                        Chưa có PDF/bằng chứng nào được lưu.
-                      </div>
-                    ) : (
-                      <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
-                        {(selectedTransfer.evidenceUrls || []).map((url, index) => (
-                          <div
-                            key={`${url}-${index}`}
-                            className="rounded-xl border border-border bg-card p-4 space-y-3"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-sm font-medium text-foreground break-all">
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground">Số tiền bằng chữ</p>
+                    <p className="mt-1 leading-6">
+                      {convertNumberToVietnameseWords(approveTransferReferenceAmount) ||
+                        'Chưa có dữ liệu'}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    <p className="text-sm font-medium text-foreground">Chữ ký người phê duyệt</p>
+                    <PdfSignaturePad
+                      height={240}
+                      helperText="Ký trong khung lớn để nét chữ rõ hơn khi nhúng vào PDF. Sau khi ký, bấm “Lưu chữ ký”."
+                      onSave={(dataUrl) =>
+                        setApproveTransferForm((prev) => ({
+                          ...prev,
+                          approverSignatureDataUrl: dataUrl,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2 rounded-2xl border border-border bg-muted/10 p-4">
+                    <Button
+                      variant="primary"
+                      className="gap-2"
+                      onClick={async () => {
+                        if (!selectedTransferPdfData) return;
+                        const builtPdf = await buildTransferPdf(selectedTransferPdfData);
+                        setApproveTransferForm((prev) => ({ ...prev, pdfBytes: builtPdf }));
+                      }}
+                    >
+                      <span className="material-symbols-outlined text-lg">picture_as_pdf</span>
+                      Tạo / làm mới PDF phê duyệt
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="gap-2"
+                      onClick={async () => {
+                        if (
+                          !selectedTransferPdfData ||
+                          !approveTransferForm.approverSignatureDataUrl
+                        ) {
+                          toast.error('Hãy tạo PDF và lưu chữ ký người phê duyệt trước.');
+                          return;
+                        }
+
+                        const existingPdfUrl = (selectedTransfer.evidenceUrls || []).find((url) =>
+                          url.toLowerCase().includes('.pdf'),
+                        );
+
+                        const basePdfBytes = existingPdfUrl
+                          ? await updateTransferPdfApprovalData(
+                              new Uint8Array(await (await fetch(existingPdfUrl)).arrayBuffer()),
+                              selectedTransferPdfData,
+                            )
+                          : await buildTransferPdf(selectedTransferPdfData);
+
+                        const signedPdf = await attachSignatureToPdf(
+                          basePdfBytes,
+                          approveTransferForm.approverSignatureDataUrl,
+                          {
+                            signerName:
+                              approveTransferForm.approverName.trim() || 'Người phê duyệt',
+                            box: 'approver',
+                          },
+                        );
+
+                        setApproveTransferForm((prev) => ({ ...prev, pdfBytes: signedPdf }));
+                        toast.success(
+                          'Đã cập nhật thông tin mới và nhúng chữ ký vào PDF để xem trước.',
+                        );
+                      }}
+                    >
+                      <span className="material-symbols-outlined text-lg">draw</span>
+                      Cập nhật thông tin & nhúng chữ ký vào PDF
+                    </Button>
+                    <p className="basis-full text-xs text-muted-foreground">
+                      Hệ thống luôn dựng lại PDF từ dữ liệu phiếu mới nhất, nên số tiền tham chiếu,
+                      bằng chữ và số lượng thực tế sẽ được cập nhật đúng trước khi nhúng chữ ký.
+                    </p>
+                  </div>
+                </section>
+
+                <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                  <PdfPreviewCard
+                    pdfBytes={approveTransferForm.pdfBytes}
+                    title="Xem trước PDF phê duyệt"
+                    className="min-h-[760px] w-full overflow-hidden"
+                  />
+                </section>
+
+                <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                  <div className="mb-4">
+                    <p className="text-base font-semibold text-foreground">
+                      Bằng chứng PDF hiện có
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Kiểm tra nhanh các file PDF đã lưu trong hồ sơ phiếu.
+                    </p>
+                  </div>
+
+                  {(selectedTransfer.evidenceUrls || []).length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+                      Chưa có PDF/bằng chứng nào được lưu.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {(selectedTransfer.evidenceUrls || []).map((url, index) => (
+                        <div
+                          key={`${url}-${index}`}
+                          className="overflow-hidden rounded-2xl border border-border bg-muted/10"
+                        >
+                          <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground">
                                 PDF #{index + 1}
                               </p>
-                              <Button variant="outline" size="sm" asChild>
-                                <a href={url} target="_blank" rel="noreferrer">
-                                  Mở link
-                                </a>
-                              </Button>
+                              <p className="text-xs text-muted-foreground break-all">{url}</p>
                             </div>
+                            <Button variant="outline" size="sm" asChild>
+                              <a href={url} target="_blank" rel="noreferrer">
+                                Mở link
+                              </a>
+                            </Button>
+                          </div>
+                          <div className="p-4">
                             <iframe
                               title={`pdf-evidence-${index}`}
                               src={url}
-                              className="h-64 w-full rounded-xl border border-border bg-background"
+                              className="h-[420px] w-full rounded-xl border border-border bg-background"
                             />
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
               </div>
             </div>
           ) : (
@@ -2915,58 +4236,373 @@ export default function CoordinatorInventoryPage() {
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog
+      <Dialog
         open={openShipTransfer}
         onOpenChange={(open) => {
           setOpenShipTransfer(open);
           if (!open) setSelectedTransferId(null);
         }}
-        title="Đánh dấu đang giao"
-        description={`${selectedTransferSummary.join(' • ')}. Phiếu sẽ chuyển sang trạng thái đang vận chuyển.`}
-        confirmText={
-          shipTransferStatus === 'pending' ? 'Đang cập nhật...' : 'Chuyển sang đang giao'
-        }
-        cancelText="Đóng"
-        variant="info"
-        onConfirm={() => {
-          void handleShipTransfer();
-        }}
-      />
+      >
+        <DialogContent className="!max-w-none h-[88vh] w-[96vw] max-w-5xl overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="border-b border-border bg-gradient-to-r from-sky-500/10 via-background to-background px-6 py-5 lg:px-8 lg:py-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-600">
+                <span className="material-symbols-outlined text-[24px]">local_shipping</span>
+              </div>
+              <div className="space-y-1">
+                <DialogTitle>Chuyển phiếu sang “Đang vận chuyển”</DialogTitle>
+                <DialogDescription>
+                  Xác nhận khi hàng đã rời kho nguồn hoặc đơn vị vận chuyển đã tiếp nhận lô hàng.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
 
-      <ConfirmDialog
+          <div className="flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
+            <div className="grid h-full gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+              <div className="space-y-4 overflow-y-auto pr-1">
+                <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                  <p className="mb-3 text-sm font-semibold text-foreground">Thông tin phiếu</p>
+                  <div className="space-y-3">
+                    {selectedTransferSummaryCompact.map((item) => (
+                      <div key={item.label} className="rounded-xl bg-background/80 p-3">
+                        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                          {item.label}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-foreground break-words line-clamp-2">
+                          {item.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-muted-foreground">
+                  Sau khi xác nhận, phiếu chuyển sang{' '}
+                  <span className="font-semibold text-sky-700">Đang vận chuyển</span>. Chưa tạo nhập
+                  kho đích ở bước này.
+                </div>
+
+                <div className="space-y-2 rounded-2xl border border-border bg-muted/10 p-4">
+                  <label className="text-sm font-medium text-foreground">
+                    Phương tiện giao hàng
+                  </label>
+                  <Select
+                    value={shipTransferForm.vehicleId}
+                    onValueChange={(value) =>
+                      setShipTransferForm((prev) => ({ ...prev, vehicleId: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn phương tiện đang sẵn sàng của trạm">
+                        {shipTransferForm.vehicleId ? shipTransferVehicleLabel : undefined}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableStationVehicles.map((vehicle) => (
+                        <SelectItem key={vehicle.vehicleId} value={vehicle.vehicleId}>
+                          {getVehicleDisplayLabel(vehicle.vehicleId)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {availableStationVehicles.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Hiện không có phương tiện nào của trạm ở trạng thái sẵn sàng.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="min-w-0 space-y-4 overflow-y-auto pr-1">
+                <div className="space-y-2 rounded-2xl border border-border bg-muted/10 p-4">
+                  <label className="text-sm font-medium text-foreground">
+                    Minh chứng giao hàng
+                  </label>
+                  <FileUploadCard
+                    title="Tải minh chứng giao hàng"
+                    description="Chọn tệp PDF hoặc ảnh để xác nhận hàng đã rời kho hoặc đang được vận chuyển."
+                    accept="application/pdf,image/*"
+                    multiple
+                    className="w-full"
+                    containerClassName="min-h-[320px] lg:min-h-[380px]"
+                    previewListClassName="grid grid-cols-1 gap-3 md:grid-cols-2 max-h-[420px] overflow-y-auto pr-1"
+                    previewMediaClassName="h-52 lg:h-60"
+                    selectedFiles={shipTransferForm.evidenceFiles}
+                    onRemoveFile={(index) =>
+                      setShipTransferForm((prev) => ({
+                        ...prev,
+                        evidenceFiles: prev.evidenceFiles.filter(
+                          (_, fileIndex) => fileIndex !== index,
+                        ),
+                      }))
+                    }
+                    onFilesSelected={(files) =>
+                      setShipTransferForm((prev) => ({
+                        ...prev,
+                        evidenceFiles: Array.from(files || []),
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="space-y-2 rounded-2xl border border-border bg-muted/10 p-4">
+                  <label className="text-sm font-medium text-foreground">Ghi chú giao hàng</label>
+                  <Textarea
+                    rows={4}
+                    value={shipTransferForm.notes}
+                    onChange={(event) =>
+                      setShipTransferForm((prev) => ({ ...prev, notes: event.target.value }))
+                    }
+                    placeholder="Ví dụ: xe rời kho lúc 09:30, giao cho đội tiếp nhận tại kho phụ"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="border-t border-border bg-muted/30 px-4 py-4 sm:px-6 lg:px-8">
+            <DialogClose asChild>
+              <Button variant="outline">Đóng</Button>
+            </DialogClose>
+            <Button
+              variant="primary"
+              className="gap-2"
+              disabled={shipTransferStatus === 'pending'}
+              onClick={() => {
+                void handleShipTransfer();
+              }}
+            >
+              <span className="material-symbols-outlined text-lg">local_shipping</span>
+              {shipTransferStatus === 'pending' ? 'Đang cập nhật...' : 'Xác nhận đang vận chuyển'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={openReceiveTransfer}
         onOpenChange={(open) => {
           setOpenReceiveTransfer(open);
           if (!open) setSelectedTransferId(null);
         }}
-        title="Xác nhận nhận hàng"
-        description={`${selectedTransferSummary.join(' • ')}. Hệ thống sẽ tạo giao dịch nhập kho theo số lượng thực nhận.`}
-        confirmText={receiveTransferStatus === 'pending' ? 'Đang xác nhận...' : 'Xác nhận đã nhận'}
-        cancelText="Đóng"
-        variant="success"
-        onConfirm={() => {
-          void handleReceiveTransfer();
-        }}
-      />
+      >
+        <DialogContent className="!max-w-none h-[88vh] w-[96vw] max-w-5xl overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="border-b border-border bg-gradient-to-r from-emerald-500/10 via-background to-background px-6 py-5 lg:px-8 lg:py-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-600">
+                <span className="material-symbols-outlined text-[24px]">inventory_2</span>
+              </div>
+              <div className="space-y-1">
+                <DialogTitle>Xác nhận “Đã nhận hàng”</DialogTitle>
+                <DialogDescription>
+                  Dùng khi kho đích đã tiếp nhận hàng và sẵn sàng ghi nhận nhập kho theo số lượng
+                  thực nhận.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
 
-      <ConfirmDialog
+          <div className="flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
+            <div className="grid h-full gap-6 xl:grid-cols-[350px_minmax(0,1fr)]">
+              <div className="space-y-4 overflow-y-auto pr-1">
+                <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                  <p className="mb-3 text-sm font-semibold text-foreground">Thông tin phiếu</p>
+                  <div className="space-y-3">
+                    {selectedTransferSummaryCompact.map((item) => (
+                      <div key={item.label} className="rounded-xl bg-background/80 p-3">
+                        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                          {item.label}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-foreground break-words line-clamp-2">
+                          {item.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-muted-foreground">
+                  Khi xác nhận, hệ thống sẽ tạo giao dịch{' '}
+                  <span className="font-semibold text-emerald-700">nhập kho đích</span> theo số
+                  lượng thực nhận của từng vật phẩm trong phiếu.
+                </div>
+
+                <div className="grid gap-3 rounded-2xl border border-border bg-muted/10 p-4 sm:grid-cols-2 xl:grid-cols-1">
+                  <div className="space-y-1 rounded-xl bg-background/80 p-3">
+                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                      Phương tiện
+                    </p>
+                    <p className="text-sm font-semibold text-foreground break-words">
+                      {selectedTransferVehicleLabel}
+                    </p>
+                  </div>
+                  <div className="space-y-1 rounded-xl bg-background/80 p-3">
+                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                      Người giao / tài xế
+                    </p>
+                    <p className="text-sm font-semibold text-foreground break-words">
+                      {selectedTransfer?.driverUserId || 'Chưa cập nhật'}
+                    </p>
+                  </div>
+                </div>
+
+                {!!selectedTransfer?.inventoryTransactionIds?.length && (
+                  <div className="rounded-2xl border border-border bg-muted/10 p-4 text-sm">
+                    <p className="font-medium text-foreground">Mã giao dịch kho</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedTransfer.inventoryTransactionIds.map((transactionId) => (
+                        <Badge key={transactionId} variant="outline" appearance="outline">
+                          {transactionId}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="min-w-0 space-y-4 overflow-y-auto pr-1">
+                <div className="space-y-2 rounded-2xl border border-border bg-muted/10 p-4">
+                  <label className="text-sm font-medium text-foreground">Ghi chú nhận hàng</label>
+                  <Textarea
+                    rows={4}
+                    value={receiveTransferForm.notes}
+                    onChange={(event) =>
+                      setReceiveTransferForm((prev) => ({ ...prev, notes: event.target.value }))
+                    }
+                    placeholder="Nhập ghi chú khi nhận hàng nếu có"
+                  />
+                </div>
+
+                <div className="space-y-2 rounded-2xl border border-border bg-muted/10 p-4">
+                  <label className="text-sm font-medium text-foreground">
+                    Minh chứng nhận hàng
+                  </label>
+                  <FileUploadCard
+                    title="Tải minh chứng nhận hàng"
+                    description="Chọn tệp PDF hoặc ảnh để xác nhận kho đích đã tiếp nhận hàng hóa."
+                    accept="application/pdf,image/*"
+                    multiple
+                    className="w-full"
+                    containerClassName="min-h-[320px] lg:min-h-[380px]"
+                    previewListClassName="grid grid-cols-1 gap-3 md:grid-cols-2 max-h-[420px] overflow-y-auto pr-1"
+                    previewMediaClassName="h-52 lg:h-60"
+                    selectedFiles={receiveTransferForm.evidenceFiles}
+                    onRemoveFile={(index) =>
+                      setReceiveTransferForm((prev) => ({
+                        ...prev,
+                        evidenceFiles: prev.evidenceFiles.filter(
+                          (_, fileIndex) => fileIndex !== index,
+                        ),
+                      }))
+                    }
+                    onFilesSelected={(files) =>
+                      setReceiveTransferForm((prev) => ({
+                        ...prev,
+                        evidenceFiles: Array.from(files || []),
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="border-t border-border bg-muted/30 px-4 py-4 sm:px-6 lg:px-8">
+            <DialogClose asChild>
+              <Button variant="outline">Đóng</Button>
+            </DialogClose>
+            <Button
+              variant="primary"
+              className="gap-2"
+              disabled={receiveTransferStatus === 'pending'}
+              onClick={() => {
+                void handleReceiveTransfer();
+              }}
+            >
+              <span className="material-symbols-outlined text-lg">check_circle</span>
+              {receiveTransferStatus === 'pending' ? 'Đang xác nhận...' : 'Xác nhận đã nhận hàng'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={openCancelTransfer}
         onOpenChange={(open) => {
           setOpenCancelTransfer(open);
           if (!open) setSelectedTransferId(null);
         }}
-        title="Hủy phiếu điều phối"
-        description={`${selectedTransferSummary.join(' • ')}. Thao tác này sẽ chuyển phiếu sang trạng thái đã hủy.`}
-        confirmText={cancelTransferStatus === 'pending' ? 'Đang hủy...' : 'Hủy phiếu'}
-        cancelText="Đóng"
-        variant="destructive"
-        onConfirm={() => {
-          void handleCancelTransfer();
-        }}
-      />
+      >
+        <DialogContent className="w-[92vw] max-w-3xl max-h-[88vh] overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="border-b border-border bg-gradient-to-r from-red-500/10 via-background to-background px-6 py-5">
+            <DialogTitle>Hủy phiếu điều phối</DialogTitle>
+            <DialogDescription>
+              {`${selectedTransferSummary.join(' • ')}. Cần nhập ghi chú hủy theo yêu cầu endpoint.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-5 px-6 py-5">
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-muted-foreground">
+              Phiếu sẽ chuyển sang trạng thái{' '}
+              <span className="font-semibold text-red-700">Đã hủy</span>.
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Lý do / ghi chú hủy *</label>
+              <Textarea
+                rows={4}
+                value={cancelTransferForm.notes}
+                onChange={(event) =>
+                  setCancelTransferForm((prev) => ({ ...prev, notes: event.target.value }))
+                }
+                placeholder="Nhập lý do hủy phiếu điều phối"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Minh chứng hủy phiếu</label>
+              <FileUploadCard
+                title="Tải minh chứng hủy phiếu"
+                description="Chọn tệp PDF hoặc ảnh để lưu cùng lý do hủy phiếu điều phối."
+                accept="application/pdf,image/*"
+                multiple
+                selectedFiles={cancelTransferForm.evidenceFiles}
+                onRemoveFile={(index) =>
+                  setCancelTransferForm((prev) => ({
+                    ...prev,
+                    evidenceFiles: prev.evidenceFiles.filter((_, fileIndex) => fileIndex !== index),
+                  }))
+                }
+                onFilesSelected={(files) =>
+                  setCancelTransferForm((prev) => ({
+                    ...prev,
+                    evidenceFiles: Array.from(files || []),
+                  }))
+                }
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="border-t border-border bg-muted/30 px-6 py-4">
+            <DialogClose asChild>
+              <Button variant="outline">Đóng</Button>
+            </DialogClose>
+            <Button
+              variant="destructive"
+              disabled={cancelTransferStatus === 'pending'}
+              onClick={() => {
+                void handleCancelTransfer();
+              }}
+            >
+              {cancelTransferStatus === 'pending' ? 'Đang hủy...' : 'Xác nhận hủy phiếu'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={openTransferDetail} onOpenChange={setOpenTransferDetail}>
-        <DialogContent className="!max-w-none w-[95vw] h-[90vh] p-0 overflow-hidden flex flex-col">
+        <DialogContent className="!w-[98vw] !max-w-[1400px] h-[92vh] p-0 overflow-hidden flex flex-col">
           <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
             <DialogTitle>Chi tiết phiếu điều phối</DialogTitle>
             <DialogDescription>
@@ -2977,178 +4613,400 @@ export default function CoordinatorInventoryPage() {
           </DialogHeader>
 
           {selectedTransfer ? (
-            <div className="flex-1 min-h-0 overflow-y-auto p-6 grid grid-cols-1 xl:grid-cols-[minmax(0,1.05fr)_380px] gap-6">
-              <div className="space-y-5 min-w-0">
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <Card className="border-sky-500/20 bg-sky-500/5">
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Mã phiếu</p>
-                      <p className="text-base font-semibold text-foreground break-all">
-                        {selectedTransfer.transferCode || selectedTransfer.id}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Nguồn</p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {selectedTransfer.sourceStationName || selectedTransfer.sourceStationId}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Đích</p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {selectedTransfer.destinationStationName ||
-                          selectedTransfer.destinationStationId}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-4 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Người yêu cầu</p>
-                      <p className="text-sm font-semibold text-foreground">
-                        {selectedTransfer.requestedByName || 'Chưa rõ'}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-5 space-y-3 text-sm shadow-sm">
-                  <p>
-                    <span className="text-muted-foreground font-medium">Mã phiếu:</span>{' '}
-                    <span className="font-semibold text-foreground text-base">
-                      {selectedTransfer.transferCode || selectedTransfer.id}
-                    </span>
-                  </p>
-                  <p>
-                    <span className="text-muted-foreground font-medium">Kho/trạm nguồn:</span>{' '}
-                    <span className="font-medium text-foreground">
-                      {selectedTransfer.sourceStationName || selectedTransfer.sourceStationId}
-                    </span>
-                  </p>
-                  <p>
-                    <span className="text-muted-foreground font-medium">→ Kho đích:</span>{' '}
-                    <span className="font-medium text-foreground">
-                      {selectedTransfer.destinationStationName ||
-                        selectedTransfer.destinationStationId}
-                    </span>
-                  </p>
-                  <p>
-                    <span className="text-muted-foreground font-medium">Người yêu cầu:</span>{' '}
-                    <span className="font-medium text-foreground">
-                      {selectedTransfer.requestedByName || 'Chưa rõ'}
-                    </span>
-                  </p>
-                  <p>
-                    <span className="text-muted-foreground font-medium">Tổng dòng:</span>{' '}
-                    {formatNumberVN(
-                      selectedTransfer.totalRequestedItems || selectedTransfer.items?.length || 0,
-                    )}
-                    {' • '}
-                    <span className="text-muted-foreground font-medium">Tổng số lượng:</span>{' '}
-                    {formatNumberVN(selectedTransfer.totalRequestedQuantity || 0)}
-                  </p>
-                  {(() => {
-                    const parsedNotes = parseTransferNotes(selectedTransfer.notes);
-                    return (
-                      <div className="space-y-2">
-                        {(selectedTransfer.reason || parsedNotes.reason) && (
-                          <p>
-                            <span className="text-muted-foreground font-medium">Lý do:</span>{' '}
-                            {selectedTransfer.reason || parsedNotes.reason}
-                          </p>
-                        )}
-                        <p>
-                          <span className="text-muted-foreground font-medium">Ghi chú:</span>{' '}
-                          {parsedNotes.note || parsedNotes.raw || 'Không có ghi chú'}
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 md:px-8 md:py-6">
+              <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 xl:max-w-none">
+                <section className="rounded-3xl border border-sky-500/20 bg-gradient-to-br from-sky-500/10 via-background to-background p-5 shadow-sm">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          appearance="outline"
+                          className={`border ${TRANSFER_STATUS_CLASS[selectedTransfer.status] || 'bg-gray-500/10 text-gray-600 border-gray-500/20'}`}
+                        >
+                          {selectedTransfer.statusName ||
+                            TRANSFER_STATUS_LABEL[selectedTransfer.status] ||
+                            'Không rõ'}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">Mã phiếu điều phối</span>
+                      </div>
+                      <div>
+                        <p className="max-w-full text-xl font-bold text-foreground break-all leading-snug">
+                          {selectedTransfer.transferCode || selectedTransfer.id}
                         </p>
-                        {(parsedNotes.approvalAmount ||
-                          parsedNotes.approvalAmountInWords ||
-                          parsedNotes.approver) && (
-                          <div className="rounded-xl border border-border bg-background/80 p-3 space-y-1 text-sm">
-                            {parsedNotes.approvalAmount && (
-                              <p>
-                                <span className="text-muted-foreground font-medium">Số tiền:</span>{' '}
-                                <span className="font-medium text-foreground">
-                                  {parsedNotes.approvalAmount}
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[320px] lg:max-w-[360px]">
+                      <div className="rounded-xl border border-border bg-background p-3">
+                        <p className="text-xs text-muted-foreground">Số dòng vật phẩm</p>
+                        <p className="mt-1 text-base font-semibold text-foreground">
+                          {formatNumberVN(
+                            selectedTransfer.totalRequestedItems ||
+                              selectedTransfer.items?.length ||
+                              0,
+                          )}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border bg-background p-3">
+                        <p className="text-xs text-muted-foreground">Tổng số lượng</p>
+                        <p className="mt-1 text-base font-semibold text-foreground">
+                          {formatNumberVN(selectedTransfer.totalRequestedQuantity || 0)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {(() => {
+                  const parsedNotes = parseTransferNotes(selectedTransfer.notes);
+                  return (
+                    <section className="grid gap-5 xl:grid-cols-2">
+                      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                        <p className="mb-4 text-base font-semibold text-foreground">
+                          Thông tin điều phối
+                        </p>
+                        <div className="space-y-4">
+                          {[
+                            {
+                              icon: 'warehouse',
+                              tone: 'bg-sky-500/10 text-sky-600',
+                              label: 'Kho / trạm nguồn',
+                              value:
+                                selectedTransfer.sourceStationName ||
+                                selectedTransfer.sourceStationId ||
+                                '—',
+                            },
+                            {
+                              icon: 'south_east',
+                              tone: 'bg-emerald-500/10 text-emerald-600',
+                              label: 'Kho đích',
+                              value:
+                                selectedTransfer.destinationStationName ||
+                                selectedTransfer.destinationStationId ||
+                                '—',
+                            },
+                            {
+                              icon: 'person',
+                              tone: 'bg-amber-500/10 text-amber-600',
+                              label: 'Người yêu cầu',
+                              value: selectedTransfer.requestedByName || 'Chưa rõ',
+                            },
+                            {
+                              icon: 'schedule',
+                              tone: 'bg-violet-500/10 text-violet-600',
+                              label: 'Ngày tạo',
+                              value: selectedTransfer.createdAt
+                                ? new Date(selectedTransfer.createdAt).toLocaleString('vi-VN')
+                                : 'Chưa có dữ liệu',
+                            },
+                            {
+                              icon: 'verified_user',
+                              tone: 'bg-green-500/10 text-green-600',
+                              label: 'Người duyệt',
+                              value:
+                                selectedTransfer.approvedByName ||
+                                parsedNotes.approver ||
+                                'Chưa cập nhật',
+                            },
+                          ].map((meta) => (
+                            <div key={meta.label} className="flex items-start gap-3">
+                              <div
+                                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${meta.tone}`}
+                              >
+                                <span className="material-symbols-outlined text-[20px]">
+                                  {meta.icon}
                                 </span>
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                                  {meta.label}
+                                </p>
+                                <p className="mt-1 min-w-0 text-sm font-medium text-foreground break-all leading-6">
+                                  {meta.value}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                        <p className="mb-4 text-base font-semibold text-foreground">
+                          Lý do & ghi chú
+                        </p>
+                        <div className="space-y-4 text-sm">
+                          <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                            <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                              Lý do điều phối
+                            </p>
+                            <p className="mt-2 whitespace-pre-wrap break-words leading-6 text-foreground">
+                              {selectedTransfer.reason || parsedNotes.reason || 'Không có lý do'}
+                            </p>
+                          </div>
+                          <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                            <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                              Ghi chú chung
+                            </p>
+                            <p className="mt-2 whitespace-pre-wrap break-words leading-6 text-foreground">
+                              {parsedNotes.note || parsedNotes.raw || 'Không có ghi chú'}
+                            </p>
+                          </div>
+                          {(parsedNotes.approvalAmount ||
+                            parsedNotes.approvalAmountInWords ||
+                            parsedNotes.approver) && (
+                            <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                              <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                                Thông tin phê duyệt
                               </p>
-                            )}
-                            {parsedNotes.approvalAmountInWords && (
-                              <p>
-                                <span className="text-muted-foreground font-medium">Bằng chữ:</span>{' '}
-                                <span className="font-medium text-foreground">
-                                  {parsedNotes.approvalAmountInWords}
-                                </span>
-                              </p>
-                            )}
-                            {parsedNotes.approver && (
-                              <p>
-                                <span className="text-muted-foreground font-medium">
-                                  Người phê duyệt:
-                                </span>{' '}
-                                <span className="font-medium text-foreground">
-                                  {parsedNotes.approver}
-                                </span>
-                              </p>
+                              <div className="mt-2 space-y-2 text-foreground">
+                                {parsedNotes.approvalAmount && (
+                                  <p>
+                                    <span className="font-medium">Số tiền:</span>{' '}
+                                    {parsedNotes.approvalAmount}
+                                  </p>
+                                )}
+                                {parsedNotes.approvalAmountInWords && (
+                                  <p>
+                                    <span className="font-medium">Bằng chữ:</span>{' '}
+                                    {parsedNotes.approvalAmountInWords}
+                                  </p>
+                                )}
+                                {parsedNotes.approver && (
+                                  <p>
+                                    <span className="font-medium">Người phê duyệt:</span>{' '}
+                                    {parsedNotes.approver}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </section>
+                  );
+                })()}
+
+                <section className="grid gap-5 xl:grid-cols-2">
+                  <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                    <p className="mb-4 text-base font-semibold text-foreground">
+                      Tiến trình xử lý phiếu
+                    </p>
+                    <div className="overflow-x-auto pb-1">
+                      <div className="grid min-w-[320px] grid-cols-1 gap-3 sm:flex sm:min-w-[720px] sm:items-start sm:gap-2">
+                        {selectedTransferTimelineStepper.map((step, index) => (
+                          <div
+                            key={step.key}
+                            className="flex min-w-0 flex-1 items-start gap-2 sm:flex-row sm:items-start"
+                          >
+                            <div className="flex min-w-0 flex-1 flex-row items-center gap-3 rounded-2xl border border-border bg-muted/10 p-3 sm:flex-col sm:items-center sm:border-0 sm:bg-transparent sm:p-0 sm:text-center">
+                              <div
+                                className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-semibold ${step.nodeClass}`}
+                              >
+                                {step.state === 'completed' ? (
+                                  <span className="material-symbols-outlined text-[16px]">
+                                    check
+                                  </span>
+                                ) : step.state === 'cancelled' ? (
+                                  <span className="material-symbols-outlined text-[16px]">
+                                    close
+                                  </span>
+                                ) : (
+                                  index + 1
+                                )}
+                              </div>
+                              <div className="min-w-0 sm:mt-3">
+                                <p className="text-[11px] font-medium text-foreground">
+                                  {step.label}
+                                </p>
+                                {step.value && (
+                                  <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                                    {step.value}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            {index < selectedTransferTimelineStepper.length - 1 && (
+                              <div
+                                className={`hidden sm:block mt-4 h-[2px] flex-1 rounded-full ${step.lineClass}`}
+                              />
                             )}
                           </div>
-                        )}
-                        {(parsedNotes.approvalAmount ||
-                          parsedNotes.approvalAmountInWords ||
-                          parsedNotes.approver) && (
-                          <div className="rounded-xl border border-border bg-background/80 p-3 space-y-1 text-sm">
-                            {parsedNotes.approvalAmount && (
-                              <p>
-                                <span className="text-muted-foreground font-medium">Số tiền:</span>{' '}
-                                <span className="font-medium text-foreground">
-                                  {parsedNotes.approvalAmount}
-                                </span>
-                              </p>
-                            )}
-                            {parsedNotes.approvalAmountInWords && (
-                              <p>
-                                <span className="text-muted-foreground font-medium">Bằng chữ:</span>{' '}
-                                <span className="font-medium text-foreground">
-                                  {parsedNotes.approvalAmountInWords}
-                                </span>
-                              </p>
-                            )}
-                            {parsedNotes.approver && (
-                              <p>
-                                <span className="text-muted-foreground font-medium">
-                                  Người phê duyệt:
-                                </span>{' '}
-                                <span className="font-medium text-foreground">
-                                  {parsedNotes.approver}
-                                </span>
-                              </p>
-                            )}
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                    <p className="mb-4 text-base font-semibold text-foreground">
+                      Vận chuyển & giao dịch liên kết
+                    </p>
+                    <div className="space-y-3 text-sm">
+                      <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                          Phương tiện
+                        </p>
+                        <p className="mt-2 min-w-0 text-foreground break-all leading-6">
+                          {selectedTransferVehicleLabel}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                          Người giao / tài xế
+                        </p>
+                        <p className="mt-2 min-w-0 text-foreground break-all leading-6">
+                          {selectedTransfer.driverUserId || 'Chưa cập nhật'}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                          Mã giao dịch kho
+                        </p>
+                        {selectedTransfer.inventoryTransactionIds?.length ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {selectedTransfer.inventoryTransactionIds.map((transactionId) => (
+                              <Badge
+                                key={transactionId}
+                                variant="outline"
+                                appearance="outline"
+                                className="max-w-full break-all whitespace-normal text-left leading-5"
+                              >
+                                {transactionId}
+                              </Badge>
+                            ))}
                           </div>
+                        ) : (
+                          <p className="mt-2 text-foreground">Chưa có mã giao dịch kho.</p>
                         )}
                       </div>
-                    );
-                  })()}
-                </div>
+                    </div>
+                  </div>
+                </section>
 
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
-                  <p className="mb-3 text-sm font-semibold text-foreground">Danh sách vật phẩm</p>
-                  <div className="space-y-2 text-sm text-muted-foreground">
+                {hasSystemTransferDocuments && (
+                  <section className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-4">
+                    <div>
+                      <p className="text-base font-semibold text-foreground">Tài liệu & PDF</p>
+                      <p className="text-sm text-muted-foreground">
+                        Ưu tiên hiển thị tài liệu chính thức từ hệ thống trước phần minh chứng bên
+                        dưới.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {[
+                        {
+                          label: 'PDF yêu cầu hiện hành',
+                          url:
+                            selectedTransfer.currentRequestPdfUrl ||
+                            selectedTransferDocumentGroups.requestPdf?.fileUrl ||
+                            null,
+                        },
+                        {
+                          label: 'PDF xác nhận hiện hành',
+                          url:
+                            selectedTransfer.currentConfirmedPdfUrl ||
+                            selectedTransferDocumentGroups.confirmedPdf?.fileUrl ||
+                            null,
+                        },
+                      ]
+                        .filter((document) => document.url)
+                        .map((document) => (
+                          <div
+                            key={document.label}
+                            className="rounded-2xl border border-border bg-muted/10 p-4"
+                          >
+                            <p className="text-sm font-medium text-foreground">{document.label}</p>
+                            <div className="mt-3 space-y-3">
+                              <Button variant="outline" size="sm" asChild>
+                                <a href={document.url!} target="_blank" rel="noreferrer">
+                                  Mở tài liệu
+                                </a>
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+
+                    {!!selectedTransfer.documents?.length && (
+                      <div className="rounded-2xl border border-border bg-muted/10 p-4">
+                        <p className="text-sm font-medium text-foreground">
+                          Danh sách tài liệu hệ thống
+                        </p>
+                        <div className="mt-3 space-y-3">
+                          {selectedTransfer.documents.map((document) => (
+                            <div
+                              key={document.supplyTransferDocumentId}
+                              className="rounded-xl border border-border bg-background/80 p-3"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant="outline" appearance="outline">
+                                  {document.documentType === 1
+                                    ? 'PDF yêu cầu'
+                                    : document.documentType === 2
+                                      ? 'PDF xác nhận'
+                                      : `Loại tài liệu ${document.documentType}`}
+                                </Badge>
+                                <Badge
+                                  variant={document.isCurrent ? 'success' : 'outline'}
+                                  size="sm"
+                                >
+                                  {document.isCurrent ? 'Bản hiện hành' : `v${document.version}`}
+                                </Badge>
+                              </div>
+                              <p className="mt-2 text-sm font-medium text-foreground break-all">
+                                {document.fileName || document.fileUrl}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Tạo lúc:{' '}
+                                {document.createdAt
+                                  ? new Date(document.createdAt).toLocaleString('vi-VN')
+                                  : 'Chưa có dữ liệu'}
+                              </p>
+                              {document.notes && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {document.notes}
+                                </p>
+                              )}
+                              <div className="mt-2">
+                                <Button variant="outline" size="sm" asChild>
+                                  <a href={document.fileUrl} target="_blank" rel="noreferrer">
+                                    Mở file
+                                  </a>
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                  <div className="mb-4">
+                    <p className="text-base font-semibold text-foreground">Danh sách vật phẩm</p>
+                    <p className="text-sm text-muted-foreground">
+                      Mỗi dòng hiển thị rõ vật phẩm, danh mục, số lượng yêu cầu và số lượng thực tế
+                      nếu đã có.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
                     {(selectedTransfer.items || []).length === 0 ? (
-                      <p>Phiếu này chưa có dữ liệu vật phẩm chi tiết.</p>
+                      <div className="rounded-2xl border border-dashed border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+                        Phiếu này chưa có dữ liệu vật phẩm chi tiết.
+                      </div>
                     ) : (
                       selectedTransfer.items.map((item, index) => {
                         const matchedSupply = supplyMap.get(item.supplyItemId);
                         return (
                           <div
                             key={`${selectedTransfer.id}-${item.supplyItemId}-${index}`}
-                            className="rounded-xl border border-border bg-background p-4 shadow-sm"
+                            className="rounded-2xl border border-border bg-muted/10 p-4"
                           >
-                            <div className="flex items-start gap-3">
-                              <div className="size-11 rounded-xl border border-border bg-muted/40 flex items-center justify-center shrink-0">
-                                <span className="material-symbols-outlined text-primary">
+                            <div className="flex min-w-0 items-start gap-3">
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-border bg-background text-primary">
+                                <span className="material-symbols-outlined text-[20px]">
                                   {matchedSupply
                                     ? getSupplyCategoryIcon(matchedSupply.category)
                                     : 'inventory_2'}
@@ -3156,7 +5014,7 @@ export default function CoordinatorInventoryPage() {
                               </div>
                               <div className="min-w-0 flex-1 space-y-2">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <p className="font-semibold text-foreground text-base">
+                                  <p className="text-base font-semibold text-foreground break-words">
                                     {item.supplyItemName ||
                                       matchedSupply?.name ||
                                       item.supplyItemId}
@@ -3175,25 +5033,29 @@ export default function CoordinatorInventoryPage() {
                                     </Badge>
                                   )}
                                 </div>
-                                <p className="text-xs text-muted-foreground">
-                                  Mã vật phẩm: {item.supplyItemId.slice(0, 8)}...
-                                </p>
-                                <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-1">
-                                  <p className="text-sm font-semibold text-foreground">
-                                    SL yêu cầu:{' '}
-                                    {formatNumberVN(item.requestedQuantity ?? item.quantity ?? 0)}
-                                    {matchedSupply?.unit ? ` ${matchedSupply.unit}` : ''}
-                                  </p>
-                                  {typeof item.actualQuantity === 'number' && (
-                                    <p className="text-xs text-muted-foreground">
-                                      SL thực tế: {formatNumberVN(item.actualQuantity)}
+                                <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                                  <span>
+                                    Yêu cầu:{' '}
+                                    <span className="font-semibold text-foreground">
+                                      {formatNumberVN(item.requestedQuantity ?? item.quantity ?? 0)}
                                       {matchedSupply?.unit ? ` ${matchedSupply.unit}` : ''}
-                                    </p>
+                                    </span>
+                                  </span>
+                                  {typeof item.actualQuantity === 'number' && (
+                                    <span>
+                                      Thực tế:{' '}
+                                      <span className="font-semibold text-foreground">
+                                        {formatNumberVN(item.actualQuantity)}
+                                        {matchedSupply?.unit ? ` ${matchedSupply.unit}` : ''}
+                                      </span>
+                                    </span>
                                   )}
+                                  <span className="break-all">Mã: {item.supplyItemId}</span>
                                 </div>
                                 {item.notes && (
-                                  <p className="text-xs text-muted-foreground">
-                                    Ghi chú: {item.notes}
+                                  <p className="text-sm leading-6 text-muted-foreground">
+                                    <span className="font-medium text-foreground">Ghi chú:</span>{' '}
+                                    {item.notes}
                                   </p>
                                 )}
                               </div>
@@ -3203,53 +5065,86 @@ export default function CoordinatorInventoryPage() {
                       })
                     )}
                   </div>
-                </div>
-              </div>
+                </section>
 
-              <div className="space-y-5 min-w-0">
-                <Card className="shadow-sm">
-                  <CardContent className="p-5 space-y-4">
-                    <div>
-                      <p className="text-base font-semibold text-foreground">
-                        PDF / evidence đã lưu
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Xem nhanh file PDF liên quan tới phiếu ngay trong màn hình chi tiết.
-                      </p>
+                <section className="rounded-3xl border border-border bg-card p-5 shadow-sm">
+                  <div className="mb-4">
+                    <p className="text-base font-semibold text-foreground">PDF / evidence đã lưu</p>
+                    <p className="text-sm text-muted-foreground">
+                      Khu vực xem file được đặt bên dưới để tránh chật ngang và hạn chế tràn khung
+                      preview.
+                    </p>
+                  </div>
+
+                  {selectedTransferPreviewFiles.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-border bg-muted/10 p-4 text-sm text-muted-foreground">
+                      Chưa có đường dẫn minh chứng nào.
                     </div>
-                    {(selectedTransfer.evidenceUrls || []).length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-border bg-muted/10 p-4 text-sm text-muted-foreground">
-                        Chưa có evidence URL nào.
-                      </div>
-                    ) : (
-                      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-                        {(selectedTransfer.evidenceUrls || []).map((url, index) => (
-                          <div
-                            key={`${url}-${index}`}
-                            className="rounded-xl border border-border bg-card p-4 space-y-3"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="font-medium text-foreground">PDF #{index + 1}</p>
-                                <p className="text-xs text-muted-foreground break-all">{url}</p>
-                              </div>
-                              <Button variant="outline" size="sm" asChild>
-                                <a href={url} target="_blank" rel="noreferrer">
-                                  Mở file
-                                </a>
-                              </Button>
+                  ) : (
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      {selectedTransferPreviewFiles.map((file) => (
+                        <div
+                          key={file.id}
+                          className="overflow-hidden rounded-2xl border border-border bg-muted/10"
+                        >
+                          {file.isImage ? (
+                            <div className="aspect-[4/3] w-full overflow-hidden bg-background/60">
+                              <img
+                                src={file.url}
+                                alt={`Tệp minh chứng ${file.index + 1}`}
+                                className="h-full w-full object-cover"
+                              />
                             </div>
-                            <iframe
-                              title={`transfer-detail-pdf-${index}`}
-                              src={url}
-                              className="h-[420px] w-full rounded-xl border border-border bg-background"
-                            />
+                          ) : file.isPdf ? (
+                            <div className="h-[420px] w-full overflow-hidden bg-background/60">
+                              <iframe
+                                src={file.url}
+                                title={`PDF minh chứng ${file.index + 1}`}
+                                className="h-full w-full border-0"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-3 border-b border-border px-4 py-4">
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                                <span className="material-symbols-outlined text-[20px]">
+                                  description
+                                </span>
+                              </div>
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <p className="text-sm font-medium text-foreground break-words">
+                                  Tệp #{file.index + 1}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Không hỗ trợ xem trước trực tiếp.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium text-foreground">
+                                {file.isImage
+                                  ? `Ảnh #${file.index + 1}`
+                                  : file.isPdf
+                                    ? `PDF #${file.index + 1}`
+                                    : `Tệp #${file.index + 1}`}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground leading-5">
+                                {file.shortLabel}
+                              </p>
+                            </div>
+                            <Button variant="outline" size="sm" asChild className="shrink-0">
+                              <a href={file.url} target="_blank" rel="noreferrer">
+                                Mở file
+                              </a>
+                            </Button>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
               </div>
             </div>
           ) : (
@@ -3291,7 +5186,7 @@ export default function CoordinatorInventoryPage() {
 
           <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Ngưỡng tối thiểu (Min)</label>
+              <label className="text-sm font-medium text-foreground">Ngưỡng tối thiểu</label>
               <Input
                 value={formatNumberInputVN(editStockDialog.minValue)}
                 className={editStockErrors['minValue'] ? 'border-red-500 focus:ring-red-500' : ''}
@@ -3315,7 +5210,7 @@ export default function CoordinatorInventoryPage() {
               )}
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Ngưỡng tối đa (Max)</label>
+              <label className="text-sm font-medium text-foreground">Ngưỡng tối đa</label>
               <Input
                 value={formatNumberInputVN(editStockDialog.maxValue)}
                 className={editStockErrors['maxValue'] ? 'border-red-500 focus:ring-red-500' : ''}

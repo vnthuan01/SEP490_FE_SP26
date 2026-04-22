@@ -2,10 +2,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { campaignService } from '@/services/campaignService';
 import type {
   Campaign,
+  CampaignBudgetTransferResponse,
   CampaignSummary,
   CampaignTeam,
+  CampaignInventoryBalance,
   PublicCampaignSummary,
   CreateCampaignPayload,
+  ExtractCampaignBudgetRequest,
   UpdateCampaignPayload,
   SearchCampaignParams,
   AssignStationPayload,
@@ -14,12 +17,14 @@ import type {
 } from '@/services/campaignService';
 import { toast } from 'sonner';
 import { handleHookError } from './hookErrorUtils';
+import { parseApiError } from '@/lib/apiErrors';
 
 export const CAMPAIGN_QUERY_KEYS = {
   all: ['campaigns'] as const,
   list: (params?: SearchCampaignParams) => ['campaigns', 'list', params] as const,
   detail: (id: string) => ['campaigns', 'detail', id] as const,
   summary: (id: string) => ['campaigns', 'summary', id] as const,
+  inventoryBalance: (id: string) => ['campaigns', 'inventory-balance', id] as const,
   teams: (id: string) => ['campaigns', 'teams', id] as const,
 };
 
@@ -82,6 +87,28 @@ export function useCampaignSummary(id: string) {
   return {
     ...query,
     summary: query.data,
+  };
+}
+
+export function useCampaignInventoryBalance(id: string) {
+  const query = useQuery({
+    queryKey: CAMPAIGN_QUERY_KEYS.inventoryBalance(id),
+    queryFn: async () => {
+      const response = await campaignService.getInventoryBalance(id);
+      return response.data as CampaignInventoryBalance;
+    },
+    enabled: !!id,
+    retry: false,
+  });
+
+  const parsedError = query.error
+    ? parseApiError(query.error, 'Không thể tải dữ liệu cân đối tồn kho của chiến dịch.')
+    : null;
+
+  return {
+    ...query,
+    inventoryBalance: query.data,
+    inventoryBalanceError: parsedError,
   };
 }
 
@@ -233,6 +260,35 @@ export function useRemoveTeamFromCampaign() {
     },
     onError: (error: any) => {
       handleHookError(error, 'Không thể gỡ đội khỏi chiến dịch');
+    },
+  });
+}
+
+export function useExtractCampaignBudget() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: ExtractCampaignBudgetRequest }) =>
+      campaignService.extractBudget(id, data),
+    onSuccess: async (response, variables) => {
+      const result = response.data as CampaignBudgetTransferResponse;
+      toast.success('Đã trích ngân sách sang chiến dịch cứu trợ');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.all }),
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) }),
+        queryClient.invalidateQueries({
+          queryKey: CAMPAIGN_QUERY_KEYS.inventoryBalance(variables.id),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: CAMPAIGN_QUERY_KEYS.detail(result.targetCampaignId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: CAMPAIGN_QUERY_KEYS.inventoryBalance(result.targetCampaignId),
+        }),
+      ]);
+    },
+    onError: (error: any) => {
+      handleHookError(error, 'Không thể trích ngân sách chiến dịch');
     },
   });
 }

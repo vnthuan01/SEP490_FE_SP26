@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import Loading from '@/components/ui/loading';
+import { parseApiError } from '@/lib/apiErrors';
 
 export default function SettingsPage() {
   const navigate = useNavigate();
@@ -71,13 +72,7 @@ export default function SettingsPage() {
       await updateProfile(formData);
       toast.success('Cập nhật hồ sơ thành công!');
     } catch (err: any) {
-      const errors = err?.response?.data?.errors;
-      if (errors) {
-        const messages = Object.values(errors).flat().join(', ');
-        toast.error(messages || 'Cập nhật thất bại');
-      } else {
-        toast.error('Cập nhật hồ sơ thất bại. Vui lòng thử lại.');
-      }
+      toast.error(parseApiError(err, 'Cập nhật hồ sơ thất bại. Vui lòng thử lại.').message);
     }
   };
 

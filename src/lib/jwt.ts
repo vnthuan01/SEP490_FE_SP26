@@ -27,15 +27,27 @@ export function getUserRoleFromToken(token: string): string | null {
   const decoded = decodeJwt(token);
   if (!decoded) return null;
 
-  const role =
-    decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ||
-    decoded['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role'] ||
-    decoded.role ||
-    (Array.isArray(decoded.roles) ? decoded.roles[0] : decoded.roles) ||
-    null;
+  const candidates = [
+    decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'],
+    decoded['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role'],
+    decoded.role,
+    decoded.roles,
+  ];
 
-  if (typeof role !== 'string') return null;
-  return role.trim();
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+
+    if (Array.isArray(candidate)) {
+      const firstString = candidate.find((item) => typeof item === 'string' && item.trim());
+      if (typeof firstString === 'string') {
+        return firstString.trim();
+      }
+    }
+  }
+
+  return null;
 }
 
 export function getUserIdFromToken(token: string): string | null {

@@ -10,6 +10,7 @@ import type { UserRoleType } from '@/enums/UserRole';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { resolveLoginErrorMessage } from '@/lib/backendErrors/authErrorResolver';
 import {
   Form,
   FormField,
@@ -95,16 +96,7 @@ function LoginPage() {
       window.location.replace(targetRoute);
       return;
     } catch (err: any) {
-      const status = err?.response?.status;
-      const code = err?.response?.data?.code;
-
-      if (status === 401 || code === 'AUTH_INVALID_CREDENTIALS') {
-        setRootError('Sai tên đăng nhập hoặc mật khẩu. Vui lòng thử lại sau.');
-      } else if (status === 400) {
-        setRootError('Tài khoản đã bị khóa.');
-      } else {
-        setRootError('Đăng nhập thất bại. Vui lòng thử lại.');
-      }
+      setRootError(resolveLoginErrorMessage(err));
 
       if (authDebug) {
         console.log('[AUTH_DEBUG][LoginPage] login error', {

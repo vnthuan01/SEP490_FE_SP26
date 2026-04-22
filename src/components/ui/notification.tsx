@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Evidence, RequestNotification, RequestType } from '@/types/notifications';
+import type { Evidence, RequestNotification } from '@/types/notifications';
 import { NotificationTypeLabel } from '@/enums/beEnums';
 import { cn } from '@/lib/utils';
 
@@ -8,18 +8,6 @@ interface Props {
   onClickItem?: (item: RequestNotification) => void;
   onMarkAllRead?: () => void;
 }
-
-const TYPE_COLOR: Record<RequestType, string> = {
-  CUU_TRO: 'text-red-500',
-  LUONG_THUC: 'text-emerald-500',
-  KHAC: 'text-primary',
-};
-
-const TYPE_LABEL: Record<RequestType, string> = {
-  CUU_TRO: 'Cứu trợ',
-  LUONG_THUC: 'Lương thực',
-  KHAC: 'Khác',
-};
 
 const getNotificationTypeLabel = (value?: number | string) => {
   const labelMap = NotificationTypeLabel as unknown as Record<string, string>;
@@ -44,8 +32,8 @@ const getNotificationDisplayCopy = (item: RequestNotification) => {
   const genericMessage = 'Bạn vừa có một yêu cầu cứu hộ mới cần xử lý.';
 
   return {
-    title: item.referenceId ? genericTitle : item.title || item.requesterName || genericTitle,
-    message: item.referenceId ? genericMessage : item.message || item.description || genericMessage,
+    title: item.title || item.requesterName || genericTitle,
+    message: item.message || item.description || genericMessage,
     typeLabel,
   };
 };
@@ -128,19 +116,6 @@ const NotificationItem: React.FC<ItemProps> = ({ item, onClick }) => {
       <div className="min-w-0 flex-1 text-sm">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <p className="truncate font-semibold text-foreground">{title}</p>
-          {item.requestType ? (
-            <span
-              className={cn(
-                'inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset',
-                TYPE_COLOR[item.requestType],
-                item.requestType === 'CUU_TRO' && 'bg-red-500/10 ring-red-500/20',
-                item.requestType === 'LUONG_THUC' && 'bg-emerald-500/10 ring-emerald-500/20',
-                item.requestType === 'KHAC' && 'bg-primary/10 ring-primary/20',
-              )}
-            >
-              {TYPE_LABEL[item.requestType]}
-            </span>
-          ) : null}
         </div>
 
         <p className="mt-1 line-clamp-2 break-words text-muted-foreground">{message}</p>

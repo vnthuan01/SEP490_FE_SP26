@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { resolveChangePasswordErrorMessage } from '@/lib/backendErrors/authErrorResolver';
 
 type ChangePasswordFormValues = {
   currentPassword: string;
@@ -78,11 +79,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
       toast.success('Đổi mật khẩu thành công!');
       handleClose();
     } catch (err: any) {
-      if (err?.response?.status === 400) {
-        toast.error('Mật khẩu hiện tại không đúng');
-      } else {
-        toast.error('Đổi mật khẩu thất bại. Vui lòng thử lại.');
-      }
+      toast.error(resolveChangePasswordErrorMessage(err));
     }
   };
 

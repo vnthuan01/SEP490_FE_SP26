@@ -137,11 +137,14 @@ function mapStocks(raw: RawStock[] | PaginatedResponse<RawStock>): PaginatedResp
 // --- Transaction Interfaces ---
 
 export interface TransactionItem {
+  transactionItemId?: string;
   supplyItemId: string;
   supplyItemName: string;
   supplyItemUnit: string;
   quantity: number;
   notes: string;
+  unitCost?: number;
+  expiryDate?: string | null;
 }
 
 export interface CreateTransactionPayload {
@@ -149,6 +152,8 @@ export interface CreateTransactionPayload {
   type: number;
   reason: number;
   notes: string;
+  importBatchCode?: string;
+  sourceReference?: string;
   items: TransactionItem[];
   /** Optional link to a supply transfer (used for SupplyTransferOut/In transactions) */
   supplyTransferId?: string;
@@ -157,6 +162,7 @@ export interface CreateTransactionPayload {
 export interface InventoryTransaction {
   transactionId: string;
   inventoryId: string;
+  reliefStationName?: string;
   transactionCode?: string;
   type: number;
   typeName?: string;
@@ -165,7 +171,10 @@ export interface InventoryTransaction {
   totalItems?: number;
   notes: string;
   createdAt: string;
+  createdBy?: string;
   createdByName?: string;
+  importBatchCode?: string;
+  sourceReference?: string;
   items: TransactionItem[];
 }
 
@@ -177,6 +186,80 @@ export interface SearchTransactionParams {
 export interface SearchTransactionByTypeParams extends SearchTransactionParams {
   type?: number;
   inventoryId?: string;
+}
+
+type RawTransactionItem = {
+  transactionItemId?: string;
+  supplyItemId?: string;
+  supplyItemName?: string;
+  supplyItemUnit?: string;
+  quantity?: number;
+  notes?: string;
+  unitCost?: number;
+  expiryDate?: string | null;
+};
+
+type RawInventoryTransaction = {
+  transactionId?: string;
+  inventoryId?: string;
+  reliefStationName?: string;
+  transactionCode?: string;
+  type?: number;
+  typeName?: string;
+  reason?: number;
+  reasonName?: string;
+  totalItems?: number;
+  notes?: string;
+  createdAt?: string;
+  createdBy?: string;
+  createdByName?: string;
+  importBatchCode?: string;
+  sourceReference?: string;
+  items?: RawTransactionItem[];
+};
+
+function mapTransactionItem(raw: RawTransactionItem): TransactionItem {
+  return {
+    transactionItemId: raw.transactionItemId,
+    supplyItemId: raw.supplyItemId || '',
+    supplyItemName: raw.supplyItemName || '',
+    supplyItemUnit: raw.supplyItemUnit || '',
+    quantity: Number(raw.quantity || 0),
+    notes: raw.notes || '',
+    unitCost: raw.unitCost != null ? Number(raw.unitCost) : undefined,
+    expiryDate: raw.expiryDate ?? null,
+  };
+}
+
+function mapTransaction(raw: RawInventoryTransaction): InventoryTransaction {
+  return {
+    transactionId: raw.transactionId || '',
+    inventoryId: raw.inventoryId || '',
+    reliefStationName: raw.reliefStationName,
+    transactionCode: raw.transactionCode,
+    type: Number(raw.type || 0),
+    typeName: raw.typeName,
+    reason: Number(raw.reason || 0),
+    reasonName: raw.reasonName,
+    totalItems: raw.totalItems,
+    notes: raw.notes || '',
+    createdAt: raw.createdAt || '',
+    createdBy: raw.createdBy,
+    createdByName: raw.createdByName,
+    importBatchCode: raw.importBatchCode,
+    sourceReference: raw.sourceReference,
+    items: (raw.items || []).map(mapTransactionItem),
+  };
+}
+
+function mapTransactions(
+  raw: PaginatedResponse<RawInventoryTransaction> | RawInventoryTransaction[],
+): PaginatedResponse<InventoryTransaction> | InventoryTransaction[] {
+  if (Array.isArray(raw)) return raw.map(mapTransaction);
+  return {
+    ...raw,
+    items: (raw.items || []).map(mapTransaction),
+  };
 }
 
 // --- Services ---
@@ -214,18 +297,42 @@ export const inventoryService = {
 
 export const inventoryTransactionService = {
   create: (data: CreateTransactionPayload) =>
-    apiClient.post<InventoryTransaction>('/InventoryTransaction', data),
+    apiClient
+      .post<RawInventoryTransaction>('/InventoryTransaction', data)
+      .then((response) => ({ ...response, data: mapTransaction(response.data) })),
 
-  getById: (id: string) => apiClient.get<InventoryTransaction>(`/InventoryTransaction/${id}`),
+  getById: (id: string) =>
+    apiClient
+      .get<RawInventoryTransaction>(`/InventoryTransaction/${id}`)
+      .then((response) => ({ ...response, data: mapTransaction(response.data) })),
 
   getByInventory: (inventoryId: string, params?: SearchTransactionParams) =>
-    apiClient.get<PaginatedResponse<InventoryTransaction>>(
-      `/InventoryTransaction/by-inventory/${inventoryId}`,
-      { params },
-    ),
+    apiClient
+      .get<
+        PaginatedResponse<RawInventoryTransaction>
+      >(`/InventoryTransaction/by-inventory/${inventoryId}`, { params })
+      .then((response) => ({
+        ...response,
+        data: mapTransactions(response.data) as PaginatedResponse<InventoryTransaction>,
+      })),
 
   getByType: (params?: SearchTransactionByTypeParams) =>
-    apiClient.get<PaginatedResponse<InventoryTransaction>>('/InventoryTransaction/by-type', {
-      params,
-    }),
+    apiClient
+      .get<PaginatedResponse<RawInventoryTransaction>>('/InventoryTransaction/by-type', {
+        params,
+      })
+      .then((response) => ({
+        ...response,
+        data: mapTransactions(response.data) as PaginatedResponse<InventoryTransaction>,
+      })),
+
+  getImportHistoryBySupplyItem: (inventoryId: string, supplyItemId: string) =>
+    apiClient
+      .get<
+        RawInventoryTransaction[]
+      >(`/InventoryTransaction/by-inventory/${inventoryId}/supply-item/${supplyItemId}/imports`)
+      .then((response) => ({
+        ...response,
+        data: mapTransactions(response.data) as InventoryTransaction[],
+      })),
 };

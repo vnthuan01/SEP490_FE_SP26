@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -19,10 +19,18 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 // ── API hooks ──
 import { useRescueRequests } from '@/hooks/useRescueRequests';
-import { useTeamLatestTracking, useTeamsInStation, useTeamsActiveBatches } from '@/hooks/useTeams';
+import {
+  useTeamLatestTracking,
+  useTeamsInStation,
+  useTeamsActiveBatches,
+  TEAM_QUERY_KEYS,
+} from '@/hooks/useTeams';
 import { useMyReliefStation } from '@/hooks/useReliefStation';
 import { rescueRequestService } from '@/services/rescueRequestService';
 import type { RescueRequestItem } from '@/services/rescueRequestService';
+import { parseApiError } from '@/lib/apiErrors';
+import { vehicleService, type Vehicle } from '@/services/vehicleService';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   RescueRequestType,
   rescueStatusToLocationStatus,
@@ -130,6 +138,7 @@ function toTeam(apiTeam: any): Team {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function CoordinatorTeamAllocationPage() {
+  const queryClient = useQueryClient();
   // ── API data ──
   const { station } = useMyReliefStation();
   const hasAssignedStation = !!station?.reliefStationId;
@@ -144,11 +153,24 @@ export default function CoordinatorTeamAllocationPage() {
     scope: 'my-station',
     enabled: hasAssignedStation,
   });
-  const { teams: apiTeams } = useTeamsInStation(station?.reliefStationId);
+  const { teams: stationTeams } = useTeamsInStation(station?.reliefStationId);
+
+  const apiTeams = useMemo(
+    () =>
+      (stationTeams || []).filter((team: any) => {
+        const type = Number(team.teamType ?? -1);
+        const typeName = String(team.teamTypeName ?? '')
+          .trim()
+          .toLowerCase();
+        return type === 2 || typeName.includes('cứu hộ') || typeName.includes('rescue');
+      }),
+    [stationTeams],
+  );
+
   const firstTeamId = apiTeams?.[0]?.teamId;
   const { trackingPoints } = useTeamLatestTracking(String(firstTeamId || ''), 100);
   const allTeamIds = useMemo(() => (apiTeams || []).map((t: any) => String(t.teamId)), [apiTeams]);
-  const { busyTeamIds } = useTeamsActiveBatches(allTeamIds);
+  const { busyTeamIds, dispatchedVehicleByTeamId } = useTeamsActiveBatches(allTeamIds);
 
   // ── build headquarters from station ──
   const headquarters: Headquarters = useMemo(
@@ -217,6 +239,8 @@ export default function CoordinatorTeamAllocationPage() {
   const [selectedLocationId, setSelectedLocationId] = useState<string>();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [availableVehicles, setAvailableVehicles] = useState<Vehicle[]>([]);
+  const [isLoadingVehicles, setIsLoadingVehicles] = useState(false);
 
   // ── filtered locations ──
   const filteredLocations = useMemo(() => {
@@ -256,10 +280,31 @@ export default function CoordinatorTeamAllocationPage() {
           disabledReason,
         };
       }),
-    [teamsWithTracking, busyTeamIds],
+    [teamsWithTracking, busyTeamIds, dispatchedVehicleByTeamId],
   );
 
   const availableTeams = useMemo(() => teamOptions.filter((t) => !t.disabledReason), [teamOptions]);
+
+  const loadAvailableVehicles = useCallback(async () => {
+    if (!hasAssignedStation) {
+      setAvailableVehicles([]);
+      return;
+    }
+
+    try {
+      setIsLoadingVehicles(true);
+      const items = await vehicleService.getAvailableForDispatch();
+      setAvailableVehicles(items);
+    } catch {
+      setAvailableVehicles([]);
+    } finally {
+      setIsLoadingVehicles(false);
+    }
+  }, [hasAssignedStation]);
+
+  useEffect(() => {
+    void loadAvailableVehicles();
+  }, [loadAvailableVehicles]);
 
   // ── stats ──
   const stats = useMemo(
@@ -274,20 +319,59 @@ export default function CoordinatorTeamAllocationPage() {
 
   // ── assign team → real API call ──
   const handleAssignTeam = useCallback(
-    async (locationId: string, teamId: string) => {
+    async (locationId: string, teamId: string, vehicleId?: string | null, note?: string) => {
       const location = reliefLocations.find((l) => l.id === locationId);
       const team = teams.find((t) => t.id === teamId);
       if (!location || !team) return;
 
       try {
-        await rescueRequestService.assignTeam(locationId, { teamId });
+        let effectiveVehicleId = String(vehicleId || '').trim() || null;
+
+        // Reuse vehicle already dispatched in active batch for this team.
+        if (!effectiveVehicleId) {
+          const activeBatchVehicleId = String(
+            dispatchedVehicleByTeamId[teamId]?.vehicleId || '',
+          ).trim();
+          if (activeBatchVehicleId) {
+            effectiveVehicleId = activeBatchVehicleId;
+          }
+        }
+
+        // Fallback: fetch latest active batch to avoid stale local state.
+        if (!effectiveVehicleId) {
+          const latestBatch = await rescueRequestService.getActiveBatch(teamId);
+          const latestBatchVehicle = (latestBatch.items || []).find((item: any) =>
+            String(item?.vehicleId || '').trim(),
+          ) as any;
+          const latestBatchVehicleId = String(latestBatchVehicle?.vehicleId || '').trim();
+          if (latestBatchVehicleId) {
+            effectiveVehicleId = latestBatchVehicleId;
+          }
+        }
+
+        await rescueRequestService.assignTeam(locationId, {
+          teamId,
+          vehicleId: effectiveVehicleId,
+          note,
+        });
         toast.success(`Đã phân công ${team.name} đến ${location.locationName}`);
-        await refetch();
+
+        // Refresh data to update availability
+        await Promise.all([
+          refetch(),
+          loadAvailableVehicles(),
+          queryClient.invalidateQueries({ queryKey: ['teams', teamId, 'active-batch'] }),
+          queryClient.invalidateQueries({
+            queryKey: station?.reliefStationId
+              ? TEAM_QUERY_KEYS.inStation(station.reliefStationId)
+              : [],
+          }),
+        ]);
       } catch (e: any) {
-        toast.error(e?.response?.data?.message || 'Không thể phân công đội cứu trợ.');
+        toast.error(parseApiError(e, 'Không thể phân công đội cứu trợ.').message);
       }
     },
-    [reliefLocations, teams, refetch],
+    [reliefLocations, teams, dispatchedVehicleByTeamId, refetch],
   );
 
   // ── location click ──
@@ -362,6 +446,9 @@ export default function CoordinatorTeamAllocationPage() {
             onClose={() => setSelectedLocationId(undefined)}
             availableTeams={availableTeams}
             allTeams={teamOptions}
+            availableVehicles={availableVehicles}
+            isLoadingVehicles={isLoadingVehicles}
+            teamDispatchedVehicleByTeamId={dispatchedVehicleByTeamId}
             onAssignTeam={handleAssignTeam}
           />
 
@@ -526,6 +613,9 @@ export default function CoordinatorTeamAllocationPage() {
         onClose={() => setSelectedLocationId(undefined)}
         availableTeams={availableTeams}
         allTeams={teamOptions}
+        availableVehicles={availableVehicles}
+        isLoadingVehicles={isLoadingVehicles}
+        teamDispatchedVehicleByTeamId={dispatchedVehicleByTeamId}
         onAssignTeam={handleAssignTeam}
       />
     </DashboardLayout>

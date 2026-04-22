@@ -149,48 +149,55 @@ function Tabs({ className, ...props }: React.ComponentProps<typeof TabsPrimitive
   return <TabsPrimitive.Root data-slot="tabs" className={cn('', className)} {...props} />;
 }
 
-function TabsList({
-  className,
-  variant = 'default',
-  shape = 'default',
-  size = 'md',
-  ...props
-}: React.ComponentProps<typeof TabsPrimitive.List> & VariantProps<typeof tabsListVariants>) {
+const TabsList = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.List>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> & VariantProps<typeof tabsListVariants>
+>(({ className, variant = 'default', shape = 'default', size = 'md', ...props }, ref) => {
   return (
     <TabsContext.Provider value={{ variant: variant || 'default', size: size || 'md' }}>
       <TabsPrimitive.List
+        ref={ref}
         data-slot="tabs-list"
         className={cn(tabsListVariants({ variant, shape, size }), className)}
         {...props}
       />
     </TabsContext.Provider>
   );
-}
+});
 
-function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+const TabsTrigger = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
+>(({ className, ...props }, ref) => {
   const { variant, size } = React.useContext(TabsContext);
 
   return (
     <TabsPrimitive.Trigger
+      ref={ref}
       data-slot="tabs-trigger"
       className={cn(tabsTriggerVariants({ variant, size }), className)}
       {...props}
     />
   );
-}
+});
 
-function TabsContent({
-  className,
-  variant,
-  ...props
-}: React.ComponentProps<typeof TabsPrimitive.Content> & VariantProps<typeof tabsContentVariants>) {
+const TabsContent = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content> &
+    VariantProps<typeof tabsContentVariants>
+>(({ className, variant, ...props }, ref) => {
   return (
     <TabsPrimitive.Content
+      ref={ref}
       data-slot="tabs-content"
       className={cn(tabsContentVariants({ variant }), className)}
       {...props}
     />
   );
-}
+});
+
+TabsList.displayName = TabsPrimitive.List.displayName;
+TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
+TabsContent.displayName = TabsPrimitive.Content.displayName;
 
 export { Tabs, TabsContent, TabsList, TabsTrigger };

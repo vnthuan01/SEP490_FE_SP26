@@ -2,6 +2,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetBody } from '@/compo
 // import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -11,7 +12,14 @@ import {
 } from '@/components/ui/select';
 import type { ReliefLocation, Team } from './types';
 import { getUrgencyColor, getStatusColor, formatDistance, formatDuration } from './utils';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { Vehicle } from '@/services/vehicleService';
+
+type TeamDispatchedVehicleInfo = {
+  vehicleId: string;
+  vehicleName?: string | null;
+  vehicleLicensePlate?: string | null;
+};
 
 interface LocationDetailSheetProps {
   location: ReliefLocation | null;
@@ -19,8 +27,11 @@ interface LocationDetailSheetProps {
   onClose: () => void;
   availableTeams: Team[];
   allTeams?: Team[];
+  availableVehicles?: Vehicle[];
+  isLoadingVehicles?: boolean;
   assignedTeam?: Team;
-  onAssignTeam: (_locationId: string, _teamId: string) => void;
+  teamDispatchedVehicleByTeamId?: Record<string, TeamDispatchedVehicleInfo>;
+  onAssignTeam: (...args: [string, string, (string | null)?, string?]) => void;
 }
 
 const getPriorityColor = (value: number) => {
@@ -68,17 +79,60 @@ export function LocationDetailSheet({
   onClose,
   availableTeams,
   allTeams,
+  availableVehicles = [],
+  isLoadingVehicles = false,
   assignedTeam,
+  teamDispatchedVehicleByTeamId = {},
   onAssignTeam,
 }: LocationDetailSheetProps) {
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('none');
+  const [assignNote, setAssignNote] = useState<string>('');
+
+  const selectedTeam = useMemo(
+    () => (allTeams || availableTeams).find((team) => team.id === selectedTeamId) || null,
+    [allTeams, availableTeams, selectedTeamId],
+  );
+
+  const lockedVehicle = useMemo(() => {
+    if (!selectedTeamId) return null;
+    const activeBatchVehicle = teamDispatchedVehicleByTeamId[selectedTeamId];
+    if (activeBatchVehicle?.vehicleId) {
+      return (
+        availableVehicles.find((vehicle) => vehicle.vehicleId === activeBatchVehicle.vehicleId) ||
+        ({
+          vehicleId: activeBatchVehicle.vehicleId,
+          vehicleTypeName: activeBatchVehicle.vehicleName || 'Vehicle',
+          licensePlate: activeBatchVehicle.vehicleLicensePlate || '--',
+          currentUsingTeamId: selectedTeamId,
+          currentUsingTeamName: selectedTeamId,
+          status: 0,
+        } as Vehicle)
+      );
+    }
+    return (
+      availableVehicles.find((vehicle) => vehicle.currentUsingTeamId === selectedTeamId) || null
+    );
+  }, [availableVehicles, selectedTeamId, teamDispatchedVehicleByTeamId]);
+
+  const effectiveSelectedVehicleId = lockedVehicle?.vehicleId || selectedVehicleId;
+
+  const handleTeamChange = (teamId: string) => {
+    setSelectedTeamId(teamId);
+    setSelectedVehicleId('none');
+  };
 
   if (!location) return null;
 
   const handleAssign = () => {
     if (selectedTeamId) {
-      onAssignTeam(location.id, selectedTeamId);
+      const effectiveVehicleId =
+        lockedVehicle?.vehicleId || (selectedVehicleId === 'none' ? null : selectedVehicleId);
+
+      onAssignTeam(location.id, selectedTeamId, effectiveVehicleId, assignNote.trim() || undefined);
       setSelectedTeamId('');
+      setSelectedVehicleId('none');
+      setAssignNote('');
       onClose();
     }
   };
@@ -393,7 +447,17 @@ export function LocationDetailSheet({
                   <div className="bg-card text-card-foreground p-4 rounded-xl border border-border border-l-4 border-l-primary shadow-sm flex flex-col gap-3">
                     <div className="font-semibold text-[15px]">Phân công đội cứu trợ</div>
                     <div className="flex flex-col gap-3">
-                      <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
+                      {lockedVehicle ? (
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                          Team đã được điều phối xe:{' '}
+                          <span className="font-semibold">
+                            {lockedVehicle.licensePlate || '--'}
+                          </span>
+                          {selectedTeam?.name ? ` (${selectedTeam.name})` : ''}
+                        </p>
+                      ) : null}
+
+                      <Select value={selectedTeamId} onValueChange={handleTeamChange}>
                         <SelectTrigger className="w-full bg-background relative h-10">
                           <SelectValue placeholder="-- Chọn đội cứu trợ --" />
                         </SelectTrigger>
@@ -426,6 +490,54 @@ export function LocationDetailSheet({
                           ))}
                         </SelectContent>
                       </Select>
+
+                      <Select
+                        value={effectiveSelectedVehicleId}
+                        onValueChange={setSelectedVehicleId}
+                        disabled={Boolean(lockedVehicle)}
+                      >
+                        <SelectTrigger className="w-full bg-background relative h-10">
+                          <SelectValue placeholder="Chọn xe (optional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {!lockedVehicle ? (
+                            <SelectItem value="none">Không dùng xe</SelectItem>
+                          ) : null}
+                          {(lockedVehicle ? [lockedVehicle] : availableVehicles).map((vehicle) => (
+                            <SelectItem key={vehicle.vehicleId} value={vehicle.vehicleId}>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-medium truncate">
+                                  {`${vehicle.vehicleTypeName || 'Vehicle'} - ${vehicle.licensePlate}`}
+                                </div>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {lockedVehicle ? (
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                          Đội này đã được điều phối xe từ active batch, nên hệ thống tự giữ xe hiện
+                          tại cho các nhiệm vụ tiếp theo.
+                        </p>
+                      ) : null}
+
+                      {isLoadingVehicles ? (
+                        <p className="text-xs text-muted-foreground">
+                          Đang tải danh sách xe khả dụng...
+                        </p>
+                      ) : availableVehicles.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          Không có xe khả dụng. Bạn vẫn có thể phân công team.
+                        </p>
+                      ) : null}
+
+                      <Textarea
+                        value={assignNote}
+                        onChange={(event) => setAssignNote(event.target.value)}
+                        placeholder="Ghi chú điều phối (optional)"
+                        rows={3}
+                      />
 
                       {availableTeams.length === 0 ? (
                         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">

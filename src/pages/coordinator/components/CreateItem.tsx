@@ -65,6 +65,8 @@ export function CreateInventoryItemDialog({
           capacity: existingStock?.maximumStockLevel,
           expirationDate: null,
           note: draft?.note || '',
+          unitCost: draft?.unitCost,
+          sourceReference: draft?.sourceReference || '',
         };
       }
 
@@ -83,6 +85,8 @@ export function CreateInventoryItemDialog({
         capacity: existingStock?.maximumStockLevel,
         expirationDate: null,
         note: '',
+        unitCost: undefined,
+        sourceReference: '',
       };
     },
     [existingStock, initialSupplyItemId, supplyItems],
@@ -102,12 +106,14 @@ export function CreateInventoryItemDialog({
     React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [submitting, setSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState('');
 
   React.useEffect(() => {
     if (!open) return;
     const draft = readDialogDraft<NewInventoryItem | null>(CREATE_ITEM_DRAFT_KEY, null);
     setErrors({});
     setSubmitting(false);
+    setSubmitError('');
     setForm(buildInitialForm(draft));
     setOpenExpirationDateCalendarDialog(false);
   }, [open, buildInitialForm]);
@@ -123,6 +129,7 @@ export function CreateInventoryItemDialog({
       delete next[key as string];
       return next;
     });
+    setSubmitError('');
   };
 
   const handleSelectSupplyItem = (supplyItemId: string) => {
@@ -302,6 +309,104 @@ export function CreateInventoryItemDialog({
             />
           </div>
 
+          {existingStock && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Đơn giá nhập (tùy chọn)</Label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="Ví dụ: 15.000"
+                  value={formatNumberInputVN(form.unitCost ?? '')}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    update(
+                      'unitCost',
+                      e.target.value ? parseFormattedNumber(e.target.value) : undefined,
+                    )
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Nguồn tham chiếu</Label>
+                <Input
+                  placeholder="Ví dụ: Nhà cung cấp A / Biên bản số 12"
+                  value={form.sourceReference || ''}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    update('sourceReference', e.target.value)
+                  }
+                />
+              </div>
+            </div>
+          )}
+
+          {existingStock && (
+            <div className="space-y-2">
+              <Label>Ngày hết hạn lô nhập (tùy chọn)</Label>
+              <div className="space-y-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => {
+                    if (openExpirationDateCalendarDialog) {
+                      closeExpirationDateCalendarDialogAction();
+                      return;
+                    }
+
+                    setOpenExpirationDateCalendarDialog(true);
+                  }}
+                >
+                  <span className="material-symbols-outlined text-[16px]">calendar</span>
+                  {form.expirationDate ? (
+                    parseLocalDateFromYmd(form.expirationDate)?.toLocaleDateString('vi-VN')
+                  ) : (
+                    <span className="text-muted-foreground text-xs">Chọn ngày hết hạn</span>
+                  )}
+                </Button>
+
+                {openExpirationDateCalendarDialog && (
+                  <div className="rounded-xl border border-border bg-muted/20 p-3 w-fit">
+                    <CustomCalendar
+                      disabledDays={{ before: new Date() }}
+                      value={parseLocalDateFromYmd(form.expirationDate)}
+                      onChange={(date) => {
+                        if (date) {
+                          update('expirationDate', toUtcIsoFromDate(date));
+                        } else {
+                          update('expirationDate', '');
+                        }
+
+                        closeExpirationDateCalendarDialogAction();
+                      }}
+                    />
+
+                    <div className="mt-3 flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          update('expirationDate', '');
+                          closeExpirationDateCalendarDialogAction();
+                        }}
+                      >
+                        Xóa ngày
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={closeExpirationDateCalendarDialogAction}
+                      >
+                        Đóng
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* EXPIRATION DATE – chỉ hiện khi tạo mới (chưa có stock) */}
           {!existingStock && (
             <div className="space-y-2">
@@ -396,6 +501,12 @@ export function CreateInventoryItemDialog({
               )}
             </div>
           )}
+
+          {submitError && (
+            <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {submitError}
+            </div>
+          )}
         </div>
 
         {/* ACTIONS */}
@@ -424,10 +535,17 @@ export function CreateInventoryItemDialog({
                 setErrors(errs);
                 return;
               }
-              clearDialogDraft(CREATE_ITEM_DRAFT_KEY);
+              setSubmitError('');
               setSubmitting(true);
               try {
-                await onSubmit(form);
+                const success = await onSubmit(form);
+                if (success) {
+                  clearDialogDraft(CREATE_ITEM_DRAFT_KEY);
+                } else {
+                  setSubmitError('Không thể nhập kho. Vui lòng kiểm tra thông tin và thử lại.');
+                }
+              } catch {
+                setSubmitError('Không thể nhập kho. Vui lòng kiểm tra thông tin và thử lại.');
               } finally {
                 setSubmitting(false);
               }
