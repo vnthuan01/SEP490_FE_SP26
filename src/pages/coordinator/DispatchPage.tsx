@@ -332,11 +332,13 @@ function StatCard({
   value,
   icon: Icon,
   toneClass,
+  valueClassName,
 }: {
   label: string;
   value: string | number;
   icon: LucideIcon;
   toneClass: string;
+  valueClassName?: string;
 }) {
   return (
     <Card className="overflow-hidden rounded-3xl border-border/70 bg-card/95 shadow-sm backdrop-blur-sm">
@@ -346,7 +348,9 @@ function StatCard({
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               {label}
             </p>
-            <p className="mt-3 truncate text-3xl font-black text-foreground">{value}</p>
+            <p className={cn('mt-3 truncate text-3xl font-black text-foreground', valueClassName)}>
+              {value}
+            </p>
           </div>
           <div
             className={cn('flex size-12 items-center justify-center rounded-2xl border', toneClass)}
@@ -1081,6 +1085,7 @@ export default function DispatchPage() {
               value={selectedTeamName}
               icon={Users}
               toneClass="border-emerald-200 bg-emerald-500/10 text-emerald-600"
+              valueClassName="line-clamp-2 whitespace-normal break-words text-lg font-bold leading-tight sm:text-xl"
             />
             <StatCard
               label="Hàng đợi hiện tại"
