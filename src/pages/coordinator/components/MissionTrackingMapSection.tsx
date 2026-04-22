@@ -73,23 +73,10 @@ export function MissionTrackingMapSection({
     destination: { lat: number; lng: number };
   } | null>(null);
   const [routeSource, setRouteSource] = useState<string>('pending');
-  const [routeDebug, setRouteDebug] = useState<Record<string, unknown>>({ phase: 'init' });
-
-  const captureRouteDebug = useCallback((phase: string, extra?: Record<string, unknown>) => {
-    const map = mapRef.current as any;
-    const payload: Record<string, unknown> = {
-      phase,
-      styleLoaded: Boolean(map?.isStyleLoaded?.()),
-      hasDirectionSource: Boolean(map?.getSource?.('direction')),
-      hasDirectionLayer: Boolean(map?.getLayer?.('direction-line')),
-      hasDirectionCasing: Boolean(map?.getLayer?.('direction-casing')),
-      at: new Date().toLocaleTimeString('vi-VN'),
-      ...extra,
-    };
-
-    setRouteDebug(payload);
-    console.debug('[MissionTrackingRouteDebug]', payload);
-  }, []);
+  const captureRouteDebug = useCallback(
+    (_phase: string, _extra?: Record<string, unknown>) => {},
+    [],
+  );
 
   // ── Stable coords — only recalculate when the actual numeric values change ─
   // Victim marker creation depends ONLY on victim coords, not the whole detail object
@@ -725,15 +712,6 @@ export function MissionTrackingMapSection({
           Khóa API:{' '}
           <span className="font-semibold text-foreground">{goongApiKey ? 'Có' : 'Thiếu'}</span>
         </span>
-      </div>
-
-      <div className="rounded-lg border border-dashed border-border bg-background/70 px-3 py-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Route Debug
-        </p>
-        <pre className="mt-1 whitespace-pre-wrap break-all text-[11px] leading-relaxed text-foreground">
-          {JSON.stringify(routeDebug, null, 2)}
-        </pre>
       </div>
 
       {isEnRoute && teamLocation && (

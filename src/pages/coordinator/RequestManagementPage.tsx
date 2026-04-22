@@ -1151,7 +1151,7 @@ export default function CoordinatorRequestManagementPage() {
                         <div className="space-y-4">
                           <div>
                             <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
-                              RequestEvidence (0) · Bằng chứng yêu cầu
+                              Bằng chứng yêu cầu
                             </p>
                             {requestEvidenceAttachments.length ? (
                               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
@@ -1185,7 +1185,7 @@ export default function CoordinatorRequestManagementPage() {
 
                           <div>
                             <p className="text-xs uppercase text-muted-foreground font-semibold mb-2">
-                              CompletionEvidence (1) · Bằng chứng hoàn thành
+                              Bằng chứng hoàn thành
                             </p>
                             {completionEvidenceAttachments.length ? (
                               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
