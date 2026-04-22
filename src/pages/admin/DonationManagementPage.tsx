@@ -72,7 +72,7 @@ const DONATION_STATUS_UI: Record<number, { label: string; className: string }> =
 };
 
 export default function DonationManagementPage() {
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>(String(DonationStatus.Completed));
   const [keyword, setKeyword] = useState('');
   const [campaignFilter, setCampaignFilter] = useState<string>('all');
   const [periodFilter, setPeriodFilter] = useState<string>('all');
@@ -122,7 +122,7 @@ export default function DonationManagementPage() {
 
   const resetFilters = () => {
     setKeyword('');
-    setStatusFilter('all');
+    setStatusFilter(String(DonationStatus.Completed));
     setCampaignFilter('all');
     setPeriodFilter('all');
     setPageIndex(1);
