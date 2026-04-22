@@ -187,12 +187,30 @@ function getApiErrorMessage(error: any, fallback: string, notFoundMessage?: stri
 }
 
 function isDuplicateKeyError(error: any): boolean {
-  const message = String(
-    error?.response?.data?.message || error?.response?.data?.detail || error?.message || '',
-  ).toLowerCase();
+  const data = error?.response?.data;
+  const fieldErrorValues =
+    data && typeof data === 'object' && data.errors && typeof data.errors === 'object'
+      ? Object.values(data.errors as Record<string, unknown>)
+          .flat()
+          .map(String)
+          .join(' ')
+      : '';
+
+  const combined = [
+    data?.message,
+    data?.detail,
+    data?.title,
+    typeof data === 'string' ? data : null,
+    fieldErrorValues,
+    error?.message,
+  ]
+    .map((v) => String(v ?? ''))
+    .join(' ')
+    .toLowerCase();
+
   return (
-    message.includes('same key has already been added') ||
-    (message.includes('duplicate') && message.includes('key'))
+    combined.includes('same key has already been added') ||
+    (combined.includes('duplicate') && combined.includes('key'))
   );
 }
 
