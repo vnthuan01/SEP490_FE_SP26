@@ -13,7 +13,6 @@ import {
   Maximize2,
   Minimize2,
   RefreshCcw,
-  Route,
   Send,
   Search,
   SearchX,
@@ -820,7 +819,7 @@ export default function DispatchPage() {
       toast.success('Đã điều phối thành công.');
     } catch (error: any) {
       if (isDuplicateKeyError(error)) {
-        toast.warning('Yêu cầu có thể đã được thêm vào hàng đợi. Đang đồng bộ lại dữ liệu...');
+        toast.success('Đã điều phối thành công.');
         setPreview(null);
         setQueueTab('current');
         setSelectedRequestId('');
@@ -1079,7 +1078,7 @@ export default function DispatchPage() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <StatCard
               label="Đội đang chọn"
               value={selectedTeamName}
@@ -1092,12 +1091,6 @@ export default function DispatchPage() {
               value={(activeBatch?.items || []).length}
               icon={ListOrdered}
               toneClass="border-blue-200 bg-blue-500/10 text-blue-600"
-            />
-            <StatCard
-              label="Yêu cầu gần tuyến"
-              value={candidatePaging?.totalCount ?? candidates.length}
-              icon={Route}
-              toneClass="border-amber-200 bg-amber-500/10 text-amber-600"
             />
           </div>
 
@@ -1438,19 +1431,6 @@ export default function DispatchPage() {
                           </div>
                         ))}
                       </div>
-
-                      {preview.reasons?.length ? (
-                        <div className="rounded-2xl border border-border bg-background px-4 py-3">
-                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                            Lý do từ hệ thống
-                          </p>
-                          <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                            {preview.reasons.map((reason, index) => (
-                              <li key={index}>{translateSystemReason(reason)}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : null}
                     </div>
                   )}
 
