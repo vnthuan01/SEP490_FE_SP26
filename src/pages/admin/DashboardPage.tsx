@@ -28,7 +28,6 @@ export default function AdminDashboardPage() {
   const [timeRange, setTimeRange] = useState<AdminDashboardTimeRange>('30d');
   const {
     isLoading,
-    hasError,
     formatCurrencyVN,
     formatDateTimeVN,
     metrics,
@@ -43,7 +42,6 @@ export default function AdminDashboardPage() {
     systemAlerts,
     logisticsOverview,
     widgets,
-    retryAll,
   } = useAdminDashboardOverview(timeRange);
 
   const rangeLabel =
@@ -125,25 +123,6 @@ export default function AdminDashboardPage() {
             </div>
           </div>
         </div>
-
-        {hasError ? (
-          <Card className="border-border">
-            <CardContent className="p-8 text-center space-y-4">
-              <div className="mx-auto size-14 rounded-full bg-red-500/10 flex items-center justify-center">
-                <span className="material-symbols-outlined text-red-500 text-3xl">error</span>
-              </div>
-              <h2 className="text-xl font-bold text-foreground">Không thể tải dữ liệu tổng quan</h2>
-              <p className="text-muted-foreground max-w-2xl mx-auto">
-                Một hoặc nhiều API hiện có đang trả lỗi. Endpoint review-applications đã được loại
-                khỏi dashboard vì trả về 403 trong môi trường staging.
-              </p>
-              <Button variant="outline" className="gap-2" onClick={retryAll}>
-                <span className="material-symbols-outlined text-sm">refresh</span>
-                Tải lại toàn bộ dashboard
-              </Button>
-            </CardContent>
-          </Card>
-        ) : null}
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-4 items-stretch">
           {isLoading ? (
@@ -476,11 +455,6 @@ export default function AdminDashboardPage() {
                     </p>
                   </div>
                 </div>
-              </div>
-
-              <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-                Endpoint review-applications đã được loại khỏi dashboard vì trả về 403 trong môi
-                trường staging.
               </div>
             </CardContent>
           </Card>

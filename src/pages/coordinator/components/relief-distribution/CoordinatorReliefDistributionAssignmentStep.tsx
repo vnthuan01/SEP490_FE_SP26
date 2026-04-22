@@ -37,6 +37,8 @@ import {
   getHouseholdFulfillmentStatusLabel,
 } from '@/enums/beEnums';
 import type { CoordinatorAssignForm } from './types';
+import type { ReliefAdvancedFiltersValue } from '@/components/shared/relief-distribution/types';
+import { ReliefAdvancedFilters } from '@/components/shared/relief-distribution/ReliefAdvancedFilters';
 
 const parseIsoToDate = (value?: string | null) => {
   if (!value) return undefined;
@@ -44,22 +46,7 @@ const parseIsoToDate = (value?: string | null) => {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 };
 
-type HouseholdRow = {
-  campaignHouseholdId: string;
-  householdCode: string;
-  headOfHouseholdName: string;
-  contactPhone?: string | null;
-  address?: string | null;
-  latitude: number;
-  longitude: number;
-  householdSize: number;
-  isIsolated: boolean;
-  deliveryMode: number;
-  fulfillmentStatus: number;
-  notes?: string | null;
-  campaignTeamId?: string | null;
-};
-
+import type { CampaignHouseholdResponse } from '@/services/reliefDistributionService';
 type TeamRow = { campaignTeamId: string; teamName: string };
 type PackageRow = { reliefPackageDefinitionId: string; name: string };
 
@@ -84,24 +71,28 @@ export function CoordinatorReliefDistributionAssignmentStep({
   onAssign,
   hasPickupHouseholds,
   hasDistributionPoint,
-  householdSearch,
-  onChangeHouseholdSearch,
+  filtersValue,
+  onChangeFilters,
+  onResetFilters,
+  filtersExpanded,
+  onFiltersExpandedChange,
   onJumpToCreateTeam,
   onJumpToCreatePackage,
   assignErrors,
   onEditHousehold,
   onDeleteHousehold,
   onUpdateStatusHousehold,
-}: {
+  distributionPoints = [],
+}:   {
   sectionId: string;
   assignForm: CoordinatorAssignForm;
   onChangeAssignForm: (updater: (prev: CoordinatorAssignForm) => CoordinatorAssignForm) => void;
   teams: TeamRow[];
   packages: PackageRow[];
-  households: HouseholdRow[];
+  households: CampaignHouseholdResponse[];
   selectedHouseholdIds: Set<string>;
   assignedTeamNameByHouseholdId: Record<string, string>;
-  onToggleHousehold: (id: string) => void;
+  onToggleHousehold: (household: CampaignHouseholdResponse) => void;
   allPageSelected: boolean;
   onToggleSelectAll: (checked: CheckedState) => void;
   currentPage: number;
@@ -113,14 +104,18 @@ export function CoordinatorReliefDistributionAssignmentStep({
   onAssign: () => void;
   hasPickupHouseholds: boolean;
   hasDistributionPoint: boolean;
-  householdSearch: string;
-  onChangeHouseholdSearch: (value: string) => void;
+  filtersValue: ReliefAdvancedFiltersValue;
+  onChangeFilters: (next: ReliefAdvancedFiltersValue) => void;
+  onResetFilters: () => void;
+  filtersExpanded: boolean;
+  onFiltersExpandedChange: (expanded: boolean) => void;
   onJumpToCreateTeam: () => void;
   onJumpToCreatePackage: () => void;
   assignErrors: Record<string, string>;
-  onEditHousehold: (household: HouseholdRow) => void;
-  onDeleteHousehold: (household: HouseholdRow) => void;
-  onUpdateStatusHousehold: (household: HouseholdRow) => void;
+  onEditHousehold: (household: CampaignHouseholdResponse) => void;
+  onDeleteHousehold: (household: CampaignHouseholdResponse) => void;
+  onUpdateStatusHousehold: (household: CampaignHouseholdResponse) => void;
+  distributionPoints?: { label: string; value: string }[];
 }) {
   const hasTeams = teams.length > 0;
   const [openScheduleCalendar, setOpenScheduleCalendar] = useState(false);
@@ -369,20 +364,17 @@ export function CoordinatorReliefDistributionAssignmentStep({
           </Sheet>
         </div>
 
-        <div className="grid gap-3">
-          <div className="space-y-4">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between w-full">
-              <div className="space-y-2 flex-grow max-w-sm">
-                <p className="text-sm font-medium">Tìm kiếm hộ dân</p>
-                <Input
-                  placeholder="Tìm theo mã hộ hoặc tên chủ hộ"
-                  value={householdSearch}
-                  onChange={(e) => onChangeHouseholdSearch(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
+        <ReliefAdvancedFilters
+          value={filtersValue}
+          onChange={onChangeFilters}
+          onReset={onResetFilters}
+          expanded={filtersExpanded}
+          onExpandedChange={onFiltersExpandedChange}
+          teams={teams.map((team) => ({ label: team.teamName, value: team.campaignTeamId }))}
+          distributionPoints={distributionPoints}
+          showIsolationFilter
+          title="Bộ lọc điều phối phân phối"
+        />
 
         {hasPickupHouseholds && !hasDistributionPoint && (
           <p className="text-sm text-red-600 dark:text-red-400">
@@ -424,7 +416,7 @@ export function CoordinatorReliefDistributionAssignmentStep({
                       <Checkbox
                         disabled={!hasTeams}
                         checked={selectedHouseholdIds.has(household.campaignHouseholdId)}
-                        onCheckedChange={() => onToggleHousehold(household.campaignHouseholdId)}
+                        onCheckedChange={() => onToggleHousehold(household)}
                       />
                     </TableCell>
                     <TableCell className="font-medium">{household.householdCode}</TableCell>
@@ -514,10 +506,30 @@ export function CoordinatorReliefDistributionAssignmentStep({
               <span className="material-symbols-outlined text-[18px]">chevron_right</span>
               Trang sau
             </Button>
-            <Button onClick={onAssign} disabled={!canAssign} className="gap-2">
-              <span className="material-symbols-outlined text-[18px]">assignment_turned_in</span>
-              Gán hộ đã chọn
-            </Button>
+            <div className="flex flex-col gap-2">
+              {!canAssign && (
+                <div className="flex flex-col items-end text-xs text-destructive font-medium">
+                  {selectionCount === 0 && <span>• Vui lòng chọn ít nhất một hộ dân</span>}
+                  {!assignForm.campaignTeamId && <span>• Vui lòng chọn đội phụ trách</span>}
+                  {!assignForm.reliefPackageDefinitionId && (
+                    <span>• Vui lòng chọn gói cứu trợ</span>
+                  )}
+                  {!assignForm.scheduledAt && <span>• Vui lòng chọn ngày gán</span>}
+                  {hasPickupHouseholds && !hasDistributionPoint && (
+                    <span>• Hộ nhận tại điểm phát yêu cầu chiến dịch có điểm phát hàng</span>
+                  )}
+                </div>
+              )}
+              <Button
+                onClick={onAssign}
+                disabled={!canAssign}
+                className="gap-2 w-full md:w-auto"
+                size="lg"
+              >
+                <span className="material-symbols-outlined text-[18px]">assignment_turned_in</span>
+                Gán hộ đã chọn
+              </Button>
+            </div>
           </div>
         </div>
       </CardContent>

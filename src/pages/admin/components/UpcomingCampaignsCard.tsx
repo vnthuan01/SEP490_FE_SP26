@@ -98,7 +98,7 @@ export function UpcomingCampaignsCard({
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 h-full max-h-[240px] overflow-y-auto pr-1 custom-scrollbar">
             {visibleCampaigns.map((campaign) => (
               <div key={campaign.id} className="rounded-xl border border-border bg-muted/20 p-4">
                 <div className="flex items-start justify-between gap-3 min-w-0">

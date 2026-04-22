@@ -41,12 +41,6 @@ const DEFAULT_TEAMS: TeamOverviewItem[] = [
   },
 ];
 
-const toneStyles: Record<NonNullable<TeamOverviewItem['tone']>, string> = {
-  busy: 'bg-red-500/10 text-red-500',
-  ready: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-  warning: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-};
-
 export function TeamOverview({
   className,
   title = 'Đội phản ứng nhanh',
@@ -74,19 +68,12 @@ export function TeamOverview({
               className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3 rounded-lg bg-muted/50 border border-border"
             >
               <div className="flex flex-col gap-1 min-w-0">
-                <h4 className="text-sm font-bold text-foreground break-words line-clamp-2">
-                  {team.name}
-                </h4>
-                <p className="text-xs text-muted-foreground break-words line-clamp-1">
-                  {team.role}
-                </p>
-                {team.note ? (
-                  <p className="text-[11px] text-muted-foreground break-words line-clamp-2">
-                    {team.note}
-                  </p>
-                ) : null}
+                <h4 className="text-sm font-bold text-foreground break-words">{team.name}</h4>
               </div>
-              <div className="flex flex-wrap items-center gap-3 shrink-0">
+              <div className="rounded-full bg-primary/10 text-primary px-2.5 py-1 text-[11px] font-semibold">
+                {team.memberCount} thành viên
+              </div>
+              {/* <div className="flex flex-wrap items-center gap-3 shrink-0">
                 <div className="rounded-full bg-primary/10 text-primary px-2.5 py-1 text-[11px] font-semibold">
                   {team.memberCount} thành viên
                 </div>
@@ -98,7 +85,7 @@ export function TeamOverview({
                 >
                   {team.statusLabel}
                 </span>
-              </div>
+              </div> */}
             </div>
           ))}
         </div>

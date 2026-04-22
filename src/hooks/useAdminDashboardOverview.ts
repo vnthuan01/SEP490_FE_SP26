@@ -4,7 +4,6 @@ import { fundService } from '@/services/fundService';
 import { rescueRequestService, type RescueRequestItem } from '@/services/rescueRequestService';
 import { teamService, type Team } from '@/services/teamService';
 import { inventoryService } from '@/services/inventoryService';
-import { distributionSessionService } from '@/services/distributionSessionService';
 import { supplyTransferService } from '@/services/supplyTransferService';
 import { reliefStationService } from '@/services/reliefStationService';
 import { userService } from '@/services/userService';
@@ -19,7 +18,6 @@ import {
   getCampaignStatusClass,
   getCampaignStatusLabel,
   getRescueRequestTypeLabel,
-  TeamStatusLabel,
   parseEnumValue,
 } from '@/enums/beEnums';
 import { formatNumberVN } from '@/lib/utils';
@@ -27,6 +25,14 @@ import { formatNumberVN } from '@/lib/utils';
 export type AdminDashboardTimeRange = '7d' | '30d' | '12m';
 export type ChartPoint = { name: string; value: number };
 export type VisitorPoint = { name: string; visits: number };
+
+const ensureArray = <T>(value: unknown): T[] => {
+  if (Array.isArray(value)) return value as T[];
+  if (value && typeof value === 'object' && Array.isArray((value as { items?: unknown[] }).items)) {
+    return (value as { items: T[] }).items;
+  }
+  return [];
+};
 
 const DEFAULT_QUERY_OPTIONS = {
   staleTime: 5 * 60 * 1000,
@@ -339,15 +345,29 @@ export function useAdminDashboardOverview(range: AdminDashboardTimeRange) {
         ...DEFAULT_QUERY_OPTIONS,
       },
       {
-        queryKey: ['admin-dashboard', 'distribution-sessions'],
-        queryFn: async () =>
-          (await distributionSessionService.getAll({ pageIndex: 1, pageSize: 50 })).data,
-        ...DEFAULT_QUERY_OPTIONS,
-      },
-      {
         queryKey: ['admin-dashboard', 'supply-transfers'],
-        queryFn: async () =>
-          (await supplyTransferService.getByStatus({ pageIndex: 1, pageSize: 50 })).data,
+        queryFn: async () => {
+          const statuses = [1, 2, 3, 4, 5]; // Pending, Approved, Shipping, Received, Cancelled
+          const responses = await Promise.all(
+            statuses.map((status) =>
+              supplyTransferService.getByStatus({ status, pageIndex: 1, pageSize: 20 }),
+            ),
+          );
+          const mergedItems = responses.flatMap((response) =>
+            Array.isArray(response.data) ? response.data : response.data?.items || [],
+          );
+          const deduped = Array.from(
+            new Map(mergedItems.map((item: any) => [item.id, item])).values(),
+          ).sort(
+            (a: any, b: any) =>
+              new Date(b.requestedAt || b.createdAt || 0).getTime() -
+              new Date(a.requestedAt || a.createdAt || 0).getTime(),
+          );
+          return {
+            items: deduped,
+            totalCount: deduped.length,
+          };
+        },
         ...DEFAULT_QUERY_OPTIONS,
       },
       {
@@ -377,12 +397,32 @@ export function useAdminDashboardOverview(range: AdminDashboardTimeRange) {
     rescueRequestsQuery,
     teamsQuery,
     inventoriesQuery,
-    sessionsQuery,
     transfersQuery,
     stationsQuery,
     usersQuery,
     supplyItemsQuery,
   ] = overviewQueries;
+
+  const activeCampaignTeamQueries = useQueries({
+    queries: ((campaignsQuery.data?.items || []) as CampaignSummary[])
+      .filter((campaign) =>
+        (
+          [
+            CampaignStatus.Active,
+            CampaignStatus.ReadyToExecute,
+            CampaignStatus.InProgress,
+            CampaignStatus.Closing,
+          ] as number[]
+        ).includes(parseEnumValue(campaign.status)),
+      )
+      .slice(0, 20)
+      .map((campaign) => ({
+        queryKey: ['admin-dashboard', 'campaign-teams', campaign.campaignId],
+        queryFn: async () => (await campaignService.getTeams(campaign.campaignId)).data,
+        ...DEFAULT_QUERY_OPTIONS,
+        enabled: !!campaign.campaignId,
+      })),
+  });
 
   const isLoading = overviewQueries.some((query) => query.isLoading);
   const hasError = overviewQueries.some((query) => query.isError);
@@ -422,14 +462,12 @@ export function useAdminDashboardOverview(range: AdminDashboardTimeRange) {
   ).filter((item) => isWithinSelectedRange(item.createdAt, range));
   const rescuePaging = rescueRequestsQuery.data?.paging;
 
-  const teams = (Array.isArray(teamsQuery.data) ? teamsQuery.data : []) as Team[];
+  const teams = ensureArray<Team>(teamsQuery.data);
   const inventories = (inventoriesQuery.data?.items || []) as any[];
-  const sessionItems = (
-    Array.isArray(sessionsQuery.data) ? sessionsQuery.data : sessionsQuery.data?.items || []
-  ).filter((item: any) => isWithinSelectedRange(item.scheduledDate || item.createdAt, range));
-  const transferItems = (
-    Array.isArray(transfersQuery.data) ? transfersQuery.data : transfersQuery.data?.items || []
-  ).filter((item: any) => isWithinSelectedRange(item.createdAt, range));
+  const sessionItems: any[] = [];
+  const transferItems = ensureArray<any>(transfersQuery.data).filter((item: any) =>
+    isWithinSelectedRange(item.requestedAt || item.createdAt, range),
+  );
   const stations = (stationsQuery.data?.items || []) as any[];
   const users = (usersQuery.data?.items || []) as any[];
   const supplyItems = (supplyItemsQuery.data?.items || []) as any[];
@@ -482,32 +520,76 @@ export function useAdminDashboardOverview(range: AdminDashboardTimeRange) {
   );
   const totalTeamMembers = teams.reduce((sum, team) => sum + Number(team.totalMembers || 0), 0);
 
+  const contributionPoints = filteredContributions.map((item) => ({
+    createdAt: item.createdAt,
+    amount: Number(item.amount || 0),
+  }));
+  const transactionPoints = filteredFundTransactions.map((item) => ({
+    createdAt: item.createdAt,
+    amount: Number(item.amount || 0),
+  }));
+  const allFundPoints = [...contributionPoints, ...transactionPoints];
+
   const donationByRange = {
-    week: groupCurrencyByWeekday(filteredContributions, range),
-    month: groupCurrencyByMonth(filteredContributions, range),
-    year: groupCurrencyByMonth(filteredContributions, range),
-    day: Array.from({ length: 24 }, (_, hour) => ({ name: `${hour}:00`, value: 0 })),
+    week: groupCurrencyByWeekday(allFundPoints, range),
+    month: groupCurrencyByMonth(allFundPoints, range),
+    year: groupCurrencyByMonth(allFundPoints, range),
+    day: (() => {
+      const buckets = Array.from({ length: 24 }, (_, hour) => ({ name: `${hour}:00`, value: 0 }));
+      allFundPoints.forEach((item) => {
+        if (!isWithinSelectedRange(item.createdAt, '7d')) return;
+        const date = new Date(item.createdAt || '');
+        if (Number.isNaN(date.getTime())) return;
+        buckets[date.getHours()].value += Number(item.amount || 0);
+      });
+      return buckets;
+    })(),
   };
 
   const requestByTime = groupRequestsByTime(rescueRequests, range);
 
-  const topTeams = [...teams]
-    .sort((a, b) => Number(b.totalMembers || 0) - Number(a.totalMembers || 0))
-    .slice(0, 4)
-    .map((team) => ({
-      id: team.teamId,
-      name: team.name,
-      role: team.leaderName || team.moderatorName || 'Chưa có đầu mối phụ trách',
-      statusLabel: TeamStatusLabel[parseEnumValue(team.status) as TeamStatus] || 'Không rõ',
-      memberCount: Number(team.totalMembers || 0),
-      note: `Cập nhật ${formatDateVN(team.updatedAt || team.createdAt)}`,
-      tone:
-        parseEnumValue(team.status) === TeamStatus.Active
-          ? ('ready' as const)
-          : parseEnumValue(team.status) === TeamStatus.Suspended
-            ? ('warning' as const)
-            : ('busy' as const),
-    }));
+  const activeCampaignTeams = activeCampaignTeamQueries.flatMap((query) =>
+    ensureArray<any>(query.data),
+  );
+  const activeCampaignTeamMap = new Map<
+    string,
+    { campaignCount: number; teamName: string; memberCount: number }
+  >();
+  activeCampaignTeams.forEach((team: any) => {
+    const current = activeCampaignTeamMap.get(team.teamId);
+    if (current) {
+      current.campaignCount += 1;
+      current.memberCount = Math.max(current.memberCount, Number(team.memberCount || 0));
+      return;
+    }
+    activeCampaignTeamMap.set(team.teamId, {
+      campaignCount: 1,
+      teamName: team.teamName || 'Đội phản ứng',
+      memberCount: Number(team.memberCount || 0),
+    });
+  });
+
+  const topTeams = Array.from(activeCampaignTeamMap.entries())
+    .map(([teamId, summary]) => {
+      const matchedTeam = teams.find((team) => team.teamId === teamId);
+      return {
+        id: teamId,
+        name: summary.teamName,
+        role:
+          matchedTeam?.teamTypeName ||
+          matchedTeam?.leaderName ||
+          matchedTeam?.moderatorName ||
+          'Đội đang hoạt động trong chiến dịch',
+        statusLabel: `${summary.campaignCount} chiến dịch đang hoạt động`,
+        memberCount: summary.memberCount || Number(matchedTeam?.totalMembers || 0),
+        note: matchedTeam
+          ? `Cập nhật ${formatDateVN(matchedTeam.updatedAt || matchedTeam.createdAt)}`
+          : 'Đang tham gia chiến dịch cứu trợ',
+        tone: 'ready' as const,
+      };
+    })
+    .sort((a, b) => b.memberCount - a.memberCount)
+    .slice(0, 4);
 
   const inventoryStats = [
     {
@@ -553,7 +635,7 @@ export function useAdminDashboardOverview(range: AdminDashboardTimeRange) {
       icon: 'volunteer_activism',
       color: 'text-emerald-600 bg-emerald-500/10',
       title: `Ghi nhận ủng hộ ${formatCurrencyVN(Number(item.amount || 0))}`,
-      subtitle: item.campaignName || item.donorName || 'Nguồn ủng hộ chưa xác định',
+      subtitle: item.donorName?.trim() || item.campaignName || item.note || 'Nhà hảo tâm ẩn danh',
       time: item.createdAt,
     })),
     ...filteredFundTransactions.slice(0, 2).map((item) => ({
@@ -561,7 +643,11 @@ export function useAdminDashboardOverview(range: AdminDashboardTimeRange) {
       icon: 'account_balance_wallet',
       color: 'text-sky-600 bg-sky-500/10',
       title: item.note || `Giao dịch quỹ ${formatCurrencyVN(Number(item.amount || 0))}`,
-      subtitle: item.createdBy || item.type || 'Hệ thống quỹ',
+      subtitle:
+        item.note?.trim() ||
+        (item.createdBy && item.createdBy !== '1' ? item.createdBy : '') ||
+        item.type ||
+        'Hệ thống quỹ',
       time: item.createdAt,
     })),
     ...transferItems.slice(0, 2).map((item: any) => ({
@@ -607,7 +693,7 @@ export function useAdminDashboardOverview(range: AdminDashboardTimeRange) {
 
   const logisticsOverview = {
     transferCount: transferItems.length,
-    sessionCount: sessionItems.length,
+    sessionCount: 0,
     pendingTransferCount: transferItems.filter(
       (item: any) => parseEnumValue(item.status) === SupplyTransferStatus.Pending,
     ).length,
@@ -622,20 +708,20 @@ export function useAdminDashboardOverview(range: AdminDashboardTimeRange) {
           transferItems.filter(
             (item: any) => parseEnumValue(item.status) === SupplyTransferStatus.Pending,
           ).length,
-        )} phiếu chờ duyệt`,
+        )} phiếu chờ duyệt / xác nhận`,
         icon: 'swap_horiz',
         color: 'text-violet-600 bg-violet-500/10',
       },
       {
-        label: 'Phiên phân phát',
-        value: formatNumberVN(sessionItems.length),
-        note: `${formatNumberVN(
-          sessionItems.filter(
-            (item: any) => parseEnumValue(item.status) === DistributionSessionStatus.InProgress,
+        label: 'Vận chuyển hoàn thành',
+        value: formatNumberVN(
+          transferItems.filter(
+            (item: any) => parseEnumValue(item.status) === 4, // Received
           ).length,
-        )} phiên đang thực hiện`,
-        icon: 'event_available',
-        color: 'text-sky-600 bg-sky-500/10',
+        ),
+        note: 'Các chuyến hàng đã cập bến thành công',
+        icon: 'inventory_2',
+        color: 'text-emerald-600 bg-emerald-500/10',
       },
     ],
   };
@@ -677,9 +763,12 @@ export function useAdminDashboardOverview(range: AdminDashboardTimeRange) {
       retry: () => rescueRequestsQuery.refetch(),
     },
     teamOverview: {
-      isLoading: teamsQuery.isLoading,
-      isError: teamsQuery.isError,
-      retry: () => teamsQuery.refetch(),
+      isLoading: teamsQuery.isLoading || activeCampaignTeamQueries.some((query) => query.isLoading),
+      isError: teamsQuery.isError || activeCampaignTeamQueries.some((query) => query.isError),
+      retry: async () => {
+        await teamsQuery.refetch();
+        await Promise.all(activeCampaignTeamQueries.map((query) => query.refetch()));
+      },
     },
     inventory: {
       isLoading:
@@ -712,9 +801,9 @@ export function useAdminDashboardOverview(range: AdminDashboardTimeRange) {
         ]),
     },
     logistics: {
-      isLoading: transfersQuery.isLoading || sessionsQuery.isLoading,
-      isError: transfersQuery.isError || sessionsQuery.isError,
-      retry: async () => Promise.all([transfersQuery.refetch(), sessionsQuery.refetch()]),
+      isLoading: transfersQuery.isLoading || false,
+      isError: transfersQuery.isError || false,
+      retry: async () => Promise.all([transfersQuery.refetch(), Promise.resolve()]),
     },
     infrastructure: {
       isLoading:
@@ -786,7 +875,7 @@ export function useAdminDashboardOverview(range: AdminDashboardTimeRange) {
       totalTeamMembers,
       supplyItemsCount: supplyItems.length,
       transferCount: transferItems.length,
-      sessionCount: sessionItems.length,
+      sessionCount: 0,
       pendingTransferCount: logisticsOverview.pendingTransferCount,
       inProgressSessionCount: logisticsOverview.inProgressSessionCount,
       fundSourceCampaigns: Number(fundSummary?.totalSourceCampaigns || 0),
