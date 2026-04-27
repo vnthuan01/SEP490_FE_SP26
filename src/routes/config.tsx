@@ -4,6 +4,7 @@ import DataManagementPage from '@/pages/admin/DataManagementPage';
 import AdminDashboardPage from '@/pages/admin/DashboardPage';
 import DonationManagementPage from '@/pages/admin/DonationManagementPage';
 import AdminUserManagementPage from '@/pages/admin/UserManagementPage';
+import SkillsManagementPage from '@/pages/admin/SkillsManagementPage';
 import PublicDonatePage from '@/pages/public/PublicDonatePage';
 import DonationStatusPage from '@/pages/public/DonationStatusPage';
 import DonationReturnPage from '@/pages/public/DonationReturnPage';
@@ -70,6 +71,12 @@ export const routes: AppRoute[] = [
   {
     path: '/portal/admin/donations',
     element: <DonationManagementPage />,
+    roles: [UserRole.Admin],
+    isProtected: true,
+  },
+  {
+    path: '/portal/admin/skills',
+    element: <SkillsManagementPage />,
     roles: [UserRole.Admin],
     isProtected: true,
   },

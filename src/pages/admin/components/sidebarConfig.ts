@@ -9,6 +9,11 @@ export const adminProjects = [
     path: '/portal/admin/donations',
     icon: 'volunteer_activism',
   },
+  {
+    label: 'Kỹ năng',
+    path: '/portal/admin/skills',
+    icon: 'military_tech',
+  },
 ];
 
 export const adminNavItems = [
