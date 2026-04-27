@@ -19,6 +19,7 @@ import { roleLabelMap } from '@/constants/roleLabel';
 import { useEffect, useState } from 'react';
 import { AddUserModal } from './components/AddUserModal';
 import type { CreateUserPayload } from './components/AddUserModal';
+import { EditUserModal } from './components/EditUserModal';
 import { getCurrentUserProfile } from '@/services/userService';
 import { useAllUsers } from '@/hooks/useUsers';
 import { StatsCard } from '@/pages/admin/components/StatsCard';
@@ -28,7 +29,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useBanUser, useUnbanUser } from '@/hooks/useUsers';
+import { useBanUser, useCreateAdminUser, useUnbanUser } from '@/hooks/useUsers';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -42,6 +43,7 @@ import { Label } from '@/components/ui/label';
 import { adminNavItems, adminProjects } from './components/sidebarConfig';
 import { Textarea } from '@/components/ui/textarea';
 import { parseApiError } from '@/lib/apiErrors';
+import type { UserProfile } from '@/services/userService';
 
 export default function AdminUserManagementPage() {
   const [openAddUser, setOpenAddUser] = useState(false);
@@ -53,6 +55,8 @@ export default function AdminUserManagementPage() {
   const [banReason, setBanReason] = useState('');
   const [banUserDialog, setBanUserDialog] = useState({ open: false, userId: '', email: '' });
   const [unbanUserDialog, setUnbanUserDialog] = useState({ open: false, userId: '', email: '' });
+  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [openEditUser, setOpenEditUser] = useState(false);
 
   const { users, pagination, isLoading, refetch } = useAllUsers({
     pageIndex,
@@ -63,6 +67,7 @@ export default function AdminUserManagementPage() {
   });
   const banUserMutation = useBanUser();
   const unbanUserMutation = useUnbanUser();
+  const createAdminUserMutation = useCreateAdminUser();
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -75,12 +80,49 @@ export default function AdminUserManagementPage() {
 
     fetchProfile();
   }, []);
-  const handleCreateUser = async (_data: CreateUserPayload) => {
+  const handleCreateUser = async (data: CreateUserPayload) => {
     try {
+      await createAdminUserMutation.mutateAsync({
+        fullName: data.fullName,
+        email: data.email,
+        password: data.password,
+        role: data.role,
+        phone: data.phone,
+        isActive: data.active ?? true,
+      });
+      toast.success('Tạo người dùng thành công');
       await refetch();
       return true;
-    } catch {
+    } catch (error) {
+      toast.error(parseApiError(error, 'Không thể tạo người dùng').message);
       return false;
+    }
+  };
+
+  const handleOpenEditUser = (user: UserProfile) => {
+    setSelectedUser(user);
+    setOpenEditUser(true);
+  };
+
+  const handleToggleUserActive = async (user: UserProfile) => {
+    try {
+      if (user.isBanned) {
+        await unbanUserMutation.mutateAsync({
+          userId: user.id,
+          data: { note: 'Unbanned by admin' },
+        });
+        toast.success('Đã mở khóa tài khoản người dùng');
+      } else {
+        await banUserMutation.mutateAsync({
+          userId: user.id,
+          data: { reason: 'Banned by admin from edit modal' },
+        });
+        toast.success('Đã khóa tài khoản người dùng');
+      }
+      await refetch();
+      setSelectedUser((prev) => (prev ? { ...prev, isBanned: !prev.isBanned } : prev));
+    } catch (error) {
+      toast.error(parseApiError(error, 'Không thể cập nhật trạng thái tài khoản').message);
     }
   };
 
@@ -369,9 +411,12 @@ export default function AdminUserManagementPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem className="gap-2">
+                              <DropdownMenuItem
+                                className="gap-2"
+                                onClick={() => handleOpenEditUser(user)}
+                              >
                                 <span className="material-symbols-outlined text-lg">edit</span>
-                                Chỉnh sửa (Soon)
+                                Chỉnh sửa
                               </DropdownMenuItem>
                               {user.isBanned ? (
                                 <DropdownMenuItem
@@ -474,6 +519,16 @@ export default function AdminUserManagementPage() {
         open={openAddUser}
         onClose={() => setOpenAddUser(false)}
         onSubmit={handleCreateUser}
+      />
+      <EditUserModal
+        open={openEditUser}
+        user={selectedUser}
+        loading={banUserMutation.isPending || unbanUserMutation.isPending}
+        onClose={() => {
+          setOpenEditUser(false);
+          setSelectedUser(null);
+        }}
+        onToggleActive={handleToggleUserActive}
       />
 
       {/* Ban User Dialog */}

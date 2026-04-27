@@ -22,6 +22,7 @@ interface AddUserModalProps {
 export interface CreateUserPayload {
   fullName: string;
   email: string;
+  password: string;
   role: UserRoleType;
   phone?: string;
   active: boolean;
@@ -32,20 +33,26 @@ export function AddUserModal({ open, onClose, onSubmit }: AddUserModalProps) {
   const [form, setForm] = useState<CreateUserPayload>({
     fullName: '',
     email: '',
-    role: UserRole.Volunteer,
+    password: '',
+    role: UserRole.Coordinator,
     phone: '',
     active: true,
   });
   const [submitError, setSubmitError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<
-    Partial<Record<'fullName' | 'email' | 'role' | 'phone', string>>
+    Partial<Record<'fullName' | 'email' | 'password' | 'role' | 'phone', string>>
   >({});
 
   const validate = () => {
-    const nextErrors: Partial<Record<'fullName' | 'email' | 'role' | 'phone', string>> = {};
+    const nextErrors: Partial<
+      Record<'fullName' | 'email' | 'password' | 'role' | 'phone', string>
+    > = {};
     if (!form.fullName.trim()) nextErrors.fullName = 'Vui lòng nhập họ và tên.';
     if (!form.email.trim()) nextErrors.email = 'Vui lòng nhập email.';
     else if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) nextErrors.email = 'Email không hợp lệ.';
+    if (!form.password.trim()) nextErrors.password = 'Vui lòng nhập mật khẩu.';
+    else if (form.password.trim().length < 6)
+      nextErrors.password = 'Mật khẩu phải có ít nhất 6 ký tự.';
     if (!form.role) nextErrors.role = 'Vui lòng chọn vai trò.';
     return nextErrors;
   };
@@ -118,6 +125,23 @@ export function AddUserModal({ open, onClose, onSubmit }: AddUserModalProps) {
           </div>
 
           <div className="space-y-2">
+            <label className="text-sm font-medium">Mật khẩu</label>
+            <Input
+              type="password"
+              placeholder="Nhập mật khẩu"
+              value={form.password}
+              onChange={(e) => {
+                setForm({ ...form, password: e.target.value });
+                setFieldErrors((prev) => ({ ...prev, password: undefined }));
+                setSubmitError('');
+              }}
+            />
+            {fieldErrors.password ? (
+              <p className="text-xs text-red-500">{fieldErrors.password}</p>
+            ) : null}
+          </div>
+
+          <div className="space-y-2">
             <label className="text-sm font-medium">Vai trò</label>
             <Select
               value={form.role}
@@ -131,10 +155,8 @@ export function AddUserModal({ open, onClose, onSubmit }: AddUserModalProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={UserRole.Admin}>Quản trị viên (Admin)</SelectItem>
                 <SelectItem value={UserRole.Coordinator}>Điều phối viên</SelectItem>
-                <SelectItem value={UserRole.Volunteer}>Tình nguyện viên</SelectItem>
-                <SelectItem value={UserRole.User}>Người dùng bình thường</SelectItem>
+                <SelectItem value={UserRole.Manager}>Quản lí</SelectItem>
               </SelectContent>
             </Select>
             {fieldErrors.role ? <p className="text-xs text-red-500">{fieldErrors.role}</p> : null}

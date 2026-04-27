@@ -1,6 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userService } from '@/services/userService';
-import type { ModeratorPaginatedParams, PaginatedParams } from '@/services/userService';
+import type {
+  CreateAdminUserPayload,
+  ModeratorPaginatedParams,
+  PaginatedParams,
+} from '@/services/userService';
 
 // === Query Keys ===
 
@@ -134,6 +138,17 @@ export function useUnbanUser() {
       userService.unbanUser(userId, data),
     onSuccess: () => {
       // Invalidate all related lists
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}
+
+export function useCreateAdminUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: CreateAdminUserPayload) => userService.createAdminUser(data),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
     },
   });

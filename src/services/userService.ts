@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/apiClients';
+import { UserRole, type UserRoleType } from '@/enums/UserRole';
 
 export interface UserProfile {
   id: string;
@@ -68,6 +69,15 @@ export interface UnbanUserPayload {
   note: string;
 }
 
+export interface CreateAdminUserPayload {
+  fullName: string;
+  email: string;
+  password: string;
+  role: UserRoleType;
+  phone?: string;
+  isActive?: boolean;
+}
+
 export interface UserResponse<T> {
   displayName: string;
   email: string;
@@ -103,6 +113,36 @@ export const userService = {
 
   unbanUser: (userId: string, data: UnbanUserPayload) =>
     apiClient.put(`/User/${userId}/unban`, data),
+
+  createAdminUser: (payload: CreateAdminUserPayload) => {
+    if (payload.role === UserRole.Coordinator) {
+      const moderatorPayload = {
+        fullName: payload.fullName,
+        email: payload.email,
+        userName: payload.email,
+        password: payload.password,
+        phoneNumber: payload.phone,
+        isStationHead: false,
+        status: (payload.isActive ?? true) ? 1 : 0,
+      };
+
+      return apiClient.post('/User/moderators', moderatorPayload);
+    }
+
+    if (payload.role === UserRole.Manager) {
+      const managerPayload = {
+        fullName: payload.fullName,
+        email: payload.email,
+        userName: payload.email,
+        password: payload.password,
+        phoneNumber: payload.phone,
+      };
+
+      return apiClient.post('/User/managers', managerPayload);
+    }
+
+    throw new Error('Mục Thêm người dùng hiện chỉ hỗ trợ role Điều phối viên hoặc Quản lí.');
+  },
 };
 
 export const getCurrentUserProfile = async () => {
