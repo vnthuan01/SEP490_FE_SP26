@@ -472,3 +472,26 @@ html {
     -webkit-font-smoothing: antialiased;
   }
 }
+@keyframes managerRiskBreathing {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes managerRiskPulseStrong {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.22);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
