@@ -198,8 +198,10 @@ type StationAnalysisPoint = GeoPoint & {
   context: string;
 };
 
+ 
 type OnSelectStation = (stationId: string | null) => void;
 
+ 
 type OnSelectAnalysis = (analysis: AnalyzeDisasterRiskResponse | null) => void;
 
 const GOONG_API_KEY =
