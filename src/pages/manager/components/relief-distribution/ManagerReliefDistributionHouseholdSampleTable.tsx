@@ -49,7 +49,7 @@ export function ManagerReliefDistributionHouseholdSampleTable({
   return (
     <Card className="min-w-0 shadow-sm">
       <CardHeader className="space-y-1">
-        <CardTitle>Bước 1 · Lập danh sách hộ dân mẫu</CardTitle>
+        <CardTitle>Lập danh sách hộ dân mẫu</CardTitle>
         <p className="text-sm text-muted-foreground">
           Quản lý lập danh sách hộ dân mẫu để điều phối viên phân công đội và gói cứu trợ phù hợp.
         </p>

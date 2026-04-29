@@ -5,12 +5,15 @@ import {
   reliefDistributionService,
   type AssembleReliefPackageRequest,
   type AssignHouseholdRequest,
+  type AssignIsolatedHouseholdTeamRequest,
+  type BulkAssignIsolatedHouseholdsRequest,
   type CompleteDeliveriesBatchRequest,
   type CompleteHouseholdDeliveryRequest,
   type CreateDistributionPointRequest,
   type CreateReliefPackageDefinitionRequest,
   type CreateSupplyShortageRequest,
   type GetChecklistParams,
+  type GetTeamWorklistParams,
   type GetDeliveriesParams,
   type GetDistributionPointsParams,
   type GetHouseholdsParams,
@@ -19,6 +22,8 @@ import {
   type GetShortageRequestsParams,
   type ImportCampaignHouseholdsRequest,
   type ReviewSupplyShortageRequest,
+  type TeamDeliveryWorklistItemResponse,
+  type UpdateHouseholdDeliveryAssignmentRequest,
   type UpdateCampaignHouseholdRequest,
   type UpdateCampaignHouseholdStatusRequest,
   type UpdateDistributionPointRequest,
@@ -31,6 +36,8 @@ export const RELIEF_DISTRIBUTION_KEYS = {
     ['relief-distribution', 'households', campaignId, params] as const,
   checklist: (campaignId: string, params?: GetChecklistParams) =>
     ['relief-distribution', 'checklist', campaignId, params] as const,
+  teamWorklist: (campaignId: string, params?: GetTeamWorklistParams) =>
+    ['relief-distribution', 'team-worklist', campaignId, params] as const,
   distributionPoints: (campaignId: string, params?: GetDistributionPointsParams) =>
     ['relief-distribution', 'distribution-points', campaignId, params] as const,
   packages: (campaignId: string, params?: GetReliefPackagesParams) =>
@@ -65,6 +72,7 @@ export const RELIEF_DISTRIBUTION_KEYS = {
     ] as const,
   shortageRequests: (campaignId: string, params?: GetShortageRequestsParams) =>
     ['relief-distribution', 'shortage-requests', campaignId, params] as const,
+  planSummary: (campaignId: string) => ['relief-distribution', 'plan-summary', campaignId] as const,
 };
 
 export function useReliefHouseholds(campaignId: string, params?: GetHouseholdsParams) {
@@ -213,6 +221,28 @@ export function useShortageRequests(campaignId: string, params?: GetShortageRequ
   };
 }
 
+export function useReliefTeamWorklist(campaignId: string, params?: GetTeamWorklistParams) {
+  const query = useQuery({
+    queryKey: RELIEF_DISTRIBUTION_KEYS.teamWorklist(campaignId, params),
+    queryFn: async () => (await reliefDistributionService.getTeamWorklist(campaignId, params)).data,
+    enabled: !!campaignId,
+  });
+
+  return {
+    ...query,
+    worklist: (query.data?.items ?? []) as TeamDeliveryWorklistItemResponse[],
+    pagination: query.data,
+  };
+}
+
+export function useReliefPlanSummary(campaignId: string) {
+  return useQuery({
+    queryKey: RELIEF_DISTRIBUTION_KEYS.planSummary(campaignId),
+    queryFn: async () => (await reliefDistributionService.getPlanSummary(campaignId)).data,
+    enabled: !!campaignId,
+  });
+}
+
 const invalidateCampaign = async (
   queryClient: ReturnType<typeof useQueryClient>,
   _campaignId: string,
@@ -258,6 +288,45 @@ export function useAssignReliefHousehold() {
       await invalidateCampaign(queryClient, campaignId);
     },
     onError: (error) => handleHookError(error, 'Không thể gán hộ dân'),
+  });
+}
+
+export function useAssignIsolatedReliefHousehold() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      campaignHouseholdId,
+      data,
+    }: {
+      campaignId: string;
+      campaignHouseholdId: string;
+      data: AssignIsolatedHouseholdTeamRequest;
+    }) =>
+      reliefDistributionService.assignIsolatedHouseholdTeam(campaignId, campaignHouseholdId, data),
+    onSuccess: async (_, { campaignId }) => {
+      toast.success('Đã gán đội cho hộ cô lập');
+      await invalidateCampaign(queryClient, campaignId);
+    },
+    onError: (error) => handleHookError(error, 'Không thể gán đội cho hộ cô lập'),
+  });
+}
+
+export function useBulkAssignIsolatedReliefHouseholds() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      data,
+    }: {
+      campaignId: string;
+      data: BulkAssignIsolatedHouseholdsRequest;
+    }) => reliefDistributionService.bulkAssignIsolatedHouseholds(campaignId, data),
+    onSuccess: async (_, { campaignId }) => {
+      toast.success('Đã gán đội cho nhóm hộ cô lập');
+      await invalidateCampaign(queryClient, campaignId);
+    },
+    onError: (error) => handleHookError(error, 'Không thể gán đội cho nhóm hộ cô lập'),
   });
 }
 
@@ -449,6 +518,44 @@ export function useCompleteReliefDelivery() {
       await invalidateCampaign(queryClient, campaignId);
     },
     onError: (error) => handleHookError(error, 'Không thể hoàn tất phát quà'),
+  });
+}
+
+export function usePatchReliefDeliveryAssignment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      householdDeliveryId,
+      data,
+    }: {
+      campaignId: string;
+      householdDeliveryId: string;
+      data: UpdateHouseholdDeliveryAssignmentRequest;
+    }) => reliefDistributionService.patchDeliveryAssignment(campaignId, householdDeliveryId, data),
+    onSuccess: async (_, { campaignId }) => {
+      toast.success('Đã cập nhật lượt giao hàng');
+      await invalidateCampaign(queryClient, campaignId);
+    },
+    onError: (error) => handleHookError(error, 'Không thể cập nhật lượt giao hàng'),
+  });
+}
+
+export function useDeleteReliefDeliveryAssignment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      householdDeliveryId,
+    }: {
+      campaignId: string;
+      householdDeliveryId: string;
+    }) => reliefDistributionService.deleteDeliveryAssignment(campaignId, householdDeliveryId),
+    onSuccess: async (_, { campaignId }) => {
+      toast.success('Đã gỡ lượt giao hàng đã gán');
+      await invalidateCampaign(queryClient, campaignId);
+    },
+    onError: (error) => handleHookError(error, 'Không thể gỡ lượt giao hàng đã gán'),
   });
 }
 

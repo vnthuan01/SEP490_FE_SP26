@@ -99,7 +99,6 @@ import {
   convertNumberToVietnameseWords,
   formatTransferApprovalNotes,
   parseTransferNotes,
-  type TransferApprovalItemMeta,
 } from '@/lib/transferNotes';
 
 // ─── Local helpers ──────────────────────────────────────────────────────────
@@ -1806,32 +1805,6 @@ export default function CoordinatorInventoryPage() {
 
     try {
       const referenceAmount = approveTransferReferenceAmount;
-      const approvalItemMetas: TransferApprovalItemMeta[] = (selectedTransfer.items || []).map(
-        (item, index) => {
-          const key = `${item.supplyItemId}-${index}`;
-          const itemMeta = approveTransferForm.itemMetas[key];
-          return {
-            key,
-            supplyItemId: item.supplyItemId,
-            sourceReference:
-              itemMeta?.sourceReference?.trim() ||
-              item.sourceReference?.trim() ||
-              selectedTransfer.sourceStationName ||
-              selectedTransfer.transferCode ||
-              '',
-            totalAmount:
-              itemMeta && parseFormattedNumber(itemMeta.unitCost) > 0
-                ? parseFormattedNumber(itemMeta.unitCost) *
-                  (approveTransferForm.actualQuantities[key] ??
-                    item.actualQuantity ??
-                    item.requestedQuantity ??
-                    item.quantity ??
-                    0)
-                : undefined,
-            expiryDate: itemMeta?.expiryDate || item.expiryDate || null,
-          };
-        },
-      );
       if (!approveTransferForm.approverName.trim()) {
         toast.error('Vui lòng nhập người phê duyệt.');
         return;
@@ -1889,11 +1862,7 @@ export default function CoordinatorInventoryPage() {
       await approveTransfer({
         id: selectedTransfer.id,
         data: {
-          notes: formatTransferApprovalNotes(
-            referenceAmount,
-            approveTransferForm.approverName,
-            approvalItemMetas,
-          ),
+          notes: formatTransferApprovalNotes(referenceAmount, approveTransferForm.approverName),
           evidenceUrls,
         },
       });

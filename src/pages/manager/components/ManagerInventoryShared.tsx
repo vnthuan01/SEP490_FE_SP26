@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -53,6 +54,7 @@ export function StatCard({
   iconClass,
   note,
   className,
+  collapsibleNote = false,
 }: {
   label: string;
   value: string | number;
@@ -60,19 +62,51 @@ export function StatCard({
   iconClass?: string;
   note: string;
   className?: string;
+  collapsibleNote?: boolean;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   return (
-    <Card className={cn('border-border bg-card', className)}>
+    <Card
+      className={cn(
+        'border-border bg-card transition-colors',
+        collapsibleNote && 'cursor-pointer hover:border-primary/30',
+        className,
+      )}
+      onClick={collapsibleNote ? () => setIsExpanded((prev) => !prev) : undefined}
+      role={collapsibleNote ? 'button' : undefined}
+      tabIndex={collapsibleNote ? 0 : undefined}
+      onKeyDown={
+        collapsibleNote
+          ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                setIsExpanded((prev) => !prev);
+              }
+            }
+          : undefined
+      }
+      aria-expanded={collapsibleNote ? isExpanded : undefined}
+    >
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-muted-foreground">{label}</p>
             <p className="mt-2 text-3xl font-black text-foreground">{value}</p>
-            <p className="mt-2 text-xs text-muted-foreground">{note}</p>
+            {collapsibleNote ? (
+              <>
+                <p className="mt-2 text-xs font-medium text-primary">
+                  {isExpanded ? 'Thu gọn chi tiết' : 'Nhấn để xem chi tiết'}
+                </p>
+                {isExpanded && <p className="mt-2 text-xs text-muted-foreground">{note}</p>}
+              </>
+            ) : (
+              <p className="mt-2 text-xs text-muted-foreground">{note}</p>
+            )}
           </div>
           <div
             className={cn(
-              `size-10 rounded-2xl border border-border flex items-center justify-center ${iconClass}`,
+              `size-10 shrink-0 rounded-2xl border border-border flex items-center justify-center ${iconClass}`,
             )}
           >
             <span className="material-symbols-outlined text-[22px]">{icon}</span>

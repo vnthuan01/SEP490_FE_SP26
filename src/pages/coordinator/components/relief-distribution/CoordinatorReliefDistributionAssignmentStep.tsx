@@ -46,6 +46,16 @@ const parseIsoToDate = (value?: string | null) => {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 };
 
+const clampScheduledDate = (value: Date, campaignStartDate?: string, campaignEndDate?: string) => {
+  const next = new Date(value);
+  const start = parseIsoToDate(campaignStartDate);
+  const end = parseIsoToDate(campaignEndDate);
+
+  if (start && next < start) return new Date(start);
+  if (end && next > end) return new Date(end);
+  return next;
+};
+
 import type { CampaignHouseholdResponse } from '@/services/reliefDistributionService';
 type TeamRow = { campaignTeamId: string; teamName: string };
 type PackageRow = { reliefPackageDefinitionId: string; name: string };
@@ -83,7 +93,11 @@ export function CoordinatorReliefDistributionAssignmentStep({
   onDeleteHousehold,
   onUpdateStatusHousehold,
   distributionPoints = [],
-}:   {
+  selectedDistributionPointId = '',
+  onSelectedDistributionPointIdChange,
+  campaignStartDate,
+  campaignEndDate,
+}: {
   sectionId: string;
   assignForm: CoordinatorAssignForm;
   onChangeAssignForm: (updater: (prev: CoordinatorAssignForm) => CoordinatorAssignForm) => void;
@@ -116,6 +130,10 @@ export function CoordinatorReliefDistributionAssignmentStep({
   onDeleteHousehold: (household: CampaignHouseholdResponse) => void;
   onUpdateStatusHousehold: (household: CampaignHouseholdResponse) => void;
   distributionPoints?: { label: string; value: string }[];
+  selectedDistributionPointId?: string;
+  onSelectedDistributionPointIdChange: (value: string) => void;
+  campaignStartDate?: string;
+  campaignEndDate?: string;
 }) {
   const hasTeams = teams.length > 0;
   const [openScheduleCalendar, setOpenScheduleCalendar] = useState(false);
@@ -124,10 +142,7 @@ export function CoordinatorReliefDistributionAssignmentStep({
   return (
     <Card id={sectionId} className="shadow-sm scroll-mt-24">
       <CardHeader className="space-y-1">
-        <CardTitle>Bước 4. Gán hộ dân</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Chọn đội phụ trách, gói hỗ trợ và thời gian thực hiện để gán cho các hộ dân đã chọn.
-        </p>
+        <CardTitle>Gán hộ dân</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {!hasTeams && (
@@ -177,11 +192,7 @@ export function CoordinatorReliefDistributionAssignmentStep({
 
         <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/20 p-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="font-medium text-foreground">Thiết lập gán hộ</p>
-            <p className="text-sm text-muted-foreground">
-              Gom toàn bộ chọn đội, gói hỗ trợ, lịch phát và ghi chú vào một bảng thiết lập để giao
-              diện gọn hơn.
-            </p>
+            <p className="font-medium text-foreground">Thiết lập phân công</p>
           </div>
           <Sheet open={openActionSheet} onOpenChange={setOpenActionSheet}>
             <SheetTrigger asChild>
@@ -192,10 +203,8 @@ export function CoordinatorReliefDistributionAssignmentStep({
             </SheetTrigger>
             <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
               <SheetHeader>
-                <SheetTitle>Thiết lập gán hộ dân</SheetTitle>
-                <SheetDescription>
-                  Chọn đội phụ trách, gói hỗ trợ, lịch bắt đầu và ghi chú cho đợt gán hộ hiện tại.
-                </SheetDescription>
+                <SheetTitle>Thiết lập phân công</SheetTitle>
+                <SheetDescription>Chọn đội, gói hỗ trợ, thời gian và ghi chú.</SheetDescription>
               </SheetHeader>
 
               <div className="mt-6 space-y-4">
@@ -260,8 +269,46 @@ export function CoordinatorReliefDistributionAssignmentStep({
                   )}
                 </div>
 
+                {hasPickupHouseholds && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Điểm phát cho hộ nhận tại điểm</p>
+                    <Select
+                      value={selectedDistributionPointId || 'none'}
+                      onValueChange={(value) =>
+                        onSelectedDistributionPointIdChange(value === 'none' ? '' : value)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chọn điểm phát" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Không chọn</SelectItem>
+                        {distributionPoints.map((point) => (
+                          <SelectItem key={point.value} value={point.value}>
+                            {point.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {assignErrors.distributionPointId && (
+                      <p className="text-sm text-destructive">{assignErrors.distributionPointId}</p>
+                    )}
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Thời gian thực hiện</p>
+                  {(campaignStartDate || campaignEndDate) && (
+                    <p className="text-xs text-muted-foreground">
+                      Chỉ được chọn trong thời gian chiến dịch:
+                      {campaignStartDate
+                        ? ` từ ${parseIsoToDate(campaignStartDate)?.toLocaleString('vi-VN')}`
+                        : ''}
+                      {campaignEndDate
+                        ? ` đến ${parseIsoToDate(campaignEndDate)?.toLocaleString('vi-VN')}`
+                        : ''}
+                    </p>
+                  )}
                   <div className="rounded-xl border border-border bg-card p-3">
                     <div className="relative">
                       <Button
@@ -279,6 +326,7 @@ export function CoordinatorReliefDistributionAssignmentStep({
                       {openScheduleCalendar && (
                         <div className="absolute left-0 z-50 mt-2 rounded-xl border border-border bg-background p-3 shadow-lg">
                           <CustomCalendar
+                            disabledDays={{ before: new Date() }}
                             value={parseIsoToDate(assignForm.scheduledAt)}
                             onChange={(date) => {
                               if (!date) return;
@@ -289,9 +337,14 @@ export function CoordinatorReliefDistributionAssignmentStep({
                                 0,
                                 0,
                               );
+                              const clamped = clampScheduledDate(
+                                date,
+                                campaignStartDate,
+                                campaignEndDate,
+                              );
                               onChangeAssignForm((prev) => ({
                                 ...prev,
-                                scheduledAt: date.toISOString(),
+                                scheduledAt: clamped.toISOString(),
                               }));
                               setOpenScheduleCalendar(false);
                             }}
@@ -326,9 +379,14 @@ export function CoordinatorReliefDistributionAssignmentStep({
                         const [hours, minutes] = e.target.value.split(':').map(Number);
                         const base = parseIsoToDate(assignForm.scheduledAt) || new Date();
                         base.setHours(hours || 0, minutes || 0, 0, 0);
+                        const clamped = clampScheduledDate(
+                          base,
+                          campaignStartDate,
+                          campaignEndDate,
+                        );
                         onChangeAssignForm((prev) => ({
                           ...prev,
-                          scheduledAt: base.toISOString(),
+                          scheduledAt: clamped.toISOString(),
                         }));
                       }}
                     />
@@ -353,11 +411,40 @@ export function CoordinatorReliefDistributionAssignmentStep({
                   )}
                 </div>
 
-                <div className="flex justify-end">
-                  <Button type="button" onClick={() => setOpenActionSheet(false)} className="gap-2">
-                    <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                    Xong
-                  </Button>
+                <div className="space-y-3 pt-2">
+                  {!canAssign && (
+                    <div className="flex flex-col text-xs text-destructive font-medium">
+                      {selectionCount === 0 && <span>• Vui lòng chọn ít nhất một hộ dân</span>}
+                      {!assignForm.campaignTeamId && <span>• Vui lòng chọn đội phụ trách</span>}
+                      {!assignForm.reliefPackageDefinitionId && (
+                        <span>• Vui lòng chọn gói cứu trợ</span>
+                      )}
+                      {!assignForm.scheduledAt && <span>• Vui lòng chọn ngày gán</span>}
+                      {hasPickupHouseholds && !hasDistributionPoint && (
+                        <span>• Hộ nhận tại điểm phát yêu cầu chiến dịch có điểm phát hàng</span>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setOpenActionSheet(false)}
+                    >
+                      Đóng
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={onAssign}
+                      className="gap-2"
+                      disabled={!canAssign}
+                    >
+                      <span className="material-symbols-outlined text-[18px]">
+                        assignment_turned_in
+                      </span>
+                      Gán hộ đã chọn
+                    </Button>
+                  </div>
                 </div>
               </div>
             </SheetContent>
@@ -411,11 +498,19 @@ export function CoordinatorReliefDistributionAssignmentStep({
                 </TableRow>
               ) : (
                 households.map((household) => (
-                  <TableRow key={household.campaignHouseholdId} className="hover:bg-muted/30">
+                  <TableRow
+                    key={household.campaignHouseholdId}
+                    className={`hover:bg-muted/30 ${hasTeams ? 'cursor-pointer' : ''}`}
+                    onClick={() => {
+                      if (!hasTeams) return;
+                      onToggleHousehold(household);
+                    }}
+                  >
                     <TableCell>
                       <Checkbox
                         disabled={!hasTeams}
                         checked={selectedHouseholdIds.has(household.campaignHouseholdId)}
+                        onClick={(event) => event.stopPropagation()}
                         onCheckedChange={() => onToggleHousehold(household)}
                       />
                     </TableCell>
@@ -459,7 +554,10 @@ export function CoordinatorReliefDistributionAssignmentStep({
                           variant="secondary"
                           size="sm"
                           className="gap-1"
-                          onClick={() => onUpdateStatusHousehold(household)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onUpdateStatusHousehold(household);
+                          }}
                         >
                           <span className="material-symbols-outlined text-[16px]">sync_alt</span>
                           Trạng thái
@@ -469,7 +567,10 @@ export function CoordinatorReliefDistributionAssignmentStep({
                           variant="outline"
                           size="sm"
                           className="gap-1"
-                          onClick={() => onEditHousehold(household)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onEditHousehold(household);
+                          }}
                         >
                           <span className="material-symbols-outlined text-[16px]">edit</span>
                           Sửa
@@ -479,7 +580,10 @@ export function CoordinatorReliefDistributionAssignmentStep({
                           variant="destructive"
                           size="sm"
                           className="gap-1"
-                          onClick={() => onDeleteHousehold(household)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onDeleteHousehold(household);
+                          }}
                         >
                           <span className="material-symbols-outlined text-[16px]">delete</span>
                           Xoá
@@ -506,30 +610,6 @@ export function CoordinatorReliefDistributionAssignmentStep({
               <span className="material-symbols-outlined text-[18px]">chevron_right</span>
               Trang sau
             </Button>
-            <div className="flex flex-col gap-2">
-              {!canAssign && (
-                <div className="flex flex-col items-end text-xs text-destructive font-medium">
-                  {selectionCount === 0 && <span>• Vui lòng chọn ít nhất một hộ dân</span>}
-                  {!assignForm.campaignTeamId && <span>• Vui lòng chọn đội phụ trách</span>}
-                  {!assignForm.reliefPackageDefinitionId && (
-                    <span>• Vui lòng chọn gói cứu trợ</span>
-                  )}
-                  {!assignForm.scheduledAt && <span>• Vui lòng chọn ngày gán</span>}
-                  {hasPickupHouseholds && !hasDistributionPoint && (
-                    <span>• Hộ nhận tại điểm phát yêu cầu chiến dịch có điểm phát hàng</span>
-                  )}
-                </div>
-              )}
-              <Button
-                onClick={onAssign}
-                disabled={!canAssign}
-                className="gap-2 w-full md:w-auto"
-                size="lg"
-              >
-                <span className="material-symbols-outlined text-[18px]">assignment_turned_in</span>
-                Gán hộ đã chọn
-              </Button>
-            </div>
           </div>
         </div>
       </CardContent>

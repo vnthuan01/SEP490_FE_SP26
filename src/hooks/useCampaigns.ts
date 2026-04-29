@@ -6,6 +6,7 @@ import type {
   CampaignSummary,
   CampaignTeam,
   CampaignInventoryBalance,
+  CampaignAssignedVehicle,
   PublicCampaignSummary,
   CreateCampaignPayload,
   ExtractCampaignBudgetRequest,
@@ -13,7 +14,9 @@ import type {
   SearchCampaignParams,
   AssignStationPayload,
   AssignTeamPayload,
+  AssignCampaignVehiclePayload,
   UpdateStatusPayload,
+  UpdateCampaignVehicleAssignmentPayload,
 } from '@/services/campaignService';
 import { toast } from 'sonner';
 import { handleHookError } from './hookErrorUtils';
@@ -26,6 +29,8 @@ export const CAMPAIGN_QUERY_KEYS = {
   summary: (id: string) => ['campaigns', 'summary', id] as const,
   inventoryBalance: (id: string) => ['campaigns', 'inventory-balance', id] as const,
   teams: (id: string) => ['campaigns', 'teams', id] as const,
+  vehicles: (id: string, campaignTeamId?: string) =>
+    ['campaigns', 'vehicles', id, campaignTeamId] as const,
 };
 
 // --- Queries --- //
@@ -125,6 +130,22 @@ export function useCampaignTeams(id: string) {
   return {
     ...query,
     teams: (query.data || []) as CampaignTeam[],
+  };
+}
+
+export function useCampaignVehicles(id: string, campaignTeamId?: string) {
+  const query = useQuery({
+    queryKey: CAMPAIGN_QUERY_KEYS.vehicles(id, campaignTeamId),
+    queryFn: async () => {
+      const response = await campaignService.getCampaignVehicles(id, campaignTeamId);
+      return response.data as CampaignAssignedVehicle[];
+    },
+    enabled: !!id,
+  });
+
+  return {
+    ...query,
+    vehicles: (query.data || []) as CampaignAssignedVehicle[],
   };
 }
 
@@ -260,6 +281,78 @@ export function useRemoveTeamFromCampaign() {
     },
     onError: (error: any) => {
       handleHookError(error, 'Không thể gỡ đội khỏi chiến dịch');
+    },
+  });
+}
+
+export function useAssignCampaignVehicle() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      campaignTeamId,
+      data,
+    }: {
+      id: string;
+      campaignTeamId: string;
+      data: AssignCampaignVehiclePayload;
+    }) => campaignService.assignVehicleToTeam(id, campaignTeamId, data),
+    onSuccess: async (_, variables) => {
+      toast.success('Đã điều phối phương tiện cho đội');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) }),
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.teams(variables.id) }),
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.vehicles(variables.id) }),
+      ]);
+    },
+    onError: (error: any) => {
+      handleHookError(error, 'Không thể điều phối phương tiện cho đội');
+    },
+  });
+}
+
+export function useUpdateCampaignVehicleAssignment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      campaignVehicleId,
+      data,
+    }: {
+      id: string;
+      campaignVehicleId: string;
+      data: UpdateCampaignVehicleAssignmentPayload;
+    }) => campaignService.updateCampaignVehicleAssignment(id, campaignVehicleId, data),
+    onSuccess: async (_, variables) => {
+      toast.success('Đã cập nhật điều phối phương tiện');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) }),
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.vehicles(variables.id) }),
+      ]);
+    },
+    onError: (error: any) => {
+      handleHookError(error, 'Không thể cập nhật điều phối phương tiện');
+    },
+  });
+}
+
+export function useRemoveCampaignVehicleAssignment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, campaignVehicleId }: { id: string; campaignVehicleId: string }) =>
+      campaignService.removeCampaignVehicleAssignment(id, campaignVehicleId),
+    onSuccess: async (_, variables) => {
+      toast.success('Đã gỡ điều phối phương tiện');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) }),
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.vehicles(variables.id) }),
+      ]);
+    },
+    onError: (error: any) => {
+      handleHookError(error, 'Không thể gỡ điều phối phương tiện');
     },
   });
 }

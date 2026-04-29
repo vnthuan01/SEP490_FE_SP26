@@ -93,6 +93,44 @@ export interface CampaignTeam {
   status: number;
   assignedAt: string;
   memberCount: number;
+  vehicles?: CampaignAssignedVehicle[];
+}
+
+export interface CampaignAssignedVehicle {
+  campaignVehicleId: string;
+  vehicleId: string;
+  licensePlate: string;
+  vehicleTypeId?: string;
+  vehicleTypeName: string;
+  campaignTeamId?: string | null;
+  campaignTeamName?: string | null;
+  assignedDriverId?: string | null;
+  driverName?: string | null;
+  reliefStationId?: string | null;
+  currentVehicleStatus?: number;
+  status: number;
+  startDate: string;
+  endDate?: string | null;
+  note?: string | null;
+}
+
+export interface AssignCampaignVehiclePayload {
+  vehicleId: string;
+  campaignTeamId: string;
+  assignedDriverId?: string | null;
+  startDate?: string;
+  endDate?: string | null;
+  status?: number;
+  note?: string | null;
+}
+
+export interface UpdateCampaignVehicleAssignmentPayload {
+  campaignTeamId?: string | null;
+  assignedDriverId?: string | null;
+  startDate?: string;
+  endDate?: string | null;
+  status?: number;
+  note?: string | null;
 }
 
 export interface Campaign {
@@ -243,4 +281,28 @@ export const campaignService = {
 
   // Remove team
   removeTeam: (id: string, teamId: string) => apiClient.delete(`/campaigns/${id}/teams/${teamId}`),
+
+  assignVehicleToTeam: (id: string, campaignTeamId: string, data: AssignCampaignVehiclePayload) =>
+    apiClient.post<CampaignAssignedVehicle>(
+      `/campaigns/${id}/teams/${campaignTeamId}/vehicles`,
+      data,
+    ),
+
+  getCampaignVehicles: (id: string, campaignTeamId?: string) =>
+    apiClient.get<CampaignAssignedVehicle[]>(`/campaigns/${id}/vehicles`, {
+      params: campaignTeamId ? { campaignTeamId } : undefined,
+    }),
+
+  updateCampaignVehicleAssignment: (
+    id: string,
+    campaignVehicleId: string,
+    data: UpdateCampaignVehicleAssignmentPayload,
+  ) =>
+    apiClient.patch<CampaignAssignedVehicle>(
+      `/campaigns/${id}/vehicles/${campaignVehicleId}`,
+      data,
+    ),
+
+  removeCampaignVehicleAssignment: (id: string, campaignVehicleId: string) =>
+    apiClient.delete(`/campaigns/${id}/vehicles/${campaignVehicleId}`),
 };

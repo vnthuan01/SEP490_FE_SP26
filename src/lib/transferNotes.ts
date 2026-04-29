@@ -170,21 +170,13 @@ export function convertNumberToVietnameseWords(value: number): string {
   return sentence ? `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)} đồng` : '';
 }
 
-export function formatTransferApprovalNotes(
-  referenceAmount: number,
-  approverName: string,
-  itemMetas: TransferApprovalItemMeta[] = [],
-): string {
+export function formatTransferApprovalNotes(referenceAmount: number, approverName: string): string {
   const parts = [
     'Đã phê duyệt',
     `Số tiền: ${formatNumberVN(referenceAmount)}`,
     `Bằng chữ: ${convertNumberToVietnameseWords(referenceAmount)}`,
     `Người phê duyệt: ${approverName.trim()}`,
   ];
-
-  if (itemMetas.length > 0) {
-    parts.push(`ItemMeta: ${encodeURIComponent(JSON.stringify(itemMetas))}`);
-  }
 
   return parts.join(' | ');
 }

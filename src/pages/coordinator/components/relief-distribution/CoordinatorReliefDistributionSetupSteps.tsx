@@ -76,6 +76,20 @@ const formatDateVN = (value?: string | null) => {
   return parsed.toLocaleDateString('vi-VN');
 };
 
+const clampDateTimeToCampaign = (
+  value: Date,
+  campaignStartDate?: string,
+  campaignEndDate?: string,
+) => {
+  const next = new Date(value);
+  const start = parseIsoToDate(campaignStartDate);
+  const end = parseIsoToDate(campaignEndDate);
+
+  if (start && next < start) return new Date(start);
+  if (end && next > end) return new Date(end);
+  return next;
+};
+
 export function CoordinatorReliefDistributionSetupSteps({
   distributionSectionId,
   packageSectionId,
@@ -104,6 +118,8 @@ export function CoordinatorReliefDistributionSetupSteps({
   onCancelPackageEdit,
   onEditPackage,
   onDeletePackage,
+  campaignStartDate,
+  campaignEndDate,
 }: {
   distributionSectionId: string;
   packageSectionId: string;
@@ -134,6 +150,8 @@ export function CoordinatorReliefDistributionSetupSteps({
   onCancelPackageEdit: () => void;
   onEditPackage: () => void;
   onDeletePackage: () => void;
+  campaignStartDate?: string;
+  campaignEndDate?: string;
 }) {
   const [openStartCalendar, setOpenStartCalendar] = useState(false);
   const [openEndCalendar, setOpenEndCalendar] = useState(false);
@@ -221,6 +239,17 @@ export function CoordinatorReliefDistributionSetupSteps({
 
               <div className="space-y-2">
                 <p className="text-sm font-medium">Thời gian phát hàng</p>
+                {(campaignStartDate || campaignEndDate) && (
+                  <p className="text-xs text-muted-foreground">
+                    Chỉ được chọn trong thời gian chiến dịch:
+                    {campaignStartDate
+                      ? ` từ ${parseIsoToDate(campaignStartDate)?.toLocaleString('vi-VN')}`
+                      : ''}
+                    {campaignEndDate
+                      ? ` đến ${parseIsoToDate(campaignEndDate)?.toLocaleString('vi-VN')}`
+                      : ''}
+                  </p>
+                )}
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="space-y-2">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -244,6 +273,7 @@ export function CoordinatorReliefDistributionSetupSteps({
                       {openStartCalendar && (
                         <div className="absolute left-0 z-50 mt-2 rounded-xl border border-border bg-background p-3 shadow-lg">
                           <CustomCalendar
+                            disabledDays={{ before: new Date() }}
                             value={parseIsoToDate(distributionPointForm.startsAt)}
                             onChange={(date) => {
                               if (!date) return;
@@ -255,9 +285,14 @@ export function CoordinatorReliefDistributionSetupSteps({
                                 0,
                                 0,
                               );
+                              const clamped = clampDateTimeToCampaign(
+                                date,
+                                campaignStartDate,
+                                campaignEndDate,
+                              );
                               onChangeDistributionPointForm((prev) => ({
                                 ...prev,
-                                startsAt: date.toISOString(),
+                                startsAt: clamped.toISOString(),
                               }));
                               setOpenStartCalendar(false);
                             }}
@@ -290,9 +325,14 @@ export function CoordinatorReliefDistributionSetupSteps({
                         const [hours, minutes] = e.target.value.split(':').map(Number);
                         const base = parseIsoToDate(distributionPointForm.startsAt) || new Date();
                         base.setHours(hours || 0, minutes || 0, 0, 0);
+                        const clamped = clampDateTimeToCampaign(
+                          base,
+                          campaignStartDate,
+                          campaignEndDate,
+                        );
                         onChangeDistributionPointForm((prev) => ({
                           ...prev,
-                          startsAt: base.toISOString(),
+                          startsAt: clamped.toISOString(),
                         }));
                       }}
                     />
@@ -322,6 +362,7 @@ export function CoordinatorReliefDistributionSetupSteps({
                       {openEndCalendar && (
                         <div className="absolute left-0 z-50 mt-2 rounded-xl border border-border bg-background p-3 shadow-lg">
                           <CustomCalendar
+                            disabledDays={{ before: new Date() }}
                             value={parseIsoToDate(distributionPointForm.endsAt)}
                             onChange={(date) => {
                               if (!date) {
@@ -337,9 +378,14 @@ export function CoordinatorReliefDistributionSetupSteps({
                                 0,
                                 0,
                               );
+                              const clamped = clampDateTimeToCampaign(
+                                date,
+                                campaignStartDate,
+                                campaignEndDate,
+                              );
                               onChangeDistributionPointForm((prev) => ({
                                 ...prev,
-                                endsAt: date.toISOString(),
+                                endsAt: clamped.toISOString(),
                               }));
                               setOpenEndCalendar(false);
                             }}
@@ -372,9 +418,14 @@ export function CoordinatorReliefDistributionSetupSteps({
                         const [hours, minutes] = e.target.value.split(':').map(Number);
                         const base = parseIsoToDate(distributionPointForm.endsAt) || new Date();
                         base.setHours(hours || 0, minutes || 0, 0, 0);
+                        const clamped = clampDateTimeToCampaign(
+                          base,
+                          campaignStartDate,
+                          campaignEndDate,
+                        );
                         onChangeDistributionPointForm((prev) => ({
                           ...prev,
-                          endsAt: base.toISOString(),
+                          endsAt: clamped.toISOString(),
                         }));
                       }}
                     />

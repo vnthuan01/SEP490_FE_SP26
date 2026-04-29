@@ -11,6 +11,7 @@ type ReliefAdvancedFiltersProps = {
   onExpandedChange: (expanded: boolean) => void;
   teams?: SelectOption[];
   distributionPoints?: SelectOption[];
+  packages?: SelectOption[];
   searchPlaceholder?: string;
   showAssignmentFilter?: boolean;
   showIsolationFilter?: boolean;
@@ -26,6 +27,7 @@ export function ReliefAdvancedFilters({
   onExpandedChange,
   teams = [],
   distributionPoints = [],
+  packages = [],
   searchPlaceholder = 'Tìm theo mã hộ hoặc tên chủ hộ',
   showAssignmentFilter = true,
   showIsolationFilter = false,
@@ -36,10 +38,17 @@ export function ReliefAdvancedFilters({
     value.search.trim() ? 1 : 0,
     value.assignment && value.assignment !== 'all' ? 1 : 0,
     value.deliveryMode !== undefined ? 1 : 0,
+    value.reliefPackageDefinitionId ? 1 : 0,
+    value.hasMultiplePackages !== undefined ? 1 : 0,
     value.teamId ? 1 : 0,
     value.distributionPointId ? 1 : 0,
     value.status !== undefined ? 1 : 0,
     value.isIsolated !== undefined ? 1 : 0,
+    value.requiresBoat !== undefined ? 1 : 0,
+    value.requiresLocalGuide !== undefined ? 1 : 0,
+    value.minFloodSeverityLevel !== undefined ? 1 : 0,
+    value.minIsolationSeverityLevel !== undefined ? 1 : 0,
+    value.hasCoordinates !== undefined ? 1 : 0,
   ].reduce((sum, current) => sum + current, 0);
 
   const summaryBits = [
@@ -50,12 +59,31 @@ export function ReliefAdvancedFilters({
       : null,
     value.deliveryMode !== undefined
       ? value.deliveryMode === 0
-        ? 'Tại điểm phát'
-        : 'Phát tận nơi'
+        ? 'Phát tận nơi'
+        : 'Tại điểm phát'
       : null,
     value.isIsolated !== undefined ? (value.isIsolated ? 'Bị cô lập' : 'Không cô lập') : null,
+    value.requiresBoat !== undefined
+      ? value.requiresBoat
+        ? 'Cần xuồng'
+        : 'Không cần xuồng'
+      : null,
+    value.requiresLocalGuide !== undefined
+      ? value.requiresLocalGuide
+        ? 'Cần dẫn đường'
+        : 'Không cần dẫn đường'
+      : null,
     value.teamId
       ? (teams.find((item) => item.value === value.teamId)?.label ?? 'Đội đã chọn')
+      : null,
+    value.reliefPackageDefinitionId
+      ? (packages.find((item) => item.value === value.reliefPackageDefinitionId)?.label ??
+        'Gói đã chọn')
+      : null,
+    value.hasMultiplePackages !== undefined
+      ? value.hasMultiplePackages
+        ? 'Hộ có nhiều gói'
+        : 'Hộ một gói'
       : null,
     value.distributionPointId
       ? (distributionPoints.find((item) => item.value === value.distributionPointId)?.label ??
@@ -136,6 +164,45 @@ export function ReliefAdvancedFilters({
           </div>
 
           <div className="space-y-2">
+            <p className="text-sm font-medium">Gói cứu trợ</p>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={value.reliefPackageDefinitionId ?? ''}
+              onChange={(e) =>
+                onChange({ ...value, reliefPackageDefinitionId: e.target.value || undefined })
+              }
+            >
+              <option value="">Tất cả</option>
+              {packages.map((pkg) => (
+                <option key={pkg.value} value={pkg.value}>
+                  {pkg.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Số lượng gói / hộ</p>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={
+                value.hasMultiplePackages === undefined ? '' : String(value.hasMultiplePackages)
+              }
+              onChange={(e) =>
+                onChange({
+                  ...value,
+                  hasMultiplePackages:
+                    e.target.value === '' ? undefined : e.target.value === 'true',
+                })
+              }
+            >
+              <option value="">Tất cả</option>
+              <option value="true">Nhiều gói</option>
+              <option value="false">Một gói</option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
             <p className="text-sm font-medium">Đội thực hiện</p>
             <select
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -210,6 +277,92 @@ export function ReliefAdvancedFilters({
               </select>
             </div>
           )}
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Phương tiện thủy</p>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={value.requiresBoat === undefined ? '' : String(value.requiresBoat)}
+              onChange={(e) =>
+                onChange({
+                  ...value,
+                  requiresBoat: e.target.value === '' ? undefined : e.target.value === 'true',
+                })
+              }
+            >
+              <option value="">Tất cả</option>
+              <option value="true">Cần xuồng/ghe</option>
+              <option value="false">Không cần xuồng/ghe</option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Người dẫn đường</p>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={value.requiresLocalGuide === undefined ? '' : String(value.requiresLocalGuide)}
+              onChange={(e) =>
+                onChange({
+                  ...value,
+                  requiresLocalGuide: e.target.value === '' ? undefined : e.target.value === 'true',
+                })
+              }
+            >
+              <option value="">Tất cả</option>
+              <option value="true">Cần dẫn đường</option>
+              <option value="false">Không cần dẫn đường</option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Mức ngập tối thiểu</p>
+            <Input
+              type="number"
+              min={0}
+              max={10}
+              value={value.minFloodSeverityLevel ?? ''}
+              onChange={(e) =>
+                onChange({
+                  ...value,
+                  minFloodSeverityLevel: e.target.value ? Number(e.target.value) : undefined,
+                })
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Mức cô lập tối thiểu</p>
+            <Input
+              type="number"
+              min={0}
+              max={10}
+              value={value.minIsolationSeverityLevel ?? ''}
+              onChange={(e) =>
+                onChange({
+                  ...value,
+                  minIsolationSeverityLevel: e.target.value ? Number(e.target.value) : undefined,
+                })
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Có tọa độ</p>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={value.hasCoordinates === undefined ? '' : String(value.hasCoordinates)}
+              onChange={(e) =>
+                onChange({
+                  ...value,
+                  hasCoordinates: e.target.value === '' ? undefined : e.target.value === 'true',
+                })
+              }
+            >
+              <option value="">Tất cả</option>
+              <option value="true">Có tọa độ</option>
+              <option value="false">Thiếu tọa độ</option>
+            </select>
+          </div>
 
           {showAssignmentFilter && (
             <div className="space-y-2">

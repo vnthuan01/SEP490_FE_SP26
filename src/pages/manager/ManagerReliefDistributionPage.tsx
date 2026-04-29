@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { managerNavGroups } from './components/sidebarConfig';
@@ -32,11 +33,11 @@ import {
 } from '@/enums/beEnums';
 import type { HouseholdSampleForm } from './components/relief-distribution/types';
 import { ManagerReliefDistributionPageHeader } from './components/relief-distribution/ManagerReliefDistributionPageHeader';
-import { ManagerReliefDistributionHouseholdSampleTable } from './components/relief-distribution/ManagerReliefDistributionHouseholdSampleTable';
 import { StatCard } from './components/ManagerInventoryShared';
 import { parseApiError } from '@/lib/apiErrors';
 import { ReliefAdvancedFilters } from '@/components/shared/relief-distribution/ReliefAdvancedFilters';
 import type { ReliefAdvancedFiltersValue } from '@/components/shared/relief-distribution/types';
+import { ReliefHouseholdImportCard } from '@/pages/shared/relief-distribution/ReliefHouseholdImportCard';
 
 const HOUSEHOLDS_PER_PAGE = 10;
 
@@ -78,6 +79,36 @@ const buildDistinctCloneName = (baseName: string, existingNames: Set<string>) =>
   return clonedName;
 };
 
+const IMPORT_TEMPLATE_HEADERS = [
+  'Mã hộ',
+  'Chủ hộ',
+  'Số điện thoại',
+  'Địa chỉ',
+  'Vĩ độ',
+  'Kinh độ',
+  'Số người',
+  'Bị cô lập',
+  'Mức ngập',
+  'Mức cô lập',
+  'Cần xuồng',
+  'Cần dẫn đường',
+];
+
+const DEFAULT_IMPORT_COLUMN_MAPPING: Record<string, string> = {
+  householdCode: 'Mã hộ',
+  headOfHouseholdName: 'Chủ hộ',
+  contactPhone: 'Số điện thoại',
+  address: 'Địa chỉ',
+  latitude: 'Vĩ độ',
+  longitude: 'Kinh độ',
+  householdSize: 'Số người',
+  isIsolated: 'Bị cô lập',
+  floodSeverityLevel: 'Mức ngập',
+  isolationSeverityLevel: 'Mức cô lập',
+  requiresBoat: 'Cần xuồng',
+  requiresLocalGuide: 'Cần dẫn đường',
+};
+
 export default function ManagerReliefDistributionPage() {
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [householdSamples, setHouseholdSamples] = useState<HouseholdSampleForm[]>([
@@ -94,6 +125,11 @@ export default function ManagerReliefDistributionPage() {
   const [statusFilter, setStatusFilter] = useState<number | undefined>(undefined);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [sampleErrors, setSampleErrors] = useState<Record<string, string>>({});
+  const [importFiles, setImportFiles] = useState<File[]>([]);
+  const [importHeaders, setImportHeaders] = useState<string[]>([]);
+  const [importColumnMapping, setImportColumnMapping] = useState<Record<string, string>>(
+    DEFAULT_IMPORT_COLUMN_MAPPING,
+  );
 
   const filtersValue: ReliefAdvancedFiltersValue = {
     search: householdSearch,
@@ -304,6 +340,95 @@ export default function ManagerReliefDistributionPage() {
     });
   };
 
+  const parseImportedHouseholdFiles = async (files: FileList | null) => {
+    if (!files?.length) {
+      setImportFiles([]);
+      return;
+    }
+
+    const selectedFiles = Array.from(files);
+    setImportFiles(selectedFiles);
+
+    const parsedRows: HouseholdSampleForm[] = [];
+
+    for (const file of selectedFiles) {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(firstSheet, { defval: '' });
+      const headers =
+        XLSX.utils.sheet_to_json<string[]>(firstSheet, { header: 1, range: 0 })[0] || [];
+      setImportHeaders(headers.filter(Boolean));
+
+      rows.forEach((row, index) => {
+        const getMapped = (field: string) => row[importColumnMapping[field] || ''];
+        const isIsolatedValue = String(getMapped('isIsolated') || '')
+          .trim()
+          .toLowerCase();
+        const isIsolated = ['true', '1', 'yes', 'co', 'có', 'bi co lap', 'bị cô lập'].includes(
+          isIsolatedValue,
+        );
+
+        parsedRows.push({
+          householdCode:
+            String(getMapped('householdCode') || '').trim() ||
+            `HH-IMPORT-${Date.now()}-${index + 1}`,
+          headOfHouseholdName: String(getMapped('headOfHouseholdName') || '').trim(),
+          contactPhone: String(getMapped('contactPhone') || '').trim(),
+          address: String(getMapped('address') || '').trim(),
+          latitude: Number(getMapped('latitude') || 16.0544),
+          longitude: Number(getMapped('longitude') || 108.2022),
+          householdSize: Number(getMapped('householdSize') || 1),
+          isIsolated,
+          deliveryMode: isIsolated ? DeliveryMode.DoorToDoor : DeliveryMode.PickupAtPoint,
+          floodSeverityLevel: getMapped('floodSeverityLevel')
+            ? Number(getMapped('floodSeverityLevel'))
+            : undefined,
+          isolationSeverityLevel: getMapped('isolationSeverityLevel')
+            ? Number(getMapped('isolationSeverityLevel'))
+            : undefined,
+          requiresBoat: Boolean(getMapped('requiresBoat')),
+          requiresLocalGuide: Boolean(getMapped('requiresLocalGuide')),
+        });
+      });
+    }
+
+    if (parsedRows.length > 0) {
+      setHouseholdSamples(parsedRows);
+      toast.success(`Đã nạp ${parsedRows.length} hộ dân từ file vào bảng nhập liệu.`);
+    }
+  };
+
+  const downloadImportTemplate = (format: 'csv' | 'xlsx') => {
+    const sampleRows = [
+      {
+        'Mã hộ': 'HH-001',
+        'Chủ hộ': 'Nguyễn Văn A',
+        'Số điện thoại': '0900000000',
+        'Địa chỉ': 'Hòa Vang, Đà Nẵng, Miền Trung',
+        'Vĩ độ': 16.0544,
+        'Kinh độ': 108.2022,
+        'Số người': 4,
+        'Bị cô lập': 'false',
+        'Mức ngập': 2,
+        'Mức cô lập': 0,
+        'Cần xuồng': 'false',
+        'Cần dẫn đường': 'false',
+      },
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(sampleRows, { header: IMPORT_TEMPLATE_HEADERS });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Households');
+
+    if (format === 'csv') {
+      XLSX.writeFile(workbook, 'mau-ho-dan-cuu-tro.csv', { bookType: 'csv' });
+      return;
+    }
+
+    XLSX.writeFile(workbook, 'mau-ho-dan-cuu-tro.xlsx');
+  };
+
   return (
     <DashboardLayout navGroups={managerNavGroups}>
       <div className="space-y-6 min-w-0">
@@ -364,7 +489,9 @@ export default function ManagerReliefDistributionPage() {
 
         <div className="grid gap-6 grid-cols-1">
           <div className="min-w-0">
-            <ManagerReliefDistributionHouseholdSampleTable
+            <ReliefHouseholdImportCard
+              title="Bước 1 · Lập danh sách hộ dân mẫu"
+              description="Dữ liệu hộ dân thường đã được địa phương chuẩn bị. Manager dùng khối này để nhập mới hoặc bổ sung danh sách hộ dân khi cần đồng bộ dữ liệu chiến dịch."
               householdSamples={householdSamples}
               updateHouseholdSample={updateHouseholdSample}
               removeHouseholdSample={removeHouseholdSample}
@@ -380,6 +507,21 @@ export default function ManagerReliefDistributionPage() {
               submitDisabled={!effectiveSelectedCampaignId || householdSamples.length === 0}
               sampleErrors={sampleErrors}
               globalError={sampleErrors.form}
+              importFiles={importFiles}
+              onImportFilesSelected={(files) => {
+                void parseImportedHouseholdFiles(files);
+              }}
+              onRemoveImportFile={(index) =>
+                setImportFiles((prev) => prev.filter((_, fileIndex) => fileIndex !== index))
+              }
+              importHeaders={importHeaders}
+              importColumnMapping={importColumnMapping}
+              onImportColumnMappingChange={(field, header) =>
+                setImportColumnMapping((prev) => ({ ...prev, [field]: header }))
+              }
+              onDownloadCsvTemplate={() => downloadImportTemplate('csv')}
+              onDownloadXlsxTemplate={() => downloadImportTemplate('xlsx')}
+              badgeLabel="Dùng khi phát sinh"
             />
             {households.length > 0 && (
               <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">

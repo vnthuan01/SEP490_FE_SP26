@@ -17,11 +17,17 @@ import { formatNumberVN } from '@/lib/utils';
 
 interface Props {
   campaignId: string;
-  isOpen: boolean;
-  onClose: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
+  mode?: 'sheet' | 'inline';
 }
 
-export function MobileShortageRequestReview({ campaignId, isOpen, onClose }: Props) {
+export function MobileShortageRequestReview({
+  campaignId,
+  isOpen = false,
+  onClose = () => undefined,
+  mode = 'sheet',
+}: Props) {
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
   const [rejectNote, setRejectNote] = useState('');
   const [showRejectDialog, setShowRejectDialog] = useState(false);
@@ -62,84 +68,97 @@ export function MobileShortageRequestReview({ campaignId, isOpen, onClose }: Pro
     setShowRejectDialog(true);
   };
 
+  const content = (
+    <div className="mt-6 space-y-4">
+      {shortageRequests.length === 0 ? (
+        <div className="rounded-lg border p-8 text-center">
+          <p className="text-muted-foreground">Không có yêu cầu nào cần duyệt</p>
+        </div>
+      ) : (
+        shortageRequests.map((request) => (
+          <div
+            key={request.supplyShortageRequestId}
+            className="rounded-lg border bg-card p-4 shadow-sm"
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <p className="font-medium">
+                  {request.distributionPointName || 'Không có điểm phát'}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {request.campaignTeamName || 'Không có team'} ·
+                  {request.requestedByUserName || 'Unknown'}
+                </p>
+              </div>
+              <Badge variant="warning" appearance="light">
+                Chờ duyệt
+              </Badge>
+            </div>
+
+            <div className="space-y-2 mb-3">
+              {request.items.map((item) => (
+                <div
+                  key={item.supplyShortageRequestItemId}
+                  className="flex justify-between rounded-md bg-muted/50 px-3 py-2 text-sm"
+                >
+                  <span className="font-medium">{item.supplyItemName}</span>
+                  <span>{formatNumberVN(item.quantityRequested)}</span>
+                </div>
+              ))}
+            </div>
+
+            {request.reason && (
+              <p className="mb-3 text-sm italic text-muted-foreground">Lý do: {request.reason}</p>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="flex-1"
+                onClick={() => handleApprove(request.supplyShortageRequestId)}
+                disabled={approveMutation.isPending}
+              >
+                Duyệt
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1"
+                onClick={() => openRejectDialog(request)}
+                disabled={rejectMutation.isPending}
+              >
+                Từ chối
+              </Button>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+
   return (
     <>
-      <Sheet open={isOpen} onOpenChange={onClose}>
-        <SheetContent side="bottom" className="h-[90vh] overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Duyệt yêu cầu thiếu hàng</SheetTitle>
-            <SheetDescription>Xem và duyệt các yêu cầu thiếu hàng từ đội phát</SheetDescription>
-          </SheetHeader>
-
-          <div className="mt-6 space-y-4">
-            {shortageRequests.length === 0 ? (
-              <div className="rounded-lg border p-8 text-center">
-                <p className="text-muted-foreground">Không có yêu cầu nào cần duyệt</p>
-              </div>
-            ) : (
-              shortageRequests.map((request) => (
-                <div
-                  key={request.supplyShortageRequestId}
-                  className="rounded-lg border bg-card p-4 shadow-sm"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <p className="font-medium">
-                        {request.distributionPointName || 'Không có điểm phát'}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {request.campaignTeamName || 'Không có team'} ·
-                        {request.requestedByUserName || 'Unknown'}
-                      </p>
-                    </div>
-                    <Badge variant="warning" appearance="light">
-                      Chờ duyệt
-                    </Badge>
-                  </div>
-
-                  <div className="space-y-2 mb-3">
-                    {request.items.map((item) => (
-                      <div
-                        key={item.supplyShortageRequestItemId}
-                        className="flex justify-between rounded-md bg-muted/50 px-3 py-2 text-sm"
-                      >
-                        <span className="font-medium">{item.supplyItemName}</span>
-                        <span>{formatNumberVN(item.quantityRequested)}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {request.reason && (
-                    <p className="mb-3 text-sm italic text-muted-foreground">
-                      Lý do: {request.reason}
-                    </p>
-                  )}
-
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleApprove(request.supplyShortageRequestId)}
-                      disabled={approveMutation.isPending}
-                    >
-                      Duyệt
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1"
-                      onClick={() => openRejectDialog(request)}
-                      disabled={rejectMutation.isPending}
-                    >
-                      Từ chối
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
+      {mode === 'sheet' ? (
+        <Sheet open={isOpen} onOpenChange={onClose}>
+          <SheetContent side="bottom" className="h-[90vh] overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>Duyệt yêu cầu thiếu hàng</SheetTitle>
+              <SheetDescription>Xem và duyệt các yêu cầu thiếu hàng từ đội phát</SheetDescription>
+            </SheetHeader>
+            {content}
+          </SheetContent>
+        </Sheet>
+      ) : (
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-foreground">Duyệt yêu cầu thiếu hàng</h3>
+            <p className="text-sm text-muted-foreground">
+              Xem và duyệt các yêu cầu thiếu hàng từ đội phát ngay trên trang.
+            </p>
           </div>
-        </SheetContent>
-      </Sheet>
+          {content}
+        </div>
+      )}
 
       <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
         <DialogContent>

@@ -19,9 +19,13 @@ export function ReliefStickySectionHeader({
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
         {badgeLabel && (
-          <Badge variant="outline" appearance="light" className="gap-1.5">
+          <Badge
+            variant="outline"
+            appearance="light"
+            className="max-w-full gap-1.5 whitespace-normal break-words"
+          >
             {badgeIcon && (
-              <span className="material-symbols-outlined text-[15px]">{badgeIcon}</span>
+              <span className="material-symbols-outlined shrink-0 text-[15px]">{badgeIcon}</span>
             )}
             {badgeLabel}
           </Badge>
