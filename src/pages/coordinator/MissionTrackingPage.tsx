@@ -186,6 +186,13 @@ function EtaBadge({ minutes }: { minutes?: number | null }) {
   );
 }
 
+type MissionVehicleChip = {
+  vehicleId: string;
+  vehicleName: string;
+  vehicleLicensePlate: string;
+  isPrimary: boolean;
+};
+
 export default function MissionTrackingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [requests, setRequests] = useState<RescueRequestDetail[]>([]);
@@ -238,6 +245,74 @@ export default function MissionTrackingPage() {
 
   const activeDetail = detail ?? selectedListRequest;
   const activeOperation = currentOperation ?? listOperation;
+
+  const activeVehicles = useMemo<MissionVehicleChip[]>(() => {
+    const collected: MissionVehicleChip[] = [];
+    const seen = new Set<string>();
+
+    const addVehicle = (
+      vehicleId?: string | null,
+      vehicleName?: string | null,
+      vehicleLicensePlate?: string | null,
+      isPrimary = false,
+    ) => {
+      const normalizedId = String(vehicleId ?? '').trim();
+      if (!normalizedId || seen.has(normalizedId)) return;
+
+      collected.push({
+        vehicleId: normalizedId,
+        vehicleName: String(vehicleName ?? 'Vehicle').trim() || 'Vehicle',
+        vehicleLicensePlate: String(vehicleLicensePlate ?? '--').trim() || '--',
+        isPrimary,
+      });
+      seen.add(normalizedId);
+    };
+
+    const operationVehicles = activeOperation?.vehicles;
+    if (Array.isArray(operationVehicles) && operationVehicles.length > 0) {
+      operationVehicles.forEach((vehicle) =>
+        addVehicle(
+          vehicle?.vehicleId,
+          vehicle?.vehicleName,
+          vehicle?.vehicleLicensePlate,
+          Boolean(vehicle?.isPrimary),
+        ),
+      );
+    }
+
+    const teamVehicles = activeDetail?.assignedRescueTeam?.vehicles;
+    if (Array.isArray(teamVehicles) && teamVehicles.length > 0) {
+      teamVehicles.forEach((vehicle) =>
+        addVehicle(
+          vehicle?.vehicleId,
+          vehicle?.vehicleName,
+          vehicle?.vehicleLicensePlate,
+          Boolean(vehicle?.isPrimary),
+        ),
+      );
+    }
+
+    if (collected.length === 0) {
+      addVehicle(
+        activeOperation?.vehicleId ?? activeDetail?.assignedRescueTeam?.vehicleId,
+        activeOperation?.vehicleName ?? activeDetail?.assignedRescueTeam?.vehicleName,
+        activeOperation?.vehicleLicensePlate ??
+          activeDetail?.assignedRescueTeam?.vehicleLicensePlate,
+        true,
+      );
+    }
+
+    return collected;
+  }, [
+    activeDetail?.assignedRescueTeam?.vehicleId,
+    activeDetail?.assignedRescueTeam?.vehicleLicensePlate,
+    activeDetail?.assignedRescueTeam?.vehicleName,
+    activeDetail?.assignedRescueTeam?.vehicles,
+    activeOperation?.vehicleId,
+    activeOperation?.vehicleLicensePlate,
+    activeOperation?.vehicleName,
+    activeOperation?.vehicles,
+  ]);
 
   const opStatus = activeOperation?.status ?? null;
   const isEnRoute = opStatus === 'EnRoute';
@@ -831,23 +906,31 @@ export default function MissionTrackingPage() {
                               </span>
                             </div>
                           )}
-                          {(activeOperation.vehicleName ||
-                            activeOperation.vehicleLicensePlate ||
-                            activeDetail.assignedRescueTeam?.vehicleName ||
-                            activeDetail.assignedRescueTeam?.vehicleLicensePlate) && (
-                            <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
-                              <span className="material-symbols-outlined text-emerald-600 text-base">
-                                local_shipping
-                              </span>
-                              <span className="font-medium text-emerald-700">
-                                {(activeOperation.vehicleName ||
-                                  activeDetail.assignedRescueTeam?.vehicleName ||
-                                  'Vehicle') +
-                                  ' - ' +
-                                  (activeOperation.vehicleLicensePlate ||
-                                    activeDetail.assignedRescueTeam?.vehicleLicensePlate ||
-                                    '--')}
-                              </span>
+                          {activeVehicles.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2">
+                              {activeVehicles.map((vehicle) => (
+                                <div
+                                  key={vehicle.vehicleId}
+                                  className={cn(
+                                    'flex items-center gap-1.5 rounded-full border px-3 py-1',
+                                    vehicle.isPrimary
+                                      ? 'border-emerald-200 bg-emerald-50'
+                                      : 'border-emerald-100 bg-emerald-50/60',
+                                  )}
+                                >
+                                  <span className="material-symbols-outlined text-emerald-600 text-base">
+                                    local_shipping
+                                  </span>
+                                  <span className="font-medium text-emerald-700">
+                                    {vehicle.vehicleName} - {vehicle.vehicleLicensePlate}
+                                  </span>
+                                  {vehicle.isPrimary && (
+                                    <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                      Chính
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
                             </div>
                           )}
                           {activeOperation.stationName && (
