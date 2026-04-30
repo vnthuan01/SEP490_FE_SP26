@@ -418,7 +418,14 @@ export function useAdminDashboardOverview(range: AdminDashboardTimeRange) {
       .slice(0, 20)
       .map((campaign) => ({
         queryKey: ['admin-dashboard', 'campaign-teams', campaign.campaignId],
-        queryFn: async () => (await campaignService.getTeams(campaign.campaignId)).data,
+        queryFn: async () => {
+          try {
+            return (await campaignService.getTeams(campaign.campaignId)).data;
+          } catch {
+            // Some active campaigns do not expose team list yet; keep widget stable.
+            return [];
+          }
+        },
         ...DEFAULT_QUERY_OPTIONS,
         enabled: !!campaign.campaignId,
       })),
