@@ -14,6 +14,8 @@ export interface ReliefStation {
   coverageRadiusKm?: number;
   status: number;
   level?: number;
+  moderatorName?: string | null;
+  moderatorUserId?: string | null;
 }
 
 export interface CreateProvincialStationPayload {
