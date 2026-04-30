@@ -28,6 +28,8 @@ export const CAMPAIGN_QUERY_KEYS = {
   detail: (id: string) => ['campaigns', 'detail', id] as const,
   summary: (id: string) => ['campaigns', 'summary', id] as const,
   inventoryBalance: (id: string) => ['campaigns', 'inventory-balance', id] as const,
+  extractBudgetHistory: (id: string, includeDeleted = true) =>
+    ['campaigns', 'extract-budget-history', id, includeDeleted] as const,
   teams: (id: string) => ['campaigns', 'teams', id] as const,
   vehicles: (id: string, campaignTeamId?: string) =>
     ['campaigns', 'vehicles', id, campaignTeamId] as const,
@@ -114,6 +116,22 @@ export function useCampaignInventoryBalance(id: string) {
     ...query,
     inventoryBalance: query.data,
     inventoryBalanceError: parsedError,
+  };
+}
+
+export function useExtractBudgetHistory(id: string, includeDeleted = true) {
+  const query = useQuery({
+    queryKey: CAMPAIGN_QUERY_KEYS.extractBudgetHistory(id, includeDeleted),
+    queryFn: async () => {
+      const response = await campaignService.getExtractBudgetHistory(id, includeDeleted);
+      return response.data as CampaignBudgetTransferResponse[];
+    },
+    enabled: !!id,
+  });
+
+  return {
+    ...query,
+    transfers: (query.data || []) as CampaignBudgetTransferResponse[],
   };
 }
 
@@ -304,6 +322,7 @@ export function useAssignCampaignVehicle() {
         queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) }),
         queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.teams(variables.id) }),
         queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.vehicles(variables.id) }),
+        queryClient.invalidateQueries({ queryKey: ['vehicles', 'available-for-dispatch'] }),
       ]);
     },
     onError: (error: any) => {
@@ -329,7 +348,9 @@ export function useUpdateCampaignVehicleAssignment() {
       toast.success('Đã cập nhật điều phối phương tiện');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) }),
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.teams(variables.id) }),
         queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.vehicles(variables.id) }),
+        queryClient.invalidateQueries({ queryKey: ['vehicles', 'available-for-dispatch'] }),
       ]);
     },
     onError: (error: any) => {
@@ -348,7 +369,9 @@ export function useRemoveCampaignVehicleAssignment() {
       toast.success('Đã gỡ điều phối phương tiện');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) }),
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.teams(variables.id) }),
         queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.vehicles(variables.id) }),
+        queryClient.invalidateQueries({ queryKey: ['vehicles', 'available-for-dispatch'] }),
       ]);
     },
     onError: (error: any) => {
@@ -382,6 +405,36 @@ export function useExtractCampaignBudget() {
     },
     onError: (error: any) => {
       handleHookError(error, 'Không thể trích ngân sách chiến dịch');
+    },
+  });
+}
+
+export function useReverseExtractCampaignBudgetTransfer() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      campaignBudgetTransferId,
+    }: {
+      id: string;
+      campaignBudgetTransferId: string;
+    }) => campaignService.reverseExtractBudgetTransfer(id, campaignBudgetTransferId),
+    onSuccess: async (_, variables) => {
+      toast.success('Đã huỷ giao dịch trích ngân sách');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.all }),
+        queryClient.invalidateQueries({ queryKey: CAMPAIGN_QUERY_KEYS.detail(variables.id) }),
+        queryClient.invalidateQueries({
+          queryKey: CAMPAIGN_QUERY_KEYS.inventoryBalance(variables.id),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: CAMPAIGN_QUERY_KEYS.extractBudgetHistory(variables.id, true),
+        }),
+      ]);
+    },
+    onError: (error: any) => {
+      handleHookError(error, 'Không thể huỷ giao dịch trích ngân sách');
     },
   });
 }

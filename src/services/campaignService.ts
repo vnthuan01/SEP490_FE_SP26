@@ -224,8 +224,13 @@ export interface CampaignBudgetTransferResponse {
   targetCampaignId: string;
   amount: number;
   transferredByUserId?: string | null;
+  transferredByUserName?: string | null;
   transferredAt: string;
   note?: string | null;
+  isDeleted?: boolean;
+  cancelledAt?: string | null;
+  cancelledByUserId?: string | null;
+  cancelledByUserName?: string | null;
   sourceRemainingBudget: number;
   targetRemainingBudget: number;
 }
@@ -255,6 +260,12 @@ export const campaignService = {
   // Extract budget to relief campaign
   extractBudget: (id: string, data: ExtractCampaignBudgetRequest) =>
     apiClient.post<CampaignBudgetTransferResponse>(`/campaigns/${id}/extract-budget`, data),
+  getExtractBudgetHistory: (id: string, includeDeleted = true) =>
+    apiClient.get<CampaignBudgetTransferResponse[]>(`/campaigns/${id}/extract-budget`, {
+      params: includeDeleted ? { includeDeleted: true } : undefined,
+    }),
+  reverseExtractBudgetTransfer: (id: string, campaignBudgetTransferId: string) =>
+    apiClient.delete(`/campaigns/${id}/extract-budget/${campaignBudgetTransferId}`),
 
   // Update campaign status
   updateStatus: (id: string, data: UpdateStatusPayload) =>

@@ -17,12 +17,14 @@ import { useMyReliefStation } from '@/hooks/useReliefStation';
 import {
   CAMPAIGN_QUERY_KEYS,
   useExtractCampaignBudget,
+  useExtractBudgetHistory,
   useCampaignInventoryBalance,
   useCampaignVehicles,
   useCampaigns,
   useCampaign,
   useCampaignTeams,
   useCampaignSummary,
+  useReverseExtractCampaignBudgetTransfer,
   useAssignCampaignVehicle,
   useUpdateCampaignVehicleAssignment,
   useRemoveCampaignVehicleAssignment,
@@ -549,6 +551,8 @@ export default function ReliefDistributionPage() {
 
   const { summary: sourceCampaignSummary, isLoading: isSourceCampaignSummaryLoading } =
     useCampaignSummary(budgetExtractForm.sourceCampaignId);
+  const { transfers: budgetTransferHistory = [], isLoading: isLoadingBudgetTransferHistory } =
+    useExtractBudgetHistory(effectiveSelectedCampaignId, true);
 
   const { teams } = useCampaignTeams(effectiveSelectedCampaignId);
 
@@ -647,6 +651,7 @@ export default function ReliefDistributionPage() {
   const patchHouseholdStatusMutation = usePatchReliefHouseholdStatus();
   const deleteHouseholdMutation = useDeleteReliefHousehold();
   const extractBudgetMutation = useExtractCampaignBudget();
+  const reverseBudgetTransferMutation = useReverseExtractCampaignBudgetTransfer();
   const completeDeliveryMutation = useCompleteReliefDelivery();
   const patchDeliveryAssignmentMutation = usePatchReliefDeliveryAssignment();
   const deleteDeliveryAssignmentMutation = useDeleteReliefDeliveryAssignment();
@@ -683,6 +688,16 @@ export default function ReliefDistributionPage() {
   const teamNameById = useMemo(
     () => Object.fromEntries(teams.map((team) => [team.campaignTeamId, team.teamName])),
     [teams],
+  );
+  const campaignNameById = useMemo(
+    () =>
+      Object.fromEntries(
+        [...fundraisingCampaigns, ...reliefCampaigns].map((campaign) => [
+          campaign.campaignId,
+          campaign.name,
+        ]),
+      ),
+    [fundraisingCampaigns, reliefCampaigns],
   );
 
   const paginatedHouseholds = households;
@@ -1220,6 +1235,9 @@ export default function ReliefDistributionPage() {
       await queryClient.invalidateQueries({
         queryKey: CAMPAIGN_QUERY_KEYS.inventoryBalance(effectiveSelectedCampaignId),
       });
+      await queryClient.invalidateQueries({
+        queryKey: CAMPAIGN_QUERY_KEYS.extractBudgetHistory(effectiveSelectedCampaignId, true),
+      });
     } catch (error) {
       const parsed = parseApiError(error, 'Không thể trích ngân sách');
       setBudgetExtractErrors({
@@ -1234,6 +1252,33 @@ export default function ReliefDistributionPage() {
         note: pickFieldError(parsed.fieldErrors, 'Note', 'note'),
         form: parsed.message,
       });
+      toast.error(parsed.message);
+    }
+  };
+
+  const handleReverseBudgetTransfer = async (
+    transferId: string,
+    ownerCampaignId: string,
+    amount: number,
+  ) => {
+    const confirmed = window.confirm(
+      `Bạn có chắc muốn huỷ giao dịch trích ${formatNumberVN(amount)} không?`,
+    );
+    if (!confirmed) return;
+
+    try {
+      await reverseBudgetTransferMutation.mutateAsync({
+        id: ownerCampaignId,
+        campaignBudgetTransferId: transferId,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: CAMPAIGN_QUERY_KEYS.inventoryBalance(effectiveSelectedCampaignId),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: CAMPAIGN_QUERY_KEYS.extractBudgetHistory(effectiveSelectedCampaignId, true),
+      });
+    } catch (error) {
+      const parsed = parseApiError(error, 'Không thể huỷ giao dịch trích ngân sách');
       toast.error(parsed.message);
     }
   };
@@ -2051,14 +2096,14 @@ export default function ReliefDistributionPage() {
       .filter((item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude))
       .map((item) => ({
         ...item,
-        vehicles: assignedCampaignVehicles.filter(
+        vehicles: allCampaignVehicles.filter(
           (vehicle) =>
             vehicle.campaignTeamId &&
             item.campaignTeamId &&
             vehicle.campaignTeamId === item.campaignTeamId,
         ),
       }));
-  }, [assignedCampaignVehicles, planSummary]);
+  }, [allCampaignVehicles, planSummary]);
 
   const isolatedMapCenter = useMemo(() => {
     if (isolatedHouseholdsForMap.length === 0) {
@@ -3978,7 +4023,7 @@ export default function ReliefDistributionPage() {
           />
 
           <Dialog open={budgetExtractOpen} onOpenChange={setBudgetExtractOpen}>
-            <DialogContent className="sm:max-w-[560px]">
+            <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-[860px]">
               <DialogHeader>
                 <DialogTitle>Trích ngân sách sang chiến dịch cứu trợ</DialogTitle>
                 <DialogDescription>
@@ -3986,7 +4031,7 @@ export default function ReliefDistributionPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="space-y-4">
+              <div className="flex-1 space-y-5 overflow-y-auto pr-1">
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Chiến dịch gây quỹ nguồn</p>
                   <select
@@ -4085,6 +4130,97 @@ export default function ReliefDistributionPage() {
                     {budgetExtractErrors.form}
                   </div>
                 )}
+
+                <div className="space-y-3 rounded-xl border border-border/80 bg-muted/20 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-foreground">
+                      Lịch sử trích ngân sách (kể cả giao dịch đã huỷ)
+                    </p>
+                    <Badge variant="outline" className="max-w-full whitespace-normal break-words">
+                      {budgetTransferHistory.length} giao dịch
+                    </Badge>
+                  </div>
+                  {isLoadingBudgetTransferHistory ? (
+                    <p className="text-sm text-muted-foreground">Đang tải lịch sử giao dịch...</p>
+                  ) : budgetTransferHistory.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Chưa có giao dịch trích ngân sách cho chiến dịch này.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {budgetTransferHistory
+                        .slice()
+                        .sort(
+                          (left, right) =>
+                            new Date(right.transferredAt).getTime() -
+                            new Date(left.transferredAt).getTime(),
+                        )
+                        .map((transfer) => {
+                          const isDeleted = !!transfer.isDeleted;
+                          const sourceName =
+                            campaignNameById[transfer.sourceCampaignId] ||
+                            transfer.sourceCampaignId;
+                          const targetName =
+                            campaignNameById[transfer.targetCampaignId] ||
+                            transfer.targetCampaignId;
+                          const canReverse = !isDeleted && !reverseBudgetTransferMutation.isPending;
+
+                          return (
+                            <div
+                              key={transfer.campaignBudgetTransferId}
+                              className="rounded-lg border border-border bg-background p-3 text-sm"
+                            >
+                              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                <div className="space-y-1">
+                                  <p className="font-medium text-foreground">
+                                    {sourceName} {'->'} {targetName}
+                                  </p>
+                                  <p className="text-muted-foreground">
+                                    Số tiền: {formatNumberVN(transfer.amount)}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Tạo bởi {transfer.transferredByUserName || 'Không xác định'} ·{' '}
+                                    {formatDateTimeVN(transfer.transferredAt)}
+                                  </p>
+                                  {transfer.note && (
+                                    <p className="text-xs text-muted-foreground">
+                                      Ghi chú: {transfer.note}
+                                    </p>
+                                  )}
+                                  {isDeleted && (
+                                    <p className="text-xs text-destructive">
+                                      Đã huỷ bởi {transfer.cancelledByUserName || 'Không xác định'}{' '}
+                                      · {formatDateTimeVN(transfer.cancelledAt)}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant={isDeleted ? 'secondary' : 'success'}>
+                                    {isDeleted ? 'Đã huỷ' : 'Hiệu lực'}
+                                  </Badge>
+                                  <Button
+                                    type="button"
+                                    variant="destructive"
+                                    size="sm"
+                                    disabled={!canReverse}
+                                    onClick={() =>
+                                      handleReverseBudgetTransfer(
+                                        transfer.campaignBudgetTransferId,
+                                        effectiveSelectedCampaignId,
+                                        transfer.amount,
+                                      )
+                                    }
+                                  >
+                                    Huỷ giao dịch
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <DialogFooter>
