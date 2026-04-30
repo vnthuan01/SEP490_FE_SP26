@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { ReliefLocation } from './types';
-import { getUrgencyColor, getStatusColor, getDangerColor } from './utils';
+import { getUrgencyColor, getStatusColor } from './utils';
 
 interface LocationListProps {
   locations: ReliefLocation[];
@@ -93,28 +93,10 @@ export function LocationList({
                               : 'check_circle'}
                         </span>
                       </Badge>
-
-                      {loc.priorityScore !== undefined && (
-                        <Badge
-                          style={{
-                            backgroundColor: getDangerColor(loc.priorityScore),
-                            color: 'white',
-                          }}
-                          className="px-1.5 py-0 text-[9px] leading-4"
-                        >
-                          {loc.priorityScore}%
-                        </Badge>
-                      )}
                     </div>
                   </div>
 
-                  <div className="flex min-w-0 items-start justify-between gap-2 text-[11px]">
-                    <span className="text-muted-foreground flex min-w-0 flex-1 items-center gap-1">
-                      <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
-                        group
-                      </span>
-                      <span className="truncate">{loc.peopleCount} người</span>
-                    </span>
+                  <div className="flex min-w-0 items-start justify-end gap-2 text-[11px]">
                     <span className="max-w-[110px] shrink text-right text-muted-foreground leading-4 line-clamp-2">
                       {loc.lastUpdated}
                     </span>
@@ -149,26 +131,6 @@ export function LocationList({
                               ? 'Hoàn thành'
                               : 'Thất bại'}
                     </Badge>
-                    {loc.needs.food && (
-                      <span className="material-symbols-outlined text-[14px] text-orange-600">
-                        restaurant
-                      </span>
-                    )}
-                    {loc.needs.water && (
-                      <span className="material-symbols-outlined text-[14px] text-blue-600">
-                        water_drop
-                      </span>
-                    )}
-                    {loc.needs.medicine && (
-                      <span className="material-symbols-outlined text-[14px] text-red-600">
-                        medication
-                      </span>
-                    )}
-                    {loc.needs.emergencyRescue && (
-                      <span className="material-symbols-outlined text-[14px] text-red-700">
-                        emergency
-                      </span>
-                    )}
                   </div>
                 </CardContent>
               </Card>

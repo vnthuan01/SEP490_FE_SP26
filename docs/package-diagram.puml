@@ -1,0 +1,38 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam defaultTextAlignment center
+
+title ReliefCoord VN - Main Package Diagram
+
+package "Entry Shell" as entry
+package "Routing" as routing
+package "Providers" as providers
+
+package "Feature Pages" as pages
+package "Hooks" as hooks
+
+package "Services" as services
+package "Shared UI" as sharedUi
+
+package "Core" as core
+
+entry --> routing
+routing --> providers
+routing --> pages
+
+providers --> services
+
+pages --> services
+pages --> hooks
+pages --> sharedUi
+pages --> core
+
+hooks --> services
+
+services --> core
+
+sharedUi --> core
+
+@enduml

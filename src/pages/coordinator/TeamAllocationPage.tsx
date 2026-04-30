@@ -319,39 +319,43 @@ export default function CoordinatorTeamAllocationPage() {
 
   // ── assign team → real API call ──
   const handleAssignTeam = useCallback(
-    async (locationId: string, teamId: string, vehicleId?: string | null, note?: string) => {
+    async (locationId: string, teamId: string, vehicleIds?: string[], note?: string) => {
       const location = reliefLocations.find((l) => l.id === locationId);
       const team = teams.find((t) => t.id === teamId);
       if (!location || !team) return;
 
       try {
-        let effectiveVehicleId = String(vehicleId || '').trim() || null;
+        const selectedVehicleIds = Array.from(
+          new Set((vehicleIds || []).map((id) => String(id || '').trim()).filter(Boolean)),
+        );
+        let effectiveVehicleIds = selectedVehicleIds;
 
         // Reuse vehicle already dispatched in active batch for this team.
-        if (!effectiveVehicleId) {
+        if (effectiveVehicleIds.length === 0) {
           const activeBatchVehicleId = String(
             dispatchedVehicleByTeamId[teamId]?.vehicleId || '',
           ).trim();
           if (activeBatchVehicleId) {
-            effectiveVehicleId = activeBatchVehicleId;
+            effectiveVehicleIds = [activeBatchVehicleId];
           }
         }
 
         // Fallback: fetch latest active batch to avoid stale local state.
-        if (!effectiveVehicleId) {
+        if (effectiveVehicleIds.length === 0) {
           const latestBatch = await rescueRequestService.getActiveBatch(teamId);
           const latestBatchVehicle = (latestBatch.items || []).find((item: any) =>
             String(item?.vehicleId || '').trim(),
           ) as any;
           const latestBatchVehicleId = String(latestBatchVehicle?.vehicleId || '').trim();
           if (latestBatchVehicleId) {
-            effectiveVehicleId = latestBatchVehicleId;
+            effectiveVehicleIds = [latestBatchVehicleId];
           }
         }
 
         await rescueRequestService.assignTeam(locationId, {
           teamId,
-          vehicleId: effectiveVehicleId,
+          vehicleId: effectiveVehicleIds[0] || null,
+          vehicleIds: effectiveVehicleIds.length ? effectiveVehicleIds : undefined,
           note,
         });
         toast.success(`Đã phân công ${team.name} đến ${location.locationName}`);

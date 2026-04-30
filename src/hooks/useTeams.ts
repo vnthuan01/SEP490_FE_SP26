@@ -21,6 +21,12 @@ export interface ActiveBatchVehicleInfo {
   vehicleId: string;
   vehicleName?: string | null;
   vehicleLicensePlate?: string | null;
+  vehicles?: Array<{
+    vehicleId: string;
+    vehicleName?: string | null;
+    vehicleLicensePlate?: string | null;
+    isPrimary?: boolean;
+  }>;
 }
 
 export const TEAM_QUERY_KEYS = {
@@ -447,14 +453,30 @@ export function useTeamsActiveBatches(teamIds: string[]) {
     const batch = result.data;
     if (!batch) return;
 
-    const batchVehicle = (batch.items || []).find((item: any) =>
-      String(item?.vehicleId || '').trim(),
+    const batchVehicle = (batch.items || []).find(
+      (item: any) => String(item?.vehicleId || '').trim() || Array.isArray(item?.vehicles),
     ) as any | undefined;
-    if (batchVehicle?.vehicleId) {
+
+    const batchVehicles = Array.isArray(batchVehicle?.vehicles)
+      ? batchVehicle.vehicles
+          .map((vehicle: any) => ({
+            vehicleId: String(vehicle?.vehicleId || '').trim(),
+            vehicleName: vehicle?.vehicleName ?? null,
+            vehicleLicensePlate: vehicle?.vehicleLicensePlate ?? null,
+            isPrimary: Boolean(vehicle?.isPrimary),
+          }))
+          .filter((vehicle: any) => vehicle.vehicleId)
+      : [];
+
+    if (batchVehicle?.vehicleId || batchVehicles.length > 0) {
+      const primaryVehicle =
+        batchVehicles.find((vehicle: any) => vehicle.isPrimary) || batchVehicles[0] || null;
       dispatchedVehicleByTeamId[teamIds[index]] = {
-        vehicleId: String(batchVehicle.vehicleId),
-        vehicleName: batchVehicle.vehicleName ?? null,
-        vehicleLicensePlate: batchVehicle.vehicleLicensePlate ?? null,
+        vehicleId: String(primaryVehicle?.vehicleId || batchVehicle?.vehicleId || ''),
+        vehicleName: primaryVehicle?.vehicleName ?? batchVehicle?.vehicleName ?? null,
+        vehicleLicensePlate:
+          primaryVehicle?.vehicleLicensePlate ?? batchVehicle?.vehicleLicensePlate ?? null,
+        vehicles: batchVehicles,
       };
     }
 

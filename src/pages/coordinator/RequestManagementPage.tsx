@@ -370,7 +370,6 @@ export default function CoordinatorRequestManagementPage() {
     [filtered, effectiveSelectedId],
   );
   const verification = getVerification(selected);
-  const isEmergencySelected = isEmergencyRescueRequest(selected?.rescueRequestType);
   const currentStatus = verification?.status;
   const isPending =
     currentStatus === 0 ||
@@ -1061,88 +1060,86 @@ export default function CoordinatorRequestManagementPage() {
                         </div>
                       </div>
 
-                      {isEmergencySelected && (
-                        <div className="rounded-2xl border border-red-200 bg-red-500/5 p-4 space-y-3">
-                          <div className="flex items-center gap-2">
-                            <span className="material-symbols-outlined text-red-600">
-                              partly_cloudy_day
-                            </span>
-                            <p className="text-sm font-semibold text-red-700">
-                              D. Thông tin thời tiết
+                      <div className="rounded-2xl border border-red-200 bg-red-500/5 p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-red-600">
+                            partly_cloudy_day
+                          </span>
+                          <p className="text-sm font-semibold text-red-700">
+                            D. Thông tin thời tiết
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Tình trạng thời tiết
+                            </p>
+                            <p className="text-sm">
+                              {getWeatherConditionLabel(selected.weatherCondition)}
                             </p>
                           </div>
-                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                            <div>
-                              <p className="text-xs uppercase text-muted-foreground font-semibold">
-                                Tình trạng thời tiết
-                              </p>
-                              <p className="text-sm">
-                                {getWeatherConditionLabel(selected.weatherCondition)}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs uppercase text-muted-foreground font-semibold">
-                                Thời điểm quan sát
-                              </p>
-                              <p className="text-sm">{formatDate(selected.weatherObservedAt)}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs uppercase text-muted-foreground font-semibold">
-                                Nhiệt độ
-                              </p>
-                              <p className="text-sm">
-                                {selected.weatherTempC == null
-                                  ? '-- °C'
-                                  : `${selected.weatherTempC} °C`}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs uppercase text-muted-foreground font-semibold">
-                                Tốc độ gió
-                              </p>
-                              <p className="text-sm">
-                                {selected.weatherWindKph == null
-                                  ? '-- km/h'
-                                  : `${selected.weatherWindKph} km/h`}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs uppercase text-muted-foreground font-semibold">
-                                Lượng mưa
-                              </p>
-                              <p className="text-sm">
-                                {selected.weatherPrecipMm == null
-                                  ? '-- mm'
-                                  : `${selected.weatherPrecipMm} mm`}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs uppercase text-muted-foreground font-semibold">
-                                Tầm nhìn
-                              </p>
-                              <p className="text-sm">
-                                {selected.weatherVisibilityKm == null
-                                  ? '-- km'
-                                  : `${selected.weatherVisibilityKm} km`}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs uppercase text-muted-foreground font-semibold">
-                                Điểm rủi ro thời tiết
-                              </p>
-                              <p className="text-sm">{selected.weatherRiskScore ?? '--'}</p>
-                            </div>
-                            <div className="md:col-span-2">
-                              <p className="text-xs uppercase text-muted-foreground font-semibold">
-                                Mức rủi ro thời tiết
-                              </p>
-                              <p className="text-sm">
-                                {getWeatherRiskLevelLabel(selected.weatherRiskLevel)}
-                              </p>
-                            </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Thời điểm quan sát
+                            </p>
+                            <p className="text-sm">{formatDate(selected.weatherObservedAt)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Nhiệt độ
+                            </p>
+                            <p className="text-sm">
+                              {selected.weatherTempC == null
+                                ? '-- °C'
+                                : `${selected.weatherTempC} °C`}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Tốc độ gió
+                            </p>
+                            <p className="text-sm">
+                              {selected.weatherWindKph == null
+                                ? '-- km/h'
+                                : `${selected.weatherWindKph} km/h`}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Lượng mưa
+                            </p>
+                            <p className="text-sm">
+                              {selected.weatherPrecipMm == null
+                                ? '-- mm'
+                                : `${selected.weatherPrecipMm} mm`}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Tầm nhìn
+                            </p>
+                            <p className="text-sm">
+                              {selected.weatherVisibilityKm == null
+                                ? '-- km'
+                                : `${selected.weatherVisibilityKm} km`}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Điểm rủi ro thời tiết
+                            </p>
+                            <p className="text-sm">{selected.weatherRiskScore ?? '--'}</p>
+                          </div>
+                          <div className="md:col-span-2">
+                            <p className="text-xs uppercase text-muted-foreground font-semibold">
+                              Mức rủi ro thời tiết
+                            </p>
+                            <p className="text-sm">
+                              {getWeatherRiskLevelLabel(selected.weatherRiskLevel)}
+                            </p>
                           </div>
                         </div>
-                      )}
+                      </div>
                     </div>
 
                     <div className="overflow-hidden rounded-2xl border border-border p-4 space-y-3">
