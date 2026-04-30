@@ -43,6 +43,7 @@ import {
   useAssignModeratorToStation,
 } from '@/hooks/useReliefStations';
 import { useModerators } from '@/hooks/useUsers';
+import { useAllUsers } from '@/hooks/useUsers';
 import { AddStationModal, type CreateStationFormData } from './components/AddStationModal';
 import { EditStationModal, type EditStationFormData } from './components/EditStationModal';
 import { toast } from 'sonner';
@@ -196,6 +197,8 @@ export default function ManagerStationPage() {
     locationId?: string | null;
     locationName?: string | null;
     status?: number;
+    moderatorName?: string | null;
+    moderatorUserId?: string | null;
   } | null>(null);
   const [openViewModal, setOpenViewModal] = useState(false);
   const [openMapModal, setOpenMapModal] = useState(false);
@@ -219,6 +222,7 @@ export default function ManagerStationPage() {
     pageSize: 5,
     isBanned: false,
   });
+  const { users } = useAllUsers({ pageIndex: 1, pageSize: 500 });
 
   const { mutateAsync: createStation } = useCreateProvincialStation();
   const { mutateAsync: updateStation } = useUpdateProvincialStation();
@@ -286,6 +290,8 @@ export default function ManagerStationPage() {
       locationId: station.locationId || null,
       locationName: station.locationName || null,
       status: station.status,
+      moderatorName: station.moderatorName || null,
+      moderatorUserId: station.moderatorUserId || null,
     });
     setOpenMapModal(true);
   };
@@ -353,6 +359,10 @@ export default function ManagerStationPage() {
       // handled by hook toast
     }
   };
+
+  const assignedModeratorProfile = viewingStation?.moderatorUserId
+    ? users.find((user) => user.id === viewingStation.moderatorUserId)
+    : null;
 
   const stations = stationsResponse?.items || [];
   const pagination = stationsResponse;
@@ -428,6 +438,7 @@ export default function ManagerStationPage() {
                       <TableHead>Địa chỉ</TableHead>
                       <TableHead>Liên hệ</TableHead>
                       <TableHead>Bán kính</TableHead>
+                      <TableHead>Điều phối viên</TableHead>
                       <TableHead>Trạng thái</TableHead>
                       <TableHead className="text-right">Thao tác</TableHead>
                     </TableRow>
@@ -470,6 +481,21 @@ export default function ManagerStationPage() {
                             <span className="text-foreground text-sm">
                               {station.coverageRadiusKm ? `${station.coverageRadiusKm} km` : '—'}
                             </span>
+                          </TableCell>
+                          <TableCell>
+                            {station.moderatorName ? (
+                              <Badge
+                                variant="info"
+                                appearance="outline"
+                                size="sm"
+                                className="gap-1"
+                              >
+                                <span className="material-symbols-outlined text-xs">person</span>
+                                {station.moderatorName}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Chưa gán</span>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Badge
@@ -746,6 +772,26 @@ export default function ManagerStationPage() {
                         ] || 'Không rõ'}
                       </Badge>
                     </div>
+                    <div className="rounded-xl border border-primary/35 bg-primary/5 p-4 space-y-2">
+                      <p className="text-xs uppercase font-semibold text-muted-foreground">
+                        Điều phối viên phụ trách
+                      </p>
+                      {viewingStation?.moderatorName ? (
+                        <Badge variant="info" size="sm" className="gap-1.5 font-semibold">
+                          <span className="material-symbols-outlined text-xs">verified_user</span>
+                          {viewingStation.moderatorName}
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-amber-700 border-amber-300"
+                        >
+                          <span className="material-symbols-outlined text-xs">person_off</span>
+                          Chưa gán điều phối viên
+                        </Badge>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -909,6 +955,44 @@ export default function ManagerStationPage() {
               </SheetHeader>
 
               <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+                <Card className="border-primary/45 bg-primary/5 shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary">verified_user</span>
+                      Điều phối viên phụ trách
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {viewingStation?.moderatorName ? (
+                      <div className="space-y-2">
+                        <div className="text-sm text-foreground space-y-1">
+                          <p>
+                            <span className="text-muted-foreground">Họ và tên:</span>{' '}
+                            {assignedModeratorProfile?.displayName || viewingStation.moderatorName}
+                          </p>
+                          <p>
+                            <span className="text-muted-foreground">Email:</span>{' '}
+                            {assignedModeratorProfile?.email || 'Chưa có'}
+                          </p>
+                          <p>
+                            <span className="text-muted-foreground">Số điện thoại:</span>{' '}
+                            {assignedModeratorProfile?.phoneNumber || 'Chưa có'}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-amber-700 border-amber-300 bg-amber-50"
+                      >
+                        <span className="material-symbols-outlined text-xs">person_off</span>
+                        Chưa gán điều phối viên
+                      </Badge>
+                    )}
+                  </CardContent>
+                </Card>
+
                 <Card className="border-border bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">

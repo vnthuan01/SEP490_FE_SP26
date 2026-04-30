@@ -87,6 +87,7 @@ export default function ManagerVehicleManagementPage() {
   const [assignVehicleId, setAssignVehicleId] = useState('');
   const [assignStationId, setAssignStationId] = useState('');
   const [vehicleForm, setVehicleForm] = useState<VehicleFormState>(defaultVehicleForm);
+  const [newVehicleLicensePlates, setNewVehicleLicensePlates] = useState<string[]>(['']);
   const [vehicleTypeForm, setVehicleTypeForm] =
     useState<VehicleTypeFormState>(defaultVehicleTypeForm);
 
@@ -158,6 +159,7 @@ export default function ManagerVehicleManagementPage() {
 
   const handleOpenCreateVehicle = () => {
     setVehicleForm(defaultVehicleForm);
+    setNewVehicleLicensePlates(['']);
     setOpenVehicleModal(true);
   };
 
@@ -171,6 +173,40 @@ export default function ManagerVehicleManagementPage() {
       status: vehicle.status,
     });
     setOpenVehicleModal(true);
+  };
+
+  const getNormalizedLicensePlates = (plates: string[]) => {
+    const seen = new Set<string>();
+    const duplicates = new Set<string>();
+    const normalizedPlates: string[] = [];
+
+    for (const token of plates) {
+      const plate = token.trim().toUpperCase();
+      if (!plate) continue;
+      if (seen.has(plate)) {
+        duplicates.add(plate);
+        continue;
+      }
+      seen.add(plate);
+      normalizedPlates.push(plate);
+    }
+
+    return { plates: normalizedPlates, duplicates: Array.from(duplicates) };
+  };
+
+  const updateLicensePlateField = (index: number, value: string) => {
+    setNewVehicleLicensePlates((prev) => prev.map((plate, i) => (i === index ? value : plate)));
+  };
+
+  const addLicensePlateField = () => {
+    setNewVehicleLicensePlates((prev) => [...prev, '']);
+  };
+
+  const removeLicensePlateField = (index: number) => {
+    setNewVehicleLicensePlates((prev) => {
+      if (prev.length === 1) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const handleOpenAssignStation = (vehicleId: string, currentStationId?: string) => {
@@ -197,14 +233,18 @@ export default function ManagerVehicleManagementPage() {
   };
 
   const handleSaveVehicle = async () => {
-    if (!vehicleForm.vehicleTypeId || !vehicleForm.licensePlate.trim()) {
-      toast.error('Vui lòng nhập loại xe và biển số xe.');
+    if (!vehicleForm.vehicleTypeId) {
+      toast.error('Vui lòng chọn loại xe.');
       return;
     }
 
     const normalizedLicensePlate = vehicleForm.licensePlate.trim().toUpperCase();
 
     if (vehicleForm.vehicleId) {
+      if (!normalizedLicensePlate) {
+        toast.error('Vui lòng nhập biển số xe.');
+        return;
+      }
       await updateVehicle({
         id: vehicleForm.vehicleId,
         data: {
@@ -215,12 +255,33 @@ export default function ManagerVehicleManagementPage() {
         },
       });
     } else {
-      await createVehicle({
-        vehicleTypeId: vehicleForm.vehicleTypeId,
-        licensePlate: normalizedLicensePlate,
-        reliefStationId: vehicleForm.reliefStationId || undefined,
-        teamId: vehicleForm.teamId.trim() || undefined,
-      });
+      const { plates, duplicates } = getNormalizedLicensePlates(newVehicleLicensePlates);
+      const effectivePlates =
+        plates.length > 0 ? plates : normalizedLicensePlate ? [normalizedLicensePlate] : [];
+
+      if (effectivePlates.length === 0) {
+        toast.error('Vui lòng nhập ít nhất một biển số xe.');
+        return;
+      }
+
+      if (duplicates.length > 0) {
+        toast.error(`Biển số bị trùng trong danh sách: ${duplicates.join(', ')}`);
+        return;
+      }
+
+      let createdCount = 0;
+      for (const plate of effectivePlates) {
+        await createVehicle({
+          vehicleTypeId: vehicleForm.vehicleTypeId,
+          licensePlate: plate,
+          reliefStationId: vehicleForm.reliefStationId || undefined,
+          teamId: vehicleForm.teamId.trim() || undefined,
+        });
+        createdCount += 1;
+      }
+      if (createdCount > 1) {
+        toast.success(`Đã tạo ${createdCount} phương tiện cùng loại.`);
+      }
     }
 
     setOpenVehicleModal(false);
@@ -648,19 +709,62 @@ export default function ManagerVehicleManagementPage() {
             </DialogHeader>
 
             <div className="space-y-4">
-              <div className="grid gap-2">
-                <label className="text-sm font-medium text-foreground">Biển số xe</label>
-                <Input
-                  placeholder="Ví dụ: 51A-12345"
-                  value={vehicleForm.licensePlate}
-                  onChange={(e) =>
-                    setVehicleForm((prev) => ({
-                      ...prev,
-                      licensePlate: e.target.value.toUpperCase(),
-                    }))
-                  }
-                />
-              </div>
+              {vehicleForm.vehicleId && (
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium text-foreground">Biển số xe</label>
+                  <Input
+                    placeholder="Ví dụ: 51A-12345"
+                    value={vehicleForm.licensePlate}
+                    onChange={(e) =>
+                      setVehicleForm((prev) => ({
+                        ...prev,
+                        licensePlate: e.target.value.toUpperCase(),
+                      }))
+                    }
+                  />
+                </div>
+              )}
+
+              {!vehicleForm.vehicleId && (
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-sm font-medium text-foreground">
+                      Danh sách biển số xe
+                    </label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addLicensePlateField}
+                    >
+                      <span className="material-symbols-outlined text-sm">add</span>
+                      Thêm biển số
+                    </Button>
+                  </div>
+                  <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                    {newVehicleLicensePlates.map((plate, index) => (
+                      <div key={`plate-${index}`} className="flex items-center gap-2">
+                        <Input
+                          placeholder={`Biển số xe #${index + 1}`}
+                          value={plate}
+                          onChange={(e) =>
+                            updateLicensePlateField(index, e.target.value.toUpperCase())
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          disabled={newVehicleLicensePlates.length === 1}
+                          onClick={() => removeLicensePlateField(index)}
+                        >
+                          <span className="material-symbols-outlined text-base">delete</span>
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {!vehicleForm.vehicleId && (
                 <div className="grid gap-2">

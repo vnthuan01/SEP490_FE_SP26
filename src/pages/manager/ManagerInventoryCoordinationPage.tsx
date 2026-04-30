@@ -658,9 +658,31 @@ export default function ManagerInventoryCoordinationPage() {
     }
   };
 
-  const openCreateStockManagement = (inventoryId: string, inventoryName: string) => {
+  const openCreateStockManagement = async (inventoryId: string, inventoryName: string) => {
     setSelectedInventoryForStock({ id: inventoryId, name: inventoryName });
     setStockDrafts([taoDongCapNhatTonKho()]);
+
+    try {
+      const response = await inventoryService.getStocks(inventoryId, {
+        pageIndex: 1,
+        pageSize: 500,
+      });
+      const latestStocks = response.data.items || [];
+      const existingSupplyItemIds = new Set(latestStocks.map((stock) => stock.supplyItemId));
+      const hasAnyCreatableSupply = allSupplyItems.some(
+        (item) => !existingSupplyItemIds.has(item.id),
+      );
+
+      if (!hasAnyCreatableSupply) {
+        toast.info(
+          'Tất cả vật phẩm đã tồn tại trong kho. Vui lòng qua "Cập nhật kho" để thao tác.',
+        );
+        return;
+      }
+    } catch {
+      // Keep previous behavior: still allow opening dialog if stock pre-check fails unexpectedly.
+    }
+
     setOpenCreateStockDialog(true);
   };
 
@@ -811,6 +833,24 @@ export default function ManagerInventoryCoordinationPage() {
       return;
     }
 
+    {
+      const seen = new Set<string>();
+      const duplicatedIds = new Set<string>();
+      for (const item of validDrafts) {
+        if (seen.has(item.supplyItemId)) duplicatedIds.add(item.supplyItemId);
+        seen.add(item.supplyItemId);
+      }
+      if (duplicatedIds.size > 0) {
+        const duplicatedNames = Array.from(duplicatedIds).map(
+          (id) => supplyItems.find((s) => s.id === id)?.name || id,
+        );
+        setCreateStockSubmitError(
+          `Có vật phẩm bị chọn trùng: ${duplicatedNames.join(', ')}. Mỗi vật phẩm chỉ được chọn một lần.`,
+        );
+        return;
+      }
+    }
+
     // Chặn vật phẩm đã có trong kho
     for (const item of validDrafts) {
       const existingLots = stockLotsBySupplyItemId.get(item.supplyItemId) ?? [];
@@ -886,6 +926,24 @@ export default function ManagerInventoryCoordinationPage() {
     if (validDrafts.length === 0) {
       setImportStockSubmitError('Vui lòng chọn ít nhất một vật phẩm.');
       return;
+    }
+
+    {
+      const seen = new Set<string>();
+      const duplicatedIds = new Set<string>();
+      for (const item of validDrafts) {
+        if (seen.has(item.supplyItemId)) duplicatedIds.add(item.supplyItemId);
+        seen.add(item.supplyItemId);
+      }
+      if (duplicatedIds.size > 0) {
+        const duplicatedNames = Array.from(duplicatedIds).map(
+          (id) => supplyItems.find((s) => s.id === id)?.name || id,
+        );
+        setImportStockSubmitError(
+          `Có vật phẩm bị chọn trùng: ${duplicatedNames.join(', ')}. Mỗi vật phẩm chỉ được chọn một lần.`,
+        );
+        return;
+      }
     }
 
     // Chỉ cho phép nhập vào vật phẩm đã có trong kho
@@ -982,6 +1040,24 @@ export default function ManagerInventoryCoordinationPage() {
     if (validDrafts.length === 0) {
       setUpdateStockSubmitError('Vui lòng chọn ít nhất một vật phẩm.');
       return;
+    }
+
+    {
+      const seen = new Set<string>();
+      const duplicatedIds = new Set<string>();
+      for (const item of validDrafts) {
+        if (seen.has(item.supplyItemId)) duplicatedIds.add(item.supplyItemId);
+        seen.add(item.supplyItemId);
+      }
+      if (duplicatedIds.size > 0) {
+        const duplicatedNames = Array.from(duplicatedIds).map(
+          (id) => supplyItems.find((s) => s.id === id)?.name || id,
+        );
+        setUpdateStockSubmitError(
+          `Có vật phẩm bị chọn trùng: ${duplicatedNames.join(', ')}. Mỗi vật phẩm chỉ được chọn một lần.`,
+        );
+        return;
+      }
     }
 
     // Chỉ cho phép thao tác trên vật phẩm đã có trong kho
@@ -1510,6 +1586,14 @@ export default function ManagerInventoryCoordinationPage() {
               const selectedSupply = stockDialogSupplyItems.find(
                 (supply) => supply.id === item.supplyItemId,
               );
+              const selectedByOtherRows = new Set(
+                stockDrafts
+                  .filter((draft) => draft.id !== item.id && !!draft.supplyItemId)
+                  .map((draft) => draft.supplyItemId),
+              );
+              const selectableSupplyItemsForRow = availableNewStockSupplyItems.filter(
+                (supply) => supply.id === item.supplyItemId || !selectedByOtherRows.has(supply.id),
+              );
               const existingLots = item.supplyItemId
                 ? stockLotsBySupplyItemId.get(item.supplyItemId) || []
                 : [];
@@ -1558,7 +1642,7 @@ export default function ManagerInventoryCoordinationPage() {
                             <SelectValue placeholder="Chọn vật phẩm" />
                           </SelectTrigger>
                           <SelectContent>
-                            {availableNewStockSupplyItems.map((supplyItem) => (
+                            {selectableSupplyItemsForRow.map((supplyItem) => (
                               <SelectItem key={supplyItem.id} value={supplyItem.id}>
                                 {supplyItem.iconUrl && (
                                   <span className="material-symbols-outlined text-[18px] text-green-500">
@@ -1709,7 +1793,15 @@ export default function ManagerInventoryCoordinationPage() {
               );
             })}
 
-            <Button variant="outline" className="gap-2" onClick={addStockDraft}>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={addStockDraft}
+              disabled={
+                availableNewStockSupplyItems.length <=
+                stockDrafts.filter((d) => !!d.supplyItemId).length
+              }
+            >
               <span className="material-symbols-outlined text-lg">add</span>
               Thêm dòng vật phẩm
             </Button>
@@ -1930,6 +2022,14 @@ export default function ManagerInventoryCoordinationPage() {
               const selectedSupply = stockDialogSupplyItems.find(
                 (supply) => supply.id === item.supplyItemId,
               );
+              const selectedByOtherRows = new Set(
+                stockDrafts
+                  .filter((draft) => draft.id !== item.id && !!draft.supplyItemId)
+                  .map((draft) => draft.supplyItemId),
+              );
+              const selectableExistingSupplyItemsForRow = existingStockSupplyItems.filter(
+                (supply) => supply.id === item.supplyItemId || !selectedByOtherRows.has(supply.id),
+              );
               const existingLots = item.supplyItemId
                 ? stockLotsBySupplyItemId.get(item.supplyItemId) || []
                 : [];
@@ -1985,7 +2085,7 @@ export default function ManagerInventoryCoordinationPage() {
                             <SelectValue placeholder="Chọn vật phẩm" />
                           </SelectTrigger>
                           <SelectContent>
-                            {existingStockSupplyItems.map((supplyItem) => (
+                            {selectableExistingSupplyItemsForRow.map((supplyItem) => (
                               <SelectItem key={supplyItem.id} value={supplyItem.id}>
                                 {supplyItem.iconUrl && (
                                   <span className="material-symbols-outlined text-[18px] text-green-500">
@@ -2244,6 +2344,14 @@ export default function ManagerInventoryCoordinationPage() {
               const selectedSupply = stockDialogSupplyItems.find(
                 (supply) => supply.id === item.supplyItemId,
               );
+              const selectedByOtherRows = new Set(
+                stockDrafts
+                  .filter((draft) => draft.id !== item.id && !!draft.supplyItemId)
+                  .map((draft) => draft.supplyItemId),
+              );
+              const selectableExistingSupplyItemsForRow = existingStockSupplyItems.filter(
+                (supply) => supply.id === item.supplyItemId || !selectedByOtherRows.has(supply.id),
+              );
               const existingLots = item.supplyItemId
                 ? stockLotsBySupplyItemId.get(item.supplyItemId) || []
                 : [];
@@ -2296,7 +2404,7 @@ export default function ManagerInventoryCoordinationPage() {
                             <SelectValue placeholder="Chọn vật phẩm" />
                           </SelectTrigger>
                           <SelectContent>
-                            {existingStockSupplyItems.map((supplyItem) => (
+                            {selectableExistingSupplyItemsForRow.map((supplyItem) => (
                               <SelectItem key={supplyItem.id} value={supplyItem.id}>
                                 {supplyItem.iconUrl && (
                                   <span className="material-symbols-outlined text-[18px] text-green-500">
