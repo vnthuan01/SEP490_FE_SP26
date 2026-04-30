@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+ 
+import { useEffect, useMemo, useRef } from 'react';
 import goongjs from '@goongmaps/goong-js';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -41,22 +42,25 @@ export function DisasterForecastMapPanel(props: {
   analyses: AnalyzeDisasterRiskResponse[];
   filteredAnalyses: AnalyzeDisasterRiskResponse[];
   selectedAnalysis: AnalyzeDisasterRiskResponse | null;
+  highlightedAnalysisId?: string | null;
   disasterFilter: string;
   isLoadingDisaster: boolean;
-  setDisasterFilter: (v: string) => void;
-  setSelectedAnalysis: (v: AnalyzeDisasterRiskResponse | null) => void;
+  setDisasterFilter: (...args: [string]) => void;
+  setSelectedAnalysis: (...args: [AnalyzeDisasterRiskResponse | null]) => void;
   onOpenMap: () => void;
-  onSelectStation: (stationId: string | null) => void;
-  parseRiskLevelVN: (level?: string | null) => { label: string; class: string };
-  parseWeatherConditionVN: (condition?: string | null) => string;
-  getEffectiveDisasterType: (analysis: AnalyzeDisasterRiskResponse) => string;
-  getDisasterTheme: (value?: string | null) => Theme;
+  onSelectStation: (...args: [string | null]) => void;
+  parseRiskLevelVN: (...args: [string | null | undefined]) => { label: string; class: string };
+  parseWeatherConditionVN: (...args: [string | null | undefined]) => string;
+  getEffectiveDisasterType: (...args: [AnalyzeDisasterRiskResponse]) => string;
+  getDisasterTheme: (...args: [string | null | undefined]) => Theme;
+  renderMode?: 'panel' | 'mapOnly';
 }) {
   const {
     mapStations,
     analyses,
     filteredAnalyses,
     selectedAnalysis,
+    highlightedAnalysisId,
     disasterFilter,
     isLoadingDisaster,
     setDisasterFilter,
@@ -67,14 +71,21 @@ export function DisasterForecastMapPanel(props: {
     parseWeatherConditionVN,
     getEffectiveDisasterType,
     getDisasterTheme,
+    renderMode = 'panel',
   } = props;
+
+  const mapHeightClass = renderMode === 'mapOnly' ? 'h-full min-h-[68vh] lg:min-h-0' : 'h-[520px]';
 
   const mapRef = useRef<any>(null);
   const stationMarkersRef = useRef<any[]>([]);
   const riskMarkersRef = useRef<any[]>([]);
-  const center = mapStations[0]
-    ? { lat: mapStations[0].latitude, lng: mapStations[0].longitude }
-    : { lat: 16.0544, lng: 108.2022 };
+  const center = useMemo(
+    () =>
+      mapStations[0]
+        ? { lat: mapStations[0].latitude, lng: mapStations[0].longitude }
+        : { lat: 16.0544, lng: 108.2022 },
+    [mapStations],
+  );
   const { mapRef: domRef, map } = useGoongMap({
     center,
     zoom: mapStations[0] ? 9 : 6,
@@ -99,7 +110,15 @@ export function DisasterForecastMapPanel(props: {
       el.type = 'button';
       el.className = 'bg-transparent border-0 p-0 cursor-pointer';
       el.innerHTML = `<span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:#fff;border:2px solid ${markerColor};border-radius:10px;"><span class="material-symbols-outlined" style="font-size:18px;color:${markerColor};">home_work</span></span>`;
-      el.addEventListener('click', () => onSelectStation(station.id ?? null));
+      el.addEventListener('click', () => {
+        onSelectStation(station.id ?? null);
+        (mapImpl as any).flyTo({
+          center: [station.longitude, station.latitude],
+          zoom: 11,
+          speed: 1.1,
+          essential: true,
+        });
+      });
       stationMarkersRef.current.push(
         new goongjs.Marker({ element: el })
           .setLngLat([station.longitude, station.latitude])
@@ -121,8 +140,17 @@ export function DisasterForecastMapPanel(props: {
       el.type = 'button';
       el.className = 'bg-transparent border-0 p-0 cursor-pointer';
       const isSelected = analysis.analysisLogId === selectedAnalysis?.analysisLogId;
-      el.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;"><span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:${theme.color};border:2px solid #fff;border-radius:999px;box-shadow:0 0 0 ${isSelected ? 10 : 5}px ${theme.light};animation:${isSelected ? 'managerRiskBreathing 1.5s ease-in-out infinite' : 'none'};"><span class="material-symbols-outlined" style="font-size:16px;color:#fff;">${icon}</span></span><div style="display:flex;flex-direction:column;align-items:center;background:#fff;border:1px solid ${theme.color};border-radius:8px;padding:4px 6px;box-shadow:0 6px 16px rgba(15,23,42,0.16);min-width:86px;"><span style="font-size:12px;line-height:1.1;font-weight:800;color:${theme.color};">${probability}%</span><span style="font-size:10px;line-height:1.1;color:#334155;white-space:nowrap;">Bão lũ dự báo</span></div></div>`;
-      el.addEventListener('click', () => setSelectedAnalysis(analysis));
+      const isHighlighted = analysis.analysisLogId === highlightedAnalysisId;
+      el.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;"><span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:${theme.color};border:2px solid #fff;border-radius:999px;box-shadow:0 0 0 ${isHighlighted ? 13 : isSelected ? 9 : 5}px ${theme.light};animation:${isHighlighted ? 'managerRiskPulseStrong 1.2s cubic-bezier(0.22,1,0.36,1) infinite' : isSelected ? 'managerRiskBreathing 1.8s ease-in-out infinite' : 'none'};will-change:transform;"><span class="material-symbols-outlined" style="font-size:16px;color:#fff;">${icon}</span></span><div style="display:flex;flex-direction:column;align-items:center;background:#fff;border:1px solid ${theme.color};border-radius:8px;padding:4px 6px;box-shadow:0 6px 16px rgba(15,23,42,0.16);min-width:86px;"><span style="font-size:12px;line-height:1.1;font-weight:800;color:${theme.color};">${probability}%</span><span style="font-size:10px;line-height:1.1;color:#334155;white-space:nowrap;">Bão lũ dự báo</span></div></div>`;
+      el.addEventListener('click', () => {
+        setSelectedAnalysis(analysis);
+        (mapImpl as any).flyTo({
+          center: [analysis.longitude, analysis.latitude],
+          zoom: 11,
+          speed: 1.1,
+          essential: true,
+        });
+      });
       riskMarkersRef.current.push(
         new goongjs.Marker({ element: el })
           .setLngLat([analysis.longitude, analysis.latitude])
@@ -136,7 +164,66 @@ export function DisasterForecastMapPanel(props: {
     getEffectiveDisasterType,
     setSelectedAnalysis,
     selectedAnalysis,
+    highlightedAnalysisId,
   ]);
+
+  useEffect(() => {
+    const mapImpl = map || mapRef.current;
+    if (!mapImpl || !selectedAnalysis) return;
+    (mapImpl as any).flyTo({
+      center: [selectedAnalysis.longitude, selectedAnalysis.latitude],
+      zoom: 11,
+      speed: 1.1,
+      essential: true,
+    });
+  }, [map, selectedAnalysis]);
+
+  const mapBlock = (
+    <div
+      className={`${mapHeightClass} rounded-2xl border border-border overflow-hidden bg-muted/20 relative`}
+    >
+      <div ref={domRef} className="h-full w-full" />
+      <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2 max-w-[calc(100%-2rem)]">
+        <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
+          <span className="inline-flex size-5 items-center justify-center rounded-md border-2 border-violet-600 text-violet-600">
+            <span className="material-symbols-outlined text-[12px]">home_work</span>
+          </span>
+          Trạm cứu trợ
+        </div>
+        <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
+          <span className="inline-flex size-5 items-center justify-center rounded-md border-2 border-blue-600 bg-blue-50 text-blue-700">
+            <span className="material-symbols-outlined text-[12px]">location_city</span>
+          </span>
+          Cấp tỉnh
+        </div>
+        <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur">
+          <span className="inline-flex size-5 items-center justify-center rounded-[4px] bg-red-500 text-white rotate-45">
+            <span className="material-symbols-outlined -rotate-45 text-[12px]">warning</span>
+          </span>
+          Nguy cơ thiên tai
+        </div>
+      </div>
+      <div className="absolute left-4 bottom-4 z-10 rounded-xl bg-background/95 border border-border p-3 text-xs space-y-2">
+        <div className="font-semibold">Chú thích thời tiết</div>
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-sm">wb_sunny</span> Trời đẹp
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-sm">partly_cloudy_day</span> Có mây
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-sm">rainy</span> Có mưa
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-sm">thunderstorm</span> Dông bão
+        </div>
+      </div>
+    </div>
+  );
+
+  if (renderMode === 'mapOnly') {
+    return mapBlock;
+  }
 
   return (
     <Card className="border-border bg-card overflow-hidden">
@@ -164,24 +251,7 @@ export function DisasterForecastMapPanel(props: {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="h-[520px] rounded-2xl border border-border overflow-hidden bg-muted/20 relative">
-          <div ref={domRef} className="h-full w-full" />
-          <div className="absolute left-4 bottom-4 z-10 rounded-xl bg-background/95 border border-border p-3 text-xs space-y-2">
-            <div className="font-semibold">Chú thích</div>
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-sm">wb_sunny</span> Trời đẹp
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-sm">partly_cloudy_day</span> Có mây
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-sm">rainy</span> Có mưa
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-sm">thunderstorm</span> Dông bão
-            </div>
-          </div>
-        </div>
+        {mapBlock}
         {selectedAnalysis && (
           <div
             className={`rounded-2xl border p-4 ${getDisasterTheme(getEffectiveDisasterType(selectedAnalysis)).cardClass}`}
